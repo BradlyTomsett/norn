@@ -551,7 +551,10 @@ export function uiState(state) {
         text: `${copperText(b.amount)}／${{ day: '天', week: '周', month: '月', year: '年' }[b.every] || '月'}`,
       })),
       assets: p.assets,
-      industries: p.industries,
+      industries: (p.industries || []).map((i) => ({
+        ...i,
+        text: i.monthly ? `${copperText(i.monthly)}／月` : '未定',
+      })),
       livestock: p.livestock,
       stock: p.stock,
       skills: p.skills,

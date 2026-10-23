@@ -631,7 +631,7 @@ function viewOverview(u) {
     out.push(`<div class="row"><span class="k">货物</span><span class="v">${esc(p.bag.map((b) => `${b.name}×${b.qty}`).join('、'))}</span></div>`);
   }
   if (p.industries?.length) {
-    out.push(`<div class="row"><span class="k">产业</span><span class="v">${esc(p.industries.map((i) => i.name).join('、'))}</span></div>`);
+    out.push(`<div class="row"><span class="k">产业</span><span class="v">${esc(p.industries.map((i) => `${i.name}${i.text ? '（' + i.text + '）' : ''}`).join('、'))}</span></div>`);
   }
   if (p.livestock?.length) {
     out.push(`<div class="row"><span class="k">牲畜</span><span class="v">${esc(p.livestock.map((i) => `${i.name}×${i.qty}`).join('、'))}</span></div>`);

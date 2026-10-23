@@ -1,7 +1,8 @@
 // 资产：产业、牲畜、存货。以前它们全挤在 player.assets 的字符串数组里，
 // 引擎一件也算不了；现在分开存，产业按月出账。
 //
-// 产业不收维护费（按作者要求）：monthly 是月净收益，直接计入指定账户。
+// 产业不收维护费（按作者要求）：monthly 是月净收益，单位铜，直接计入指定账户。
+// 这些是玩家个人财产，默认进「随身」（cash），不进家族账户。
 
 import { addCopper, copperText } from './money.js';
 import { toNumber } from './items.js';
