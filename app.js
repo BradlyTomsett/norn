@@ -926,7 +926,22 @@ $('#cu-start').onclick = () => {
 
 boot();
 
-// 注册 service worker（离线打开用）
+// 注册 service worker（离线打开用）。
+// 新版本接管时自动刷新一次，免得手机上一直看到旧文件。
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    location.reload();
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      reg.update().catch(() => {});
+    } catch {
+      /* 不支持就算了，不影响玩 */
+    }
+  });
 }
