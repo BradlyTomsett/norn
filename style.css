@@ -7,6 +7,10 @@
   --accent: #5b8fd6;
   --accent-dim: #3f6fb5;
   --accent-soft: rgba(91,143,214,.12);
+  /* 玩家自己说的话：淡黄底 + 深褐字，和蓝色界面拉开距离 */
+  --me-bg: #f2e4b6;
+  --me-ink: #2b2416;
+  --me-line: #c9a227;
   --red: #b4553f;
   --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
 }
@@ -54,14 +58,16 @@ body {
 .msg .sec { color: var(--accent); font-weight: 700; letter-spacing: .08em; margin-top: 1.15em; }
 .msg .rule { color: var(--line); letter-spacing: .2em; margin: .9em 0; }
 .msg.me {
-  color: #cfe2f8;
-  background: var(--accent-soft);
-  border-left: 2px solid var(--accent-dim);
+  color: var(--me-ink);
+  background: var(--me-bg);
+  border-left: 3px solid var(--me-line);
   border-radius: 10px;
   padding: 10px 14px;
   margin-left: 18px;
   font-size: 15px;
 }
+.msg.me .sec { color: #6b4e00; }
+.msg.me .rule { color: #b9a06a; }
 .msg.err { color: var(--red); font-size: 14px; }
 .cursor::after { content: "▍"; animation: blink 1s steps(2) infinite; color: var(--accent); }
 @keyframes blink { 50% { opacity: 0; } }
