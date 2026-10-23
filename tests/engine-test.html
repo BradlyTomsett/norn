@@ -57,7 +57,8 @@ try {
 
   // 牲口：按类目分开，价格拉开
   eq('鸡按只', priceOf(state, '一只鸡').cat, 'poultry');
-  eq('鸡 15 铜', priceOf(state, '一只鸡').unit, 15);
+  eq('鸡 30 铜', priceOf(state, '一只鸡').unit, 30);
+  eq('雏鸡 2 铜', priceOf(state, '一只雏鸡').unit, 2);
   eq('猪 700 铜', priceOf(state, '一头猪').unit, 700);
   eq('羊 900 铜', priceOf(state, '一头羊').unit, 900);
   eq('牛 1.2 金', priceOf(state, '一头牛').unit, 12000);
@@ -71,7 +72,12 @@ try {
   eq('生皮 8 铜', priceOf(state, '一张生皮').unit, 8);
   eq('熟皮 25 铜', priceOf(state, '一张熟皮').unit, 25);
   eq('狼皮 40 铜', priceOf(state, '一张狼皮').unit, 40);
+  eq('鹿皮 40 铜', priceOf(state, '一张鹿皮').unit, 40);
+  eq('野猪皮 60 铜', priceOf(state, '一张野猪皮').unit, 60);
+  eq('鳄鱼皮 2 银', priceOf(state, '一张鳄鱼皮').unit, 200);
   eq('熊皮 3 银', priceOf(state, '一张熊皮').unit, 300);
+  eq('虎皮 15 银', priceOf(state, '一张虎皮').unit, 1500);
+  eq('狐皮 1 银', priceOf(state, '一张狐皮').unit, 100);
 
   // 不动产：六档拉开
   eq('一亩田 5 银', priceOf(state, '一亩田').unit, 5000);

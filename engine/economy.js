@@ -16,7 +16,7 @@ import { int } from './rng.js';
 export const GRADES = ['灰', '绿', '蓝', '紫', '金'];
 // 灰：老百姓都用；绿：普通人能见到的顶配；蓝：城主级，一个城里没几件；
 // 紫：S 级冒险者、国王、公爵才可能有一件；金：传说，多数人没听说过。
-export const GRADE_MUL = { 灰: 1, 绿: 3.5, 蓝: 12, 紫: 120, 金: 1525 };
+export const GRADE_MUL = { 灰: 1, 绿:4, 蓝: 82, 紫: 1120, 金: 21525 };
 
 // 锚定价单位：铜。1 金 = 100 银 = 10000 铜。
 export const CATS = {
@@ -36,7 +36,7 @@ export const CATS = {
   missile: { name: '箭矢', base: 1, unit: '支' },
   medicine: { name: '药', base: 60, unit: '份' },
   potion: { name: '药剂', base: 250, unit: '瓶' },
-  poultry: { name: '家禽', base: 15, unit: '只' },
+  poultry: { name: '家禽', base: 30, unit: '只' },
   pig: { name: '猪', base: 700, unit: '头' },
   sheep: { name: '羊', base: 900, unit: '只' },
   cattle: { name: '牛', base: 12000, unit: '头' },
@@ -83,15 +83,18 @@ const NAMED = [
   [/牛犊|小牛/, 4000],
   [/羊羔|羔羊/, 300],
   [/猪崽|小猪/, 150],
-  [/雏鸡|小鸡|鸡雏/, 5],
+  [/雏鸡|小鸡|鸡雏|雏鸭|雏鹅|幼禽/, 2],
   // 皮革（按来源分价）
   [/生皮|毛皮/, 8],
   [/牛皮/, 60],
-  [/鹿皮/, 80],
+  [/鹿皮/, 40],
   [/羊皮/, 25],
   [/狼皮/, 40],
+  [/野猪皮/, 60],
+  [/鳄鱼皮/, 200],
   [/熊皮/, 300],
-  [/狐皮|貂皮/, 400],
+  [/虎皮/, 1500],
+  [/狐皮|貂皮/, 100],
 ];
 
 const NAMED_NO_BAG = new Set(['property']);
