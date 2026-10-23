@@ -212,7 +212,8 @@ export function priceOf(state, name, opts = {}) {
 
   const named = namedPrice(name);
   if (named) {
-    const unit = Math.max(1, Math.round(named * priceIndex));
+    // NAMED 是作者钉死的绝对价（金疮药 5 铜就是 5 铜），不随物价指数浮动
+    const unit = Math.max(1, Math.round(named));
     return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat) || NAMED_NO_BAG.has(cat) };
   }
 

@@ -3,6 +3,15 @@
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+/** 技能上限：默认 100；天赋越好，天花板越高（老存档里 130 的武技不会被砍回 100）。 */
+export function skillCap(state) {
+  const grade = state?.player?.talent?.grade;
+  if (grade === '传说') return 150;
+  if (grade === '史诗') return 130;
+  if (grade === '珍奇') return 115;
+  return 100;
+}
+
 /** 这次行动用到哪个技能，由判定给出；没有技能名就用动作标签。 */
 export function skillNameFor(judged) {
   if (!judged) return '';
@@ -38,9 +47,16 @@ export function trainSkill(state, judged) {
 
   sk.xp = (Number(sk.xp) || 0) + gain;
   const before = level;
+  const cap = skillCap(state);
   while (sk.xp >= 1) {
     sk.xp -= 1;
-    sk.level = Math.min(100, Number(sk.level) + 1);
+    const cur = Number(sk.level) || 0;
+    // 只增不减：存档里已经超上限的老号（比如武技 130）不会被这一行砍回去
+    sk.level = Math.max(cur, Math.min(cap, cur + 1));
+    if (cur >= cap) {
+      sk.xp = 0;
+      break;
+    }
   }
   return Math.max(0, (Number(sk.level) || 0) - before);
 }
