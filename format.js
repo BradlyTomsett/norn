@@ -53,6 +53,45 @@ export function pruneEmpty(text) {
   return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** 把模型输出拆成「正文」和「最后一个 json 代码块」。 */
+export function splitDelta(text) {
+  const src = String(text || '');
+  const re = /`{3,}\s*json\s*([\s\S]*?)`{3,}/gi;
+  let m;
+  let last = null;
+  while ((m = re.exec(src)) !== null) last = m;
+  const stripFence = (s) =>
+    s
+      .replace(/`{3,}\s*json\s*[\s\S]*?`{3,}/gi, '')
+      .replace(/^[ \t]*`{3,}[ \t]*$/gm, '')
+      .trim();
+  if (!last) return { text: stripFence(src), delta: null };
+  const head = stripFence(src);
+  try {
+    return { text: head, delta: JSON.parse(last[1]) };
+  } catch {
+    return { text: head || src.trim(), delta: null };
+  }
+}
+
+/** 去掉模型不该输出的【当前角色】大表、结尾小标题和自言自语。 */
+export function stripSheet(text) {
+  let t = String(text || '');
+  const i = t.indexOf('【当前角色】');
+  if (i >= 0) {
+    const rest = t.slice(i + 6);
+    const m = rest.match(/【世界动态】|【你现在可以做什么】|【玩家自由行动】/);
+    t = m ? t.slice(0, i) + rest.slice(m.index) : t.slice(0, i);
+  }
+  t = t.replace(/\n*(━+\s*)?【玩家自由行动】\s*$/, '');
+  // 模型偶尔会自言自语「修正：……」，那不是游戏内容
+  t = t
+    .split('\n')
+    .filter((l) => !/^(修正|更正|补充说明|说明)[：:]/.test(l.trim()))
+    .join('\n');
+  return t.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function format(raw) {
   const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n');
   const out = [];

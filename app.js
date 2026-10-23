@@ -7,7 +7,7 @@ import { advanceWorld, engineDelta } from './engine/tick.js';
 import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
 import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
-import { esc, format, pruneEmpty } from './format.js';
+import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 
 const BUILD = '2026-10-23 · r5';
@@ -137,26 +137,6 @@ const buildSystem = (state, judged, events, opts = {}) =>
   [app.rules, '', app.worldbook, '', ...(state.customSetting ? ['【玩家自定义的世界补充（以此为准，不得推翻）】', state.customSetting, ''] : []), RUNTIME, '', '【当前状态】', stateBlock(state), '', '【在场/相关人物】', npcCards(state), '', turnBrief(judged, events, state, opts)].join('\n');
 
 /* ---------------- 文本处理 ---------------- */
-
-function splitDelta(text) {
-  // 代码块可能用 3 个或更多反引号；也可能不在结尾。取最后一个块当增量。
-  const re = /`{3,}\s*json\s*([\s\S]*?)`{3,}/gi;
-  let m;
-  let last = null;
-  while ((m = re.exec(text)) !== null) last = m;
-  const stripFence = (s) =>
-    s
-      .replace(/`{3,}\s*json\s*[\s\S]*?`{3,}/gi, '')
-      .replace(/^[ \t]*`{3,}[ \t]*$/gm, '')
-      .trim();
-  if (!last) return { text: stripFence(text), delta: null };
-  const head = stripFence(text);
-  try {
-    return { text: head, delta: JSON.parse(last[1]) };
-  } catch {
-    return { text: head || text.trim(), delta: null };
-  }
-}
 
 /* ---------------- 渲染 ---------------- */
 

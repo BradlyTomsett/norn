@@ -2,7 +2,7 @@
 <html lang="zh"><head><meta charset="utf-8"><title>format test</title></head>
 <body><pre id="out">running…</pre>
 <script type="module">
-import { format, esc, pruneEmpty } from '../format.js';
+import { format, esc, pruneEmpty, splitDelta, stripSheet } from '../format.js';
 
 const lines = [];
 const ok = (n, c, extra = '') => lines.push(`${c ? 'PASS' : 'FAIL'} ${n}${extra ? ' :: ' + extra : ''}`);
@@ -67,6 +67,77 @@ const shortRepeat = `【人物关系】
 他点头。
 `;
 ok('太短的行不做去重', (pruneEmpty(shortRepeat).match(/他点头。/g) || []).length === 2);
+
+/* ---------- stripSheet ---------- */
+
+const sheet = `【本次行动】
+你进了铺子。
+
+【当前角色】
+马大爷｜18 岁｜人类
+四维：135 / 130 / 99 / 116
+资产｜现金｜债务
+
+【世界动态】
+北边来了商队。
+
+【你现在可以做什么】
+① 看看
+
+━━━━━━━━━━
+【玩家自由行动】`;
+const stripped = stripSheet(sheet);
+ok('去掉【当前角色】大表', !stripped.includes('【当前角色】') && !stripped.includes('四维：'), stripped.replace(/\n/g, ' / '));
+ok('保留后面的【世界动态】', stripped.includes('【世界动态】'));
+ok('去掉结尾【玩家自由行动】', !stripped.includes('【玩家自由行动】'));
+ok('正文本体还在', stripped.includes('你进了铺子。'));
+
+const fix = `【本次行动】
+你进了铺子。
+修正：上一条写错了。
+更正：其实是粮行。`;
+const fixed = stripSheet(fix);
+ok('去掉「修正/更正」自言自语', !fixed.includes('修正') && !fixed.includes('更正'), fixed.replace(/\n/g, ' / '));
+
+ok('stripSheet 空输入不炸', stripSheet('') === '' && stripSheet(null) === '');
+
+/* ---------- 整条管线：和 app.js 里跑的完全一致 ---------- */
+
+const modelOut = `【本次行动】
+你推开铺子的门，铜铃响了一声。
+
+【世界动态】
+无
+
+【当前角色】
+马大爷｜18 岁
+四维：135 / 130 / 99 / 116
+
+【你现在可以做什么】
+① 问价
+② 走人
+
+\`\`\`json
+{"trade":{"buy":[{"name":"黑面包","qty":2}]}}
+\`\`\``;
+
+let pipelineOk = true;
+let html2 = '';
+let delta = null;
+try {
+  const split = splitDelta(modelOut);
+  delta = split.delta;
+  html2 = format(pruneEmpty(stripSheet(split.text)));
+} catch (e) {
+  pipelineOk = false;
+  html2 = String(e);
+}
+ok('管线不抛异常（这次线上就是这里炸的）', pipelineOk, html2.slice(0, 60));
+ok('json 被解析出来', delta && delta.trade && delta.trade.buy[0].name === '黑面包');
+ok('正文保留', html2.includes('铜铃响了一声'));
+ok('空的世界动态被删掉', !html2.includes('世界动态'));
+ok('【当前角色】被删掉', !html2.includes('当前角色'));
+ok('输出里没有空段落', !html2.includes('&nbsp;'));
 
 document.getElementById('out').textContent = lines.join('\n');
 </script></body></html>
