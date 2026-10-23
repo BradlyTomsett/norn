@@ -1,102 +1,36 @@
 // 状态的创建、增量应用、校验、序列化。
 import { advanceClock, formatDate, monthOf, dayOfMonth, SEASON_CN, WEATHER_CN, seasonOf } from './clock.js';
+import {
+  accountOf,
+  accountsText,
+  addCopper,
+  copperText,
+  ensureAccounts,
+  fromCopper,
+  moneyText,
+  totalCopper,
+  transferCopper,
+} from './money.js';
+import { priceOf, rollBounty, sellOf } from './economy.js';
+import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
+
+export {
+  accountOf,
+  accountsText,
+  addCopper,
+  copperText,
+  ensureAccounts,
+  fromCopper,
+  moneyText,
+  totalCopper,
+  transferCopper,
+};
 
 export const RACES = ['human', 'elf', 'orc', 'dwarf'];
 export const RACE_CN = { human: '人类', elf: '精灵', orc: '兽人', dwarf: '矮人', dragonkin: '龙裔', underdark: '地穴人', highland: '高原人' };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-
-export function copperTotal(w) {
-  return Math.round(n(w.gold) * 10000 + n(w.silver) * 100 + n(w.copper));
-}
-
-export function fromCopper(total) {
-  let t = Math.max(0, Math.round(total));
-  const gold = Math.floor(t / 10000);
-  t -= gold * 10000;
-  const silver = Math.floor(t / 100);
-  t -= silver * 100;
-  return { gold, silver, copper: t };
-}
-
-export function moneyText(w) {
-  const g = n(w.gold), s = n(w.silver), c = n(w.copper);
-  const parts = [];
-  if (g) parts.push(`${g} 金`);
-  if (s) parts.push(`${s} 银`);
-  if (c || parts.length === 0) parts.push(`${c} 铜`);
-  return parts.join(' ');
-}
-
-/* ---------------- 多账户 ---------------- */
-
-export const DEFAULT_ACCOUNTS = [
-  { id: 'cash', name: '随身', copper: 0 },
-  { id: 'home', name: '家里', copper: 0 },
-  { id: 'workshop', name: '汽水工坊', copper: 0 },
-];
-
-/** 老存档只有 wallet：迁移成 cash，其余账户从 0 起。 */
-export function ensureAccounts(state) {
-  const p = state.player;
-  if (!Array.isArray(p.accounts) || p.accounts.length === 0) {
-    const cash = p.wallet ? copperTotal(p.wallet) : 0;
-    p.accounts = DEFAULT_ACCOUNTS.map((a) => ({ ...a, copper: a.id === 'cash' ? cash : 0 }));
-  }
-  const cash = p.accounts.find((a) => a.id === 'cash');
-  p.wallet = fromCopper(cash ? cash.copper : 0);
-  return p.accounts;
-}
-
-export function accountOf(state, key) {
-  const list = ensureAccounts(state);
-  const k = String(key || '').trim();
-  return list.find((a) => a.id === k || a.name === k) || null;
-}
-
-export function addCopper(state, key, deltaCopper) {
-  const a = accountOf(state, key);
-  if (!a) return false;
-  const d = Math.round(deltaCopper);
-  a.copper = Math.max(0, a.copper + d);
-  if (a.id === 'cash') state.player.wallet = fromCopper(a.copper);
-  if (a.id === 'workshop' && d) {
-    const k = `${state.clock.year}-${state.clock.doy}`;
-    const wd = state.player.workshopDaily;
-    if (!wd || wd.key !== k) state.player.workshopDaily = { key: k, copper: d };
-    else wd.copper += d;
-  }
-  return true;
-}
-
-/** 账户之间调钱：立刻完成，没有运输与手续费。 */
-export function transferCopper(state, from, to, amount) {
-  const a = accountOf(state, from);
-  const b = accountOf(state, to);
-  if (!a || !b || a === b) return false;
-  const amt = Math.min(a.copper, Math.round(amount));
-  if (amt <= 0) return false;
-  a.copper -= amt;
-  b.copper += amt;
-  const cash = state.player.accounts.find((x) => x.id === 'cash');
-  state.player.wallet = fromCopper(cash.copper);
-  return true;
-}
-
-export function accountsText(state) {
-  const list = ensureAccounts(state);
-  return list.map((a) => `${a.name} ${moneyText(fromCopper(a.copper))}`).join(' ｜ ');
-}
-
-export function totalCopper(state) {
-  return ensureAccounts(state).reduce((s, a) => s + a.copper, 0);
-}
-
-/** 铜数转成人话 */
-export function copperText(c) {
-  return moneyText(fromCopper(Math.round(c)));
-}
 
 /** 把「A（金）、B、C（均紫）」这类合并写法拆成一条一件。 */
 export function normalizeEquipment(raw) {
@@ -125,6 +59,168 @@ export function normalizeEquipment(raw) {
     out.push(`${name}（${grade}）`);
   }
   return out;
+}
+
+/* ---------------- 随身货物 ---------------- */
+
+export function bagOf(state) {
+  const p = state.player;
+  if (!Array.isArray(p.bag)) p.bag = [];
+  return p.bag;
+}
+
+function bagAdd(state, name, qty) {
+  const bag = bagOf(state);
+  const key = String(name).slice(0, 40);
+  const found = bag.find((x) => x.name === key);
+  if (found) found.qty += qty;
+  else bag.push({ name: key, qty });
+  if (bag.length > 80) bag.splice(0, bag.length - 80);
+}
+
+function bagTake(state, name, qty) {
+  const bag = bagOf(state);
+  const found = bag.find((x) => x.name === String(name));
+  if (!found || found.qty < qty) return false;
+  found.qty -= qty;
+  if (found.qty <= 0) bag.splice(bag.indexOf(found), 1);
+  return true;
+}
+
+export function bagText(state) {
+  const bag = bagOf(state);
+  if (!bag.length) return '';
+  return bag.map((x) => `${x.name}×${x.qty}`).join('、');
+}
+
+/* ---------------- 账目日志 ---------------- */
+
+export function logLedger(state, text) {
+  state.ledgerLog ||= [];
+  state.ledgerLog.push({ year: state.clock.year, doy: state.clock.doy, text: String(text).slice(0, 100) });
+  if (state.ledgerLog.length > 40) state.ledgerLog = state.ledgerLog.slice(-40);
+}
+
+const toList = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
+
+/** 交易：模型只说买卖什么，价格由 economy 算，钱从指定账户走。 */
+function settleTrade(state, trade, rejected) {
+  ensureAccounts(state);
+  const acc = accountOf(state, trade?.account || 'cash');
+  if (!acc) {
+    rejected.push(`没有账户「${trade?.account}」`);
+    return;
+  }
+
+  for (const it of toList(trade?.sell)) {
+    const name = String(it?.name || it?.item || '').trim();
+    const qty = Math.max(1, Math.round(n(it?.qty) || 1));
+    if (!name) continue;
+    if (!bagTake(state, name, qty)) {
+      rejected.push(`身上没有 ${name}`);
+      continue;
+    }
+    const p = sellOf(state, name, { qty });
+    addCopper(state, acc.id, p.total);
+    logLedger(state, `卖了 ${name}×${qty}，得 ${copperText(p.total)}`);
+  }
+
+  for (const it of toList(trade?.buy)) {
+    const name = String(it?.name || it?.item || '').trim();
+    const qty = Math.max(1, Math.round(n(it?.qty) || 1));
+    if (!name) continue;
+    const p = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade });
+    if (acc.copper < p.total) {
+      rejected.push(`钱不够：${name}×${qty} 要 ${copperText(p.total)}`);
+      continue;
+    }
+    addCopper(state, acc.id, -p.total);
+    if (!p.noBag) bagAdd(state, name, qty);
+    logLedger(state, `买了 ${name}×${qty}，花 ${copperText(p.total)}`);
+  }
+}
+
+/** 赏金：金额按威胁等级由引擎开，结算档位影响实收。 */
+function settleBounty(state, bounty, rng, judged, rejected) {
+  const mul =
+    judged?.outcome === 'crush' ? 1.2 : judged?.outcome === 'fail' ? 0.4 : judged?.outcome === 'disaster' ? 0 : 1;
+  for (const b of toList(bounty).slice(0, 1)) {
+    const pay = Math.round(rollBounty(state, b?.tier, rng) * mul);
+    if (pay <= 0) {
+      rejected.push('这趟活一分钱没拿到');
+      continue;
+    }
+    addCopper(state, b?.account || 'cash', pay);
+    logLedger(state, `赏金：${b?.label ? b.label + '，' : ''}${copperText(pay)}`);
+  }
+}
+
+/** 人情：给钱的收益按"相当于对方几个月收入"折算，送穷人比送富人有用。 */
+function settleGift(state, gift) {
+  for (const g of toList(gift).slice(0, 3)) {
+    const amount = Math.round(n(g?.copper));
+    if (amount <= 0) continue;
+    const acc = accountOf(state, g?.account || 'cash');
+    if (!acc || acc.copper < amount) continue;
+    addCopper(state, acc.id, -amount);
+    const npc = state.npcs.find((x) => x.id === g?.to);
+    const rel = state.player.relations.find((x) => x.npcId === g?.to);
+    if (rel) {
+      const income = Math.max(1, (workOf(npc?.profession || '', 'journeyman').daily || 120) * 30);
+      const months = amount / income;
+      rel.trust = clamp(rel.trust + Math.round(Math.log2(1 + months) * 6), -100, 100);
+      rel.closeness = clamp(rel.closeness + Math.round(Math.log2(1 + months) * 3), -100, 100);
+      rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
+    }
+    logLedger(state, `送了${npc?.name || '人'}一份人情，${copperText(amount)}`);
+  }
+}
+
+function settleProfession(state, prof) {
+  const name = String(prof?.name || '').trim().slice(0, 20);
+  if (!name) return;
+  const st = ['none', 'apprentice', 'journeyman', 'master', 'guildmaster'].includes(prof?.state)
+    ? prof.state
+    : 'none';
+  state.player.profession = name;
+  state.player.professionState = st;
+  const w = workOf(name, st);
+  state.player.work = { ...w, profession: name, state: st };
+  logLedger(state, `现在是${name}${w.type === 'bounty' ? '，靠赏金过活' : w.daily ? `，日薪 ${copperText(w.daily)}` : ''}`);
+}
+
+function settleDebts(state, delta, rejected) {
+  if (delta?.payDebt) {
+    for (const r of payDebt(state, delta.payDebt)) {
+      if (r.ok) logLedger(state, r.text);
+      else rejected.push(r.text);
+    }
+  }
+  if (delta?.borrow) {
+    for (const b of toList(delta.borrow).slice(0, 1)) {
+      const amount = Math.round(n(b?.copper));
+      if (amount <= 0) continue;
+      const d = addDebt(state, {
+        to: b?.from || b?.to,
+        copper: amount,
+        months: n(b?.months) || 12,
+        rate: n(b?.rate) || 0.03,
+        note: b?.note,
+      });
+      if (d) {
+        addCopper(state, b?.account || 'cash', amount);
+        logLedger(state, `借了${d.to} ${copperText(amount)}，月息 ${(d.rate * 100).toFixed(0)}%`);
+      }
+    }
+  }
+}
+
+function settleItems(state, items) {
+  for (const it of toList(items).slice(0, 5)) {
+    const name = typeof it === 'string' ? it : it?.name;
+    if (!name) continue;
+    bagAdd(state, name, Math.min(10, Math.max(1, Math.round(n(it?.qty) || 1))));
+  }
 }
 
 /** 把一次输出的增量（LLM 提议）安全地合入状态。返回被拒绝的条目。 */
@@ -167,6 +263,14 @@ export function applyDelta(state, delta, rng, opts = {}) {
     }
   }
 
+  // 以下都由引擎结算金额，模型只给意图
+  if (delta?.trade) settleTrade(state, delta.trade, rejected);
+  if (delta?.bounty) settleBounty(state, delta.bounty, rng, opts.judged, rejected);
+  if (delta?.payDebt || delta?.borrow) settleDebts(state, delta, rejected);
+  if (delta?.profession) settleProfession(state, delta.profession);
+  if (delta?.items) settleItems(state, delta.items);
+  if (delta?.gift) settleGift(state, delta.gift);
+
   // 身体 / 精神
   for (const key of ['health', 'fatigue', 'hunger']) {
     const d = n(delta?.body?.[key]);
@@ -193,15 +297,15 @@ export function applyDelta(state, delta, rng, opts = {}) {
     }
   }
 
-  // 技能
+  // 技能：数值只由引擎涨（见 progress.js）。模型最多只能开一个新技能的名字。
   if (Array.isArray(delta?.skills)) {
-    for (const s of delta.skills.slice(0, 5)) {
-      if (!s || typeof s.name !== 'string' || !s.name.trim()) continue;
-      const name = s.name.trim().slice(0, 12);
-      const found = state.player.skills.find((x) => x.name === name);
-      const d = n(s.delta ?? s.level);
-      if (found) found.level = clamp(found.level + d, 0, 100);
-      else state.player.skills.push({ name, level: clamp(Math.max(0, d), 0, 100) });
+    for (const s of delta.skills.slice(0, 3)) {
+      const name = typeof s === 'string' ? s : s?.name;
+      if (!name || typeof name !== 'string' || !name.trim()) continue;
+      const key = name.trim().slice(0, 12);
+      if (!state.player.skills.some((x) => x.name === key)) {
+        state.player.skills.push({ name: key, level: 1, xp: 0 });
+      }
     }
   }
 
@@ -217,6 +321,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
       if (!rel) continue;
       rel.trust = clamp(rel.trust + n(r.trust), -100, 100);
       rel.closeness = clamp(rel.closeness + n(r.closeness), -100, 100);
+      rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
       if (typeof r.observable === 'string' && r.observable.trim()) {
         rel.observable = r.observable.trim().slice(0, 60);
       }
@@ -296,9 +401,24 @@ export function stateBlock(state) {
     const t = p.talent;
     lines.push(`【天赋】${t.name}（${t.grade}）：${t.effect}${t.secret ? '｜**必须严格保密**' : ''}`);
   }
-  if (p.incomeMonthly) lines.push(`【月净利】约 ${p.incomeMonthly.toLocaleString()} 金`);
   lines.push(`【账户】${accountsText(state)}`);
-  if (p.debts.length) lines.push(`【债务】${p.debts.map((d) => `${d.to} ${moneyText(d.amount)}（${d.note || '到期未定'}）`).join('；')}`);
+  const work = ensureWork(state);
+  if (work.type === 'wage' && work.daily) {
+    lines.push(`【收入】${work.label}：日薪 ${copperText(work.daily)}（约 ${copperText(work.daily * 30)}/月，由引擎发放）`);
+  } else if (work.type === 'bounty') {
+    lines.push('【收入】没有固定收入，全靠赏金；赏金数额由引擎按威胁等级开，你只写事情办没办成。');
+  } else {
+    lines.push('【收入】现在没有固定收入。');
+  }
+  const bills = ensureBills(state);
+  if (bills.length) {
+    const every = { day: '每天', week: '每周', month: '每月', year: '每年' };
+    lines.push(`【固定收支】${bills.map((b) => `${b.label} ${copperText(b.amount)}／${every[b.every] || '每月'}`).join('；')}`);
+  }
+  const debts = openDebts(state);
+  if (debts.length) lines.push(`【债务】${debts.map((d) => debtText(state, d)).join('；')}`);
+  const bagAll = bagText(state);
+  if (bagAll) lines.push(`【随身货物】${bagAll}`);
   if (p.assets.length) lines.push(`【资产】${p.assets.join('、')}`);
   if (p.equipment?.length) lines.push(`【装备】${p.equipment.join('、')}`);
   if (p.skills.length) lines.push(`【技能】${p.skills.map((s) => `${s.name} ${s.level}`).join('、')}`);
@@ -313,6 +433,10 @@ export function stateBlock(state) {
   if (p.goals.length) lines.push(`【当前目标】${p.goals.join('；')}`);
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push(`【未完成】${p.unfinished.map((u) => u.text).join('；')}`);
+  if (state.ledgerLog?.length) {
+    lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
+    for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
+  }
   if (state.knowledge.length) {
     lines.push('【玩家已知】（只能用这些）');
     for (const k of state.knowledge.slice(-12)) lines.push(`  · ${k.text}（${k.source}）`);
@@ -366,7 +490,29 @@ export function uiState(state) {
         text: moneyText(fromCopper(a.copper)),
       })),
       wallet: p.wallet,
-      debts: p.debts,
+      debts: openDebts(state).map((d) => ({
+        to: d.to,
+        remaining: d.remaining,
+        text: copperText(d.remaining),
+        rate: d.rate,
+        due: d.due,
+        overdueMonths: d.overdueMonths,
+      })),
+      bag: bagOf(state),
+      work: (() => {
+        const w = ensureWork(state);
+        const text =
+          w.type === 'wage' && w.daily
+            ? `日薪 ${copperText(w.daily)}`
+            : w.type === 'bounty'
+              ? '靠赏金，无固定收入'
+              : '无固定收入';
+        return { ...w, text };
+      })(),
+      bills: ensureBills(state).map((b) => ({
+        ...b,
+        text: `${copperText(b.amount)}／${{ day: '天', week: '周', month: '月', year: '年' }[b.every] || '月'}`,
+      })),
       assets: p.assets,
       skills: p.skills,
       socialClass: p.socialClass,
@@ -390,6 +536,7 @@ export function uiState(state) {
       }),
     },
     knowledge: state.knowledge.slice(-10),
+    ledgerLog: (state.ledgerLog || []).slice(-6),
     worldLog: (state.worldLog || []).slice(-8),
     priceIndex: state.world.priceIndex || 1,
   };

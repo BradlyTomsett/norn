@@ -5,9 +5,10 @@ import { REGIONS, generateWorld, openingText } from './engine/worldgen.js';
 import { judge, judgeBrief } from './engine/resolve.js';
 import { advanceWorld, engineDelta } from './engine/tick.js';
 import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
+import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 
-const BUILD = '2026-10-23 · r4';
+const BUILD = '2026-10-23 · r5';
 
 const $ = (s) => document.querySelector(s);
 
@@ -42,12 +43,19 @@ const RUNTIME = `
    **不要输出【当前角色】块**（玩家在状态面板里能看）。也不要输出【玩家自由行动】这个小标题。
 2. 另起一行输出一个 json 代码块，只写“变化”。
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
-3b. **钱分账户**：「cash」（随身）、「home」（家里）、「workshop」（汽水工坊）。写法：
-    "money":{"cash":-300}                     随身花掉 300 铜
-    "money":{"workshop":250000}               工坊进账 25 金（记在工坊账上，**不自动进家里**）
-    "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}   从家里拿 50 金到随身
-    账户之间的调度**立刻完成**：没有运费、没有手续费、不花时间。
-    家族每月 180 金的月钱由引擎自动入「家里」；汽水工坊每天单独记账，**每月结账时整笔转到随身**。这两件都由引擎做，你不要自己记，也不要把工坊的钱并进家里。
+3b. **钱不要自己算，也不要自己定价。** 你只写"做了什么"，价格、到账、扣款全部由引擎结算：
+    "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}],"sell":[{"name":"狼皮","qty":1}]}
+    "bounty":{"label":"清掉林子边的狼","tier":2}          冒险者的赏金，金额由引擎按威胁等级开
+    "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
+    "borrow":{"from":"钱庄","copper":50000,"months":12,"rate":0.05}   借钱
+    "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
+    "items":[{"name":"狼皮","qty":2}]                    真正收进包里的东西（卖了要有）
+    "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
+    "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
+    **禁止写价钱、禁止写余额**。写了具体金额会被引擎忽略或拒绝。
+    账户只有三个：cash（随身）、home（家里）、workshop（汽水工坊）。调度立刻完成，无手续费。
+    家族月钱、工钱、债息、吃住开销都由引擎按日/月自动结算，你**不要**重复记，也不要把工坊的钱并进家里。
+3c. **技能数值不要写。** 技能等级只由引擎按练习时长与难度涨；你最多只能报一个新技能的名字："skills":["商谈"]。
 4. relations 只能用下面列出的 npcId，禁止编造。
 5. 叙事里不出现数值、等级、经验值。
 6. 不替玩家说话或做决定。对话场景中，NPC 说完就停。**也不要在正文里写“修正：”“更正：”这类关于自己格式的说明**。
@@ -105,7 +113,7 @@ function turnBrief(judged, events, state) {
     '━━━━━━━━━━',
     '【最后一步，必须做】在【你现在可以做什么】之后，再输出一个 json 代码块，只写增量：',
     '```json',
-    '{"money":{"copper":-3},"skills":[{"name":"武艺","delta":0.2}],"relations":[{"npcId":"npc_mother","trust":1,"observable":"她把水接了过去"}],"knowledge":[{"text":"……","source":"听说"}],"mind":{"mood":"有点泄气"},"goals":[],"problems":[]}',
+    '{"trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}]},"items":[{"name":"狼皮","qty":1}],"relations":[{"npcId":"npc_mother","trust":1,"observable":"她把水接了过去"}],"knowledge":[{"text":"……","source":"听说"}],"mind":{"mood":"有点泄气"},"goals":[],"problems":[]}',
     '```',
     '**没有这个代码块，本回合的钱与关系变化就不会被记录。**',
   );
@@ -492,11 +500,12 @@ async function send() {
     const { text: rawText, delta } = splitDelta(raw);
     const cleanText = pruneEmpty(stripSheet(rawText));
 
-    applyDelta(state, engineDelta(judged, state), rng, { bump: false });
+    applyDelta(state, engineDelta(judged, state), rng, { bump: false, judged });
     const modelDelta = { ...(delta || {}) };
     delete modelDelta.time;
     delete modelDelta.body;
-    applyDelta(state, modelDelta, rng, { bump: true });
+    applyDelta(state, modelDelta, rng, { bump: true, judged });
+    trainSkill(state, judged);
     if (state.flags?.pendingAwakening) {
       state.flags.pendingAwakening = false;
       state.flags.awakeningAsked = true;
@@ -608,8 +617,18 @@ function viewOverview(u) {
     } else {
       out.push(`<div class="row"><span class="k">现金</span><span class="v">${esc(p.money)}</span></div>`);
     }
-  if (p.incomeMonthly) out.push(`<div class="row"><span class="k">月净利</span><span class="v">${p.incomeMonthly.toLocaleString()} 金</span></div>`);
-  if (p.debts?.length) out.push(`<div class="row"><span class="k">债务</span><span class="v">${esc(p.debts.map((d) => d.to).join('、'))}</span></div>`);
+  if (p.work?.text) out.push(`<div class="row"><span class="k">收入</span><span class="v">${esc(p.work.text)}</span></div>`);
+  if (p.bills?.length) {
+    out.push(`<div class="row"><span class="k">固定收支</span><span class="v">${esc(p.bills.map((b) => `${b.label} ${b.text}`).join('、'))}</span></div>`);
+  }
+  if (p.debts?.length) {
+    for (const d of p.debts) {
+      out.push(`<div class="row"><span class="k">欠${esc(d.to)}</span><span class="v">${esc(d.text)}${d.overdueMonths ? ` · 逾期${d.overdueMonths}月` : ''}</span></div>`);
+    }
+  }
+  if (p.bag?.length) {
+    out.push(`<div class="row"><span class="k">货物</span><span class="v">${esc(p.bag.map((b) => `${b.name}×${b.qty}`).join('、'))}</span></div>`);
+  }
   out.push('</div>');
   if (p.goals?.length) {
     out.push('<h3>当前目标</h3>');

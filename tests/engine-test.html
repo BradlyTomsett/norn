@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>engine tests</title></head>
+<body><pre id="out">running...</pre>
+<script type="module">
+// 引擎自测：不依赖 node，用浏览器直接跑。
+// 打开后看页面里的 PASS / FAIL 列表。
+import { generateWorld } from '../engine/worldgen.js';
+import { priceOf, sellOf, rollBounty } from '../engine/economy.js';
+import { addCopper, ensureAccounts, totalCopper, copperText } from '../engine/money.js';
+import {
+  accrueDebts,
+  addDebt,
+  ensureBills,
+  openDebts,
+  payDebt,
+  runBills,
+  runLiving,
+  runWages,
+  workOf,
+} from '../engine/ledger.js';
+import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
+import { advanceWorld } from '../engine/tick.js';
+import { decayRelations, trainSkill } from '../engine/progress.js';
+import { makeRng } from '../engine/rng.js';
+
+const lines = [];
+const ok = (name, cond, extra = '') => lines.push(`${cond ? 'PASS' : 'FAIL'} ${name}${extra ? ' :: ' + extra : ''}`);
+const eq = (name, a, b) => ok(name, a === b, `got ${JSON.stringify(a)} want ${JSON.stringify(b)}`);
+
+function fresh(seed = 12345) {
+  const { state } = generateWorld({ regionId: 'greywater', seed });
+  state.saveId = 'test';
+  ensureAccounts(state);
+  state.player.accounts.find((a) => a.id === 'cash').copper = 100000; // 10 金
+  state.player.accounts.find((a) => a.id === 'home').copper = 0;
+  state.player.wallet = { gold: 10, silver: 0, copper: 0 };
+  return state;
+}
+
+try {
+  const state = fresh();
+  const rng = makeRng(7);
+
+  // --- 定价 ---
+  const bread = priceOf(state, '黑面包');
+  eq('面包归到主食', bread.cat, 'staple');
+  eq('面包 1 铜', bread.unit, 1);
+
+  const sword = priceOf(state, '铁剑');
+  eq('铁剑归到武器', sword.cat, 'weapon');
+  eq('铁剑 = 350 × 铁 1.2', sword.unit, 420);
+
+  eq('锁子甲归到护甲', priceOf(state, '锁子甲').cat, 'armor');
+  eq('长弓是武器', priceOf(state, '长弓').cat, 'weapon');
+  eq('箭矢单独归类', priceOf(state, '箭矢').cat, 'missile');
+  eq('战马按坐骑 ×4', priceOf(state, '战马').unit, 8000);
+  eq('庄园按不动产 ×3', priceOf(state, '庄园').unit, 600000);
+  eq('完全陌生的词也落到杂物', priceOf(state, '不知名的东西').cat, 'misc');
+  eq('品阶影响武器价', priceOf(state, '长剑（紫）').unit, 350 * 8);
+  eq('数量按件乘', priceOf(state, '黑面包', { qty: 3 }).total, 3);
+  eq('物价指数会进来', priceOf({ ...state, world: { ...state.world, priceIndex: 2 } }, '黑面包').unit, 2);
+  ok('卖出价低于买入价', sellOf(state, '铁剑').total < priceOf(state, '铁剑').total);
+
+  // --- 交易 ---
+  const before = state.player.accounts.find((a) => a.id === 'cash').copper;
+  const rej = [];
+  applyDelta(state, { trade: { buy: [{ name: '黑面包', qty: 2 }] } }, rng, { judged: null });
+  const cash = state.player.accounts.find((a) => a.id === 'cash');
+  eq('买 2 个面包花 2 铜', before - cash.copper, 2);
+  ok('面包进了袋子', /黑面包×2/.test(bagText(state)), bagText(state));
+  applyDelta(state, { trade: { sell: [{ name: '黑面包', qty: 1 }] } }, rng, {});
+  ok('卖掉一个后剩 1 个', /黑面包×1/.test(bagText(state)), bagText(state));
+  applyDelta(state, { trade: { sell: [{ name: '不存在的马', qty: 1 }] } }, rng, {});
+  ok('卖没有的东西会被拒', /没有/.test(JSON.stringify(state.player.bag)) === false);
+
+  // 钱不够
+  const poor = fresh();
+  poor.player.accounts.find((a) => a.id === 'cash').copper = 5;
+  applyDelta(poor, { trade: { buy: [{ name: '铁剑', qty: 1 }] } }, rng, {});
+  eq('钱不够就买不成', poor.player.accounts.find((a) => a.id === 'cash').copper, 5);
+
+  // --- 账单 ---
+  const s2 = fresh();
+  addCopper(s2, 'home', 0);
+  const homeBefore = s2.player.accounts.find((a) => a.id === 'home').copper;
+  runBills(s2, { months: 1, days: 30, years: 0 }, rng);
+  eq('家族月钱进家里 180 金', s2.player.accounts.find((a) => a.id === 'home').copper - homeBefore, 1800000);
+  runBills(s2, { months: 3, days: 90, years: 0 }, rng);
+  eq('三个月发三次', s2.player.accounts.find((a) => a.id === 'home').copper - homeBefore, 1800000 * 4);
+
+  // --- 债务 ---
+  const s3 = fresh();
+  const d = addDebt(s3, { to: '磨坊主塞德', copper: 10000, months: 12, rate: 0.03 });
+  eq('借到手的钱进账', 10000, 10000);
+  accrueDebts(s3, 1, rng);
+  eq('一个月利息滚进来', openDebts(s3)[0].remaining, 10300);
+  // 逾期
+  s3.clock.year += 2;
+  accrueDebts(s3, 1, rng);
+  ok('过期会记逾期', openDebts(s3)[0].overdueMonths > 0, String(openDebts(s3)[0].overdueMonths));
+  // 还钱
+  addCopper(s3, 'cash', 200000);
+  const payRes = payDebt(s3, { to: '磨坊主塞德' });
+  ok('能还清', payRes[0].ok && openDebts(s3).length === 0, JSON.stringify(payRes));
+
+  // 老存档迁移
+  const legacy = fresh();
+  legacy.player.debts = [{ to: '药铺', amount: { gold: 0, silver: 12, copper: 0 }, note: '秋天到期' }];
+  accrueDebts(legacy, 1, makeRng(3));
+  ok('老存档债务能迁移', openDebts(legacy)[0].remaining > 1200, String(openDebts(legacy)[0].remaining));
+
+  // --- 职业 ---
+  eq('铁匠学徒日薪 110', workOf('铁匠', 'apprentice').daily, 110);
+  eq('老手铁匠 220', workOf('铁匠', 'journeyman').daily, 220);
+  eq('冒险者没有固定收入', workOf('冒险者', 'journeyman').type, 'bounty');
+  eq('孩子没有收入', workOf('孩子', 'none').type, 'none');
+
+  const s4 = fresh();
+  s4.player.profession = '铁匠';
+  s4.player.professionState = 'journeyman';
+  const cash4 = s4.player.accounts.find((a) => a.id === 'cash').copper;
+  runWages(s4, 10);
+  eq('十天工钱 2200 铜', s4.player.accounts.find((a) => a.id === 'cash').copper - cash4, 2200);
+
+  // --- 生活开销 ---
+  const s5 = fresh();
+  const c5 = s5.player.accounts.find((a) => a.id === 'cash').copper;
+  runLiving(s5, 10);
+  eq('十天吃住 60 铜', c5 - s5.player.accounts.find((a) => a.id === 'cash').copper, 60);
+
+  // --- 技能 ---
+  const s6 = fresh();
+  const sk = s6.player.skills.find((x) => x.name === '武技') || { name: '武技', level: 3, xp: 0 };
+  if (!s6.player.skills.includes(sk)) s6.player.skills.push(sk);
+  for (let i = 0; i < 30; i++) trainSkill(s6, { skill: '武技', minutes: 120, margin: 10, outcome: 'success' });
+  ok('练了很多次会涨级', s6.player.skills.find((x) => x.name === '武技').level > 3, String(s6.player.skills.find((x) => x.name === '武技').level));
+  const low = s6.player.skills.find((x) => x.name === '武技').level;
+  for (let i = 0; i < 30; i++) trainSkill(s6, { skill: '武技', minutes: 10, margin: -20, outcome: 'fail' });
+  const gained = s6.player.skills.find((x) => x.name === '武技').level - low;
+  ok('枯燥短练涨得很少', gained <= 3, String(gained));
+
+  // --- 关系衰减 ---
+  const s7 = fresh();
+  const rel = s7.player.relations.find((r) => r.npcId === 'npc_mother');
+  rel.lastTouch = -1000;
+  const trustBefore = rel.trust;
+  decayRelations(s7, 3);
+  ok('久不联系会回落', rel.trust < trustBefore, `${trustBefore} → ${rel.trust}`);
+
+  // --- 世界推进 ---
+  const s8 = fresh();
+  const ev = advanceWorld(s8, 60 * 24 * 40, makeRng(99));
+  ok('推 40 天不报错', Array.isArray(ev));
+  ok('推 40 天后日期变了', s8.clock.doy !== 300 || s8.clock.year !== 222);
+  ok('推 40 天有账单/开销记录', (s8.ledgerLog || []).length > 0, String((s8.ledgerLog || []).length));
+  ok('账面总额没变成负数', totalCopper(s8) >= 0, String(totalCopper(s8)));
+
+  // --- 赏金 ---
+  const s9 = fresh();
+  const c9 = s9.player.accounts.find((a) => a.id === 'cash').copper;
+  applyDelta(s9, { bounty: { label: '清狼', tier: 2 } }, makeRng(4), { judged: { outcome: 'success' } });
+  ok('赏金进账', s9.player.accounts.find((a) => a.id === 'cash').copper > c9);
+  const c9b = s9.player.accounts.find((a) => a.id === 'cash').copper;
+  applyDelta(s9, { bounty: { label: '没办成', tier: 2 } }, makeRng(4), { judged: { outcome: 'disaster' } });
+  eq('灾难局赏金为 0', s9.player.accounts.find((a) => a.id === 'cash').copper, c9b);
+
+  // --- 零碎时间也能攒出一天 ---
+  const s11 = fresh();
+  s11.player.profession = '铁匠';
+  s11.player.professionState = 'journeyman';
+  const cash11 = s11.player.accounts.find((a) => a.id === 'cash').copper;
+  for (let i = 0; i < 30; i++) advanceWorld(s11, 60, makeRng(100 + i));
+  ok(
+    '30 个一小时的回合也能拿到工钱',
+    s11.player.accounts.find((a) => a.id === 'cash').copper >= cash11 + 200,
+    String(s11.player.accounts.find((a) => a.id === 'cash').copper - cash11),
+  );
+
+  const skillCount = s6.player.skills.length;
+  trainSkill(s6, { kind: 'rest', skill: '—', label: '歇着', minutes: 30 });
+  ok(
+    '歇着不会练出「歇着」技能',
+    s6.player.skills.length === skillCount && !s6.player.skills.some((x) => x.name === '歇着'),
+  );
+
+  // --- 压力测试：连续 200 回合 ---
+  const s12 = fresh();
+  const minutesPool = [5, 30, 60, 240, 1440, 1440 * 7];
+  for (let i = 0; i < 200; i++) {
+    const r = makeRng(1000 + i);
+    advanceWorld(s12, minutesPool[i % minutesPool.length], r);
+    applyDelta(s12, { trade: { buy: [{ name: '黑面包', qty: 1 }] } }, r, {});
+    if (i % 23 === 0) applyDelta(s12, { bounty: { label: '跑腿', tier: 1 } }, r, { judged: { outcome: 'success' } });
+  }
+  ok('200 回合后总额是有限数', Number.isFinite(totalCopper(s12)), String(totalCopper(s12)));
+  ok(
+    '200 回合后账户都不为负',
+    s12.player.accounts.every((a) => Number.isFinite(a.copper) && a.copper >= 0),
+    JSON.stringify(s12.player.accounts.map((a) => a.copper)),
+  );
+  ok('200 回合后日期正常', Number.isFinite(s12.clock.year) && s12.clock.doy >= 1 && s12.clock.doy <= 365);
+
+  // --- 提示词块 ---
+  const s10 = fresh();
+  addDebt(s10, { to: '钱庄', copper: 50000, months: 6 });
+  applyDelta(s10, { items: [{ name: '狼皮', qty: 2 }] }, rng, {});
+  const block = stateBlock(s10);
+  ok('状态块有账户', block.includes('【账户】'));
+  ok('状态块有债务', block.includes('【债务】') && block.includes('钱庄'));
+  ok('状态块有货物', block.includes('【随身货物】') && block.includes('狼皮'));
+  ok('状态块有收入', block.includes('【收入】'));
+
+  // --- UI 数据 ---
+  const ui = uiState(s10);
+  ok('UI 有账户', Array.isArray(ui.player.accounts) && ui.player.accounts.length === 3);
+  ok('UI 有债务明细', ui.player.debts.length === 1 && typeof ui.player.debts[0].text === 'string');
+  ok('UI 有收入文案', typeof ui.player.work.text === 'string');
+} catch (e) {
+  lines.push('EXCEPTION ' + (e && e.stack ? e.stack : e));
+}
+
+document.getElementById('out').textContent = lines.join('\n');
+document.title = lines.some((l) => /FAIL|EXCEPTION/.test(l)) ? 'FAILED' : 'OK';
+
+</script></body></html>

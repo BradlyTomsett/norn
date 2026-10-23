@@ -1,6 +1,7 @@
 // 世界与角色生成（M1：三张出生地卡，固定种子可复现）。
 import { makeRng, pick, int, chance } from './rng.js';
 import { rollWeather } from './clock.js';
+import { defaultBills, workOf } from './ledger.js';
 
 export const REGIONS = [
   {
@@ -259,6 +260,9 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
       body: { health: 96, fatigue: 10, hunger: 15, injuries: [] },
       mind: { mood: '有点茫然', stress: 12, morale: 55 },
       wallet: { gold: 0, silver: 0, copper: fam.money },
+      bag: [],
+      bills: defaultBills(),
+      work: { ...workOf('孩子', 'none'), profession: '孩子', state: 'none' },
       debts,
       assets: isOrphan ? ['一件旧外套'] : ['一间土屋的居住权'],
       skills: [{ name: '干杂活', level: 3 }, { name: '认路', level: 4 }],

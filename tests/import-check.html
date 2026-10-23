@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>import check</title></head>
+<body><pre id="out">running...</pre>
+<script type="module">
+const mods = [
+  '../engine/money.js',
+  '../engine/economy.js',
+  '../engine/ledger.js',
+  '../engine/progress.js',
+  '../engine/state.js',
+  '../engine/tick.js',
+  '../engine/worldgen.js',
+  '../engine/resolve.js',
+  '../engine/clock.js',
+  '../engine/rng.js',
+  '../store.js',
+  '../sync.js',
+  '../llm.js',
+];
+const lines = [];
+for (const m of mods) {
+  try {
+    await import(m);
+    lines.push('OK   ' + m);
+  } catch (e) {
+    lines.push('BAD  ' + m + ' :: ' + (e && e.name) + ': ' + (e && e.message));
+  }
+}
+// app.js 需要 DOM，单独试：只要不是 SyntaxError 就说明能解析
+try {
+  await import('../app.js');
+  lines.push('OK   ../app.js');
+} catch (e) {
+  const name = e && e.name || '';
+  lines.push((name === 'SyntaxError' ? 'BAD  ' : 'PARSE-OK ') + '../app.js :: ' + name + ': ' + (e && e.message));
+}
+document.getElementById('out').textContent = lines.join('\n');
+</script></body></html>

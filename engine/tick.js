@@ -2,7 +2,9 @@
 // 这里只产出"事实"（事件 + 数值），叙事交给模型。
 import { advanceClock } from './clock.js';
 import { chance, int, pick } from './rng.js';
-import { addCopper, copperText, ensureAccounts, transferCopper } from './state.js';
+import { copperText, logLedger, transferCopper } from './state.js';
+import { accrueDebts, ensureDebts, ensureWork, runBills, runLiving, runWages } from './ledger.js';
+import { decayRelations, decayReputation } from './progress.js';
 
 const DAY_EVENTS = [
   '路上过了一队收羊毛的商人，价压得很低',
@@ -49,8 +51,15 @@ export function advanceWorld(state, minutes, rng) {
   const { clock, crossed } = advanceClock(state.clock, minutes || 0, rng);
   state.clock = clock;
   const events = [];
+  ensureDebts(state);
+  ensureWork(state);
 
   const days = Math.max(0, crossed.days || 0);
+  // 月数：长跨度按整月算，短跨度只跨了一次月界也要算一个月
+  const months = Math.max(
+    days >= 30 ? Math.floor(days / 30) : 0,
+    crossed.newMonth || crossed.years > 0 ? 1 : 0,
+  );
 
   // 日 tick
   if (days > 0) {
@@ -67,10 +76,9 @@ export function advanceWorld(state, minutes, rng) {
   }
 
   // 月 tick
-  if (days >= 25 || crossed.months > 0 || crossed.years > 0) {
-    const drift = 1 + (rng() - 0.45) * 0.05;
+  if (months > 0) {
+    const drift = Math.pow(1 + (rng() - 0.45) * 0.05, months);
     state.world.priceIndex = Math.min(1.5, Math.max(0.75, (state.world.priceIndex || 1) * drift));
-    const months = Math.max(1, Math.floor(days / 30));
     const emits = Math.min(3, Math.max(1, Math.round(months / 2)));
     for (let i = 0; i < emits; i++) {
       if (!chance(rng, 0.65)) continue;
@@ -80,20 +88,32 @@ export function advanceWorld(state, minutes, rng) {
     }
   }
 
-  // 家族月钱：每月 180 金，直接进「家里」那个账户
-  if (crossed.newMonth || crossed.years > 0) {
-    ensureAccounts(state);
-    const months = Math.max(1, Math.floor(days / 30));
-    const pay = months * 180 * 10000;
-    if (addCopper(state, 'home', pay)) {
-      const t = `家族把这个月的月钱送来了：${months * 180} 金，已入「家里」。`;
-      logEvent(state, t);
-      events.push({ level: 'local', text: t });
+  // 引擎结算的账目：工钱、吃住、账单、利息、衰减
+  const addLedger = (list) => {
+    for (const e of list || []) {
+      logEvent(state, e.text, e.level);
+      logLedger(state, e.text);
+      events.push(e);
     }
+  };
+  // 按真实流逝的时间累计"整日"：零碎的短回合也能攒出一天，长跳就一次结完
+  const elapsed = Math.max(0, Math.round(minutes || 0));
+  state.player.accrualDays = (Number(state.player.accrualDays) || 0) + elapsed / 1440;
+  const wholeDays = Math.min(3650, Math.floor(state.player.accrualDays));
+  if (wholeDays > 0) {
+    state.player.accrualDays -= wholeDays;
+    addLedger(runWages(state, wholeDays));
+    addLedger(runLiving(state, wholeDays));
+  }
+  if (months > 0) {
+    addLedger(runBills(state, { months, days, years: crossed.years || 0 }, rng));
+    addLedger(accrueDebts(state, months, rng));
+    decayReputation(state, months);
+    if (months >= 2) addLedger(decayRelations(state, months));
   }
 
   // 汽水工坊：每个月结一次账，整笔转给玩家（随身）
-  if (crossed.newMonth || crossed.years > 0) {
+  if (months > 0) {
     const wk = state.player?.accounts?.find((a) => a.id === 'workshop');
     const payout = wk ? wk.copper : 0;
     if (payout > 0) {
@@ -154,8 +174,9 @@ export function advanceWorld(state, minutes, rng) {
           events.push({ level: 'local', text: t });
         }
       }
-      if (state.player.debts.length && chance(rng, 0.45)) {
-        const d = state.player.debts[0];
+      const open = state.player.debts.filter((d) => d.status !== 'settled' && d.remaining > 0);
+      if (open.length && chance(rng, 0.45)) {
+        const d = open[0];
         const t = `${d.to}又来问了一次那笔钱`;
         logEvent(state, t);
         events.push({ level: 'local', text: t });
