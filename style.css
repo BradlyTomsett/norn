@@ -218,11 +218,12 @@ button.primary {
 .talent.mini .name { font-size: 15px; }
 .talent.mini .eff { font-size: 12px; line-height: 1.65; margin-top: 3px; }
 .talent.mini .lock { font-size: 10px; margin-top: 4px; }
-.stat-grid.mini { gap: 8px; }
-.stat-grid.mini .stat-cell { padding: 8px 10px; border-radius: 10px; }
-.stat-grid.mini .stat-cell .k { font-size: 10px; letter-spacing: .16em; }
-.stat-grid.mini .stat-cell .v { font-size: 18px; }
-.stat-grid.mini .stat-cell .t { font-size: 10px; margin-top: 0; }
+/* 四维排成一行，别占两行 */
+.stat-grid.mini { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.stat-grid.mini .stat-cell { padding: 7px 6px; border-radius: 10px; text-align: center; }
+.stat-grid.mini .stat-cell .k { font-size: 10px; letter-spacing: .06em; }
+.stat-grid.mini .stat-cell .v { font-size: 17px; margin-top: 1px; }
+.stat-grid.mini .stat-cell .t { font-size: 9px; margin-top: 1px; }
 
 .rows { border-top: 1px solid var(--line); }
 .rows .row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid #241f1b; font-size: 14px; }
