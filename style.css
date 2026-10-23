@@ -213,6 +213,17 @@ button.primary {
 .talent .eff { font-size: 13px; color: var(--ink); line-height: 1.75; margin-top: 6px; }
 .talent .lock { font-size: 11px; color: var(--red); margin-top: 6px; letter-spacing: .1em; }
 
+/* 概览里的天赋与四维收小一点，免得占满一屏 */
+.talent.mini { padding: 10px 12px; border-radius: 12px; }
+.talent.mini .name { font-size: 15px; }
+.talent.mini .eff { font-size: 12px; line-height: 1.65; margin-top: 3px; }
+.talent.mini .lock { font-size: 10px; margin-top: 4px; }
+.stat-grid.mini { gap: 8px; }
+.stat-grid.mini .stat-cell { padding: 8px 10px; border-radius: 10px; }
+.stat-grid.mini .stat-cell .k { font-size: 10px; letter-spacing: .16em; }
+.stat-grid.mini .stat-cell .v { font-size: 18px; }
+.stat-grid.mini .stat-cell .t { font-size: 10px; margin-top: 0; }
+
 .rows { border-top: 1px solid var(--line); }
 .rows .row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid #241f1b; font-size: 14px; }
 .rows .row .k { color: var(--ink-dim); flex: none; }

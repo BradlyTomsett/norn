@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>views test</title>
+<link rel="stylesheet" href="../style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="display:block;height:auto">
+<div class="sheet-inner charsheet" style="height:auto;max-height:none">
+  <div class="cs-body" id="stage" style="overflow:visible"></div>
+</div>
+<pre id="out" style="padding:12px;font-size:12px">running…</pre>
+<script type="module">
+import { VIEWS } from '../views.js';
+
+const u = {
+  date: '复兴历 222 年 · 11 月 1 日 · 07:25',
+  player: {
+    name: '马大爷', age: 18, race: '人类', profession: '冒险者 / 炼金术士（入门）', professionState: 'B',
+    stats: { body: 135, agility: 130, wisdom: 99, spirit: 116 },
+    talent: { name: '暗金剑纹', grade: '传说', effect: '精通所有武器；免疫不利魔法与物理攻击；免疫冰、火、电、毒', secret: true },
+    body: { health: 100, fatigue: 100, hunger: 99, injuries: [{ part: '左臂' }] },
+    mind: { mood: '说着话', stress: 20, morale: 82 },
+    accounts: [{ name: '随身', text: '363 金' }, { name: '家里', text: '2778 万金' }, { name: '产业', text: '3314 万金' }],
+    money: '363 金', work: { text: '靠赏金，无固定收入' }, bills: [], debts: [],
+    industries: [{ name: '汽水工坊', text: '3,314,000 金／月' }],
+    livestock: [{ name: '枣红马', qty: 1 }],
+    stock: [{ name: '牛皮', qty: 10 }, { name: '雪狼皮', qty: 10 }],
+    bag: [{ name: '金疮药', qty: 49 }, { name: '回血', qty: 68 }, { name: '短刀（绿）', qty: 1 }, { name: '火油罐', qty: 9 }, { name: '磨刀石', qty: 1 }],
+    skills: [{ name: '武技', level: 130 }, { name: '交涉', level: 55 }],
+    reputation: { 临河城: 80 }, location: { siteName: '石桥铺 · 粮行后巷' },
+    goals: ['成为世界第一的剑士'], problems: ['走私线只交了半截'], unfinished: [],
+    equipment: ['定制长剑（金）', '长剑（紫）×2', '厚外套'],
+  },
+};
+
+const lines = [];
+const ok = (n, c, extra = '') => lines.push(`${c ? 'PASS' : 'FAIL'} ${n}${extra ? ' :: ' + extra : ''}`);
+
+const ov = VIEWS.overview(u);
+const items = VIEWS.items(u);
+const gear = VIEWS.gear(u);
+
+ok('概览用小的天赋卡', ov.includes('talent mini'));
+ok('概览用小的四维格', ov.includes('stat-grid mini'));
+ok('概览里有技能', ov.includes('武技') && ov.includes('交涉'));
+ok('概览里有伤', ov.includes('左臂'));
+ok('概览不再列牲畜行', !ov.includes('>牲畜<'));
+ok('概览不再列存货行', !ov.includes('>存货<'));
+ok('概览保留产业行', ov.includes('汽水工坊'));
+
+ok('物品页有存货段', items.includes('<h3>存货</h3>'));
+ok('物品页有牲畜段', items.includes('<h3>牲畜</h3>'));
+ok('物品页有药品段', items.includes('药品 · 消耗'));
+ok('物品页有其他物品段', items.includes('其他物品'));
+ok('金疮药归到药品', /药品 · 消耗[\s\S]*金疮药/.test(items));
+ok('短刀归到其他物品', /其他物品[\s\S]*短刀（绿）/.test(items));
+
+ok('装备页仍按品阶分组', gear.includes('传说') && gear.includes('史诗'));
+
+document.getElementById('stage').innerHTML = ov;
+document.getElementById('out').textContent = lines.join('\n');
+</script>
+</body></html>
