@@ -7,6 +7,8 @@ import { advanceWorld, engineDelta } from './engine/tick.js';
 import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
 import { makeRng } from './engine/rng.js';
 
+const BUILD = '2026-10-23 · r4';
+
 const $ = (s) => document.querySelector(s);
 
 const logEl = $('#log');
@@ -846,6 +848,8 @@ function showMenu() {
   const btn = $('#menu-load');
   btn.disabled = !has;
   btn.style.opacity = has ? '1' : '.4';
+  const b = $('#build');
+  if (b) b.textContent = '版本 ' + BUILD + ' · 存档在 GitHub 备份过就不用怕清缓存';
   $('#menu').classList.remove('hidden');
 }
 
