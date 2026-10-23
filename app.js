@@ -591,9 +591,6 @@ function viewOverview(u) {
       out.push(`<div class="row"><span class="k">欠${esc(d.to)}</span><span class="v">${esc(d.text)}${d.overdueMonths ? ` · 逾期${d.overdueMonths}月` : ''}</span></div>`);
     }
   }
-  if (p.bag?.length) {
-    out.push(`<div class="row"><span class="k">货物</span><span class="v">${esc(p.bag.map((b) => `${b.name}×${b.qty}`).join('、'))}</span></div>`);
-  }
   if (p.industries?.length) {
     out.push(`<div class="row"><span class="k">产业</span><span class="v">${esc(p.industries.map((i) => `${i.name}${i.text ? '（' + i.text + '）' : ''}`).join('、'))}</span></div>`);
   }
@@ -787,22 +784,35 @@ $('#btn-gh-restore').onclick = async () => {
     for (const f of files) {
       const b = document.createElement('button');
       b.className = 'card';
-      b.innerHTML = `<b>${esc(f.name)}</b><span>${Math.round(f.size / 1024)} KB</span>`;
-      b.onclick = async () => {
-        try {
-          const state = await sync.restoreSave(f.path);
-          state.saveId = store.newId();
-          state.createdAt = new Date().toISOString();
-          state.label = '来自 GitHub';
-          store.putSave(state, []);
-          $('#restore').classList.add('hidden');
-          loadGame(state.saveId);
-          alert('已恢复：' + state.player.name);
-        } catch (e) {
-          alert('恢复失败：' + e.message);
-        }
-      };
+      b.innerHTML = `<b>${esc(f.name)}</b><span>读取中…</span>`;
       box.appendChild(b);
+
+      // 先把云端文件读出来看元信息，免得点了才发现拿错版本
+      sync
+        .restoreSave(f.path)
+        .then((state) => {
+          const when = state.updatedAt ? new Date(state.updatedAt).toLocaleString() : '';
+          b.innerHTML = `<b>${esc(state.player?.name || f.name)} · 第 ${state.turn ?? 0} 回合</b><span>${esc(
+            state.player?.location?.siteName || '',
+          )}${when ? ' · ' + esc(when) : ''}</span>`;
+          b.onclick = () => {
+            try {
+              state.saveId = store.newId();
+              state.createdAt = new Date().toISOString();
+              state.label = '来自 GitHub';
+              store.putSave(state, []);
+              $('#restore').classList.add('hidden');
+              loadGame(state.saveId);
+              alert(`已恢复：${state.player.name} · 第 ${state.turn ?? 0} 回合`);
+            } catch (e) {
+              alert('恢复失败：' + e.message);
+            }
+          };
+        })
+        .catch(() => {
+          b.innerHTML = `<b>${esc(f.name)}</b><span>读不到（${Math.round(f.size / 1024)} KB）</span>`;
+          b.onclick = () => alert('这个存档读不出来，检查令牌权限。');
+        });
     }
   } catch (e) {
     box.innerHTML = `<p class="hint">读取失败：${esc(e.message)}</p>`;
