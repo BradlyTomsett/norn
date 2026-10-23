@@ -42,7 +42,7 @@ const RUNTIME = `
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
 4. relations 只能用下面列出的 npcId，禁止编造。
 5. 叙事里不出现数值、等级、经验值。
-6. 不替玩家说话或做决定。对话场景中，NPC 说完就停。
+6. 不替玩家说话或做决定。对话场景中，NPC 说完就停。**也不要在正文里写“修正：”“更正：”这类关于自己格式的说明**。
 7. **装备**：玩家真把东西收进包里时写 "equipment":["长剑（灰）"]，一次最多 3 件，一条只写一种品阶。
 8. **稀有度**：品阶只用于武器与护甲；药剂、工具、材料不分级。默认普通；稀少约十件一件；**珍奇是事件不是掉落**；**史诗不随机**；**传说永不自动生成**。
 9. **数值上限**：其他任何人的四维上限是 100；玩家是唯一例外。
@@ -110,11 +110,15 @@ const buildSystem = (state, judged, events) =>
 /* ---------------- 文本处理 ---------------- */
 
 function splitDelta(text) {
-  const m = text.match(/```json\s*([\s\S]*?)```\s*$/i);
-  if (!m) return { text: text.trim(), delta: null };
-  const head = text.slice(0, m.index).trim();
+  // 找最后一个 json 代码块，不要求它在结尾——模型常在块后面再补几句
+  const re = /```json\s*([\s\S]*?)```/gi;
+  let m;
+  let last = null;
+  while ((m = re.exec(text)) !== null) last = m;
+  if (!last) return { text: text.trim(), delta: null };
+  const head = text.replace(/`json\s*[\s\S]*?`/gi, '').trim();
   try {
-    return { text: head, delta: JSON.parse(m[1]) };
+    return { text: head, delta: JSON.parse(last[1]) };
   } catch {
     return { text: head || text.trim(), delta: null };
   }
@@ -163,6 +167,8 @@ function stripSheet(text) {
     t = m ? t.slice(0, i) + rest.slice(m.index) : t.slice(0, i);
   }
   t = t.replace(/\n*(━+\s*)?【玩家自由行动】\s*$/, '');
+  // 模型偶尔会自言自语"修正：……"，那不是游戏内容
+  t = t.split('\n').filter((l) => !/^(修正|更正|补充说明|说明)[：:]/.test(l.trim())).join('\n');
   return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 

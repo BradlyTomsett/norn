@@ -29,6 +29,35 @@ export function moneyText(w) {
   return parts.join(' ');
 }
 
+/** 把「A（金）、B、C（均紫）」这类合并写法拆成一条一件。 */
+export function normalizeEquipment(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  if (!/[、,，;；]/.test(s)) return [s];
+  const parts = s.split(/[、,，;；]+/).map((x) => x.trim()).filter(Boolean);
+  const out = [];
+  const graded = /（[金紫蓝绿灰](?:\s*×\s*\d+)?）/;
+  for (const p of parts) {
+    const m = p.match(/^(.+?)（(均)?([金紫蓝绿灰])）$/);
+    if (!m) {
+      out.push(p);
+      continue;
+    }
+    const name = m[1].trim();
+    const jun = Boolean(m[2]);
+    const grade = m[3];
+    if (jun) {
+      // 「均紫」：把它前面还没有品阶的几条一起补上
+      for (let k = out.length - 1; k >= 0; k--) {
+        if (graded.test(out[k])) break;
+        out[k] = `${out[k]}（${grade}）`;
+      }
+    }
+    out.push(`${name}（${grade}）`);
+  }
+  return out;
+}
+
 /** 把一次输出的增量（LLM 提议）安全地合入状态。返回被拒绝的条目。 */
 export function applyDelta(state, delta, rng, opts = {}) {
   const rejected = [];
@@ -112,14 +141,19 @@ export function applyDelta(state, delta, rng, opts = {}) {
 
   // 装备（只增不减：丢东西需要玩家明确说）
   if (Array.isArray(delta?.equipment)) {
+    let added = 0;
     for (const e of delta.equipment.slice(0, 3)) {
       const name = typeof e === 'string' ? e : e?.name;
       if (!name) continue;
-      const s = String(name).slice(0, 40);
-      if (state.player.equipment.includes(s)) continue;
-      state.player.equipment.push(s);
-      if (state.player.equipment.length > 60) state.player.equipment.shift();
+      for (const item of normalizeEquipment(name)) {
+        if (added >= 8) break;
+        const s = String(item).slice(0, 40);
+        if (state.player.equipment.includes(s)) continue;
+        state.player.equipment.push(s);
+        added++;
+      }
     }
+    if (state.player.equipment.length > 60) state.player.equipment = state.player.equipment.slice(-60);
   }
 
   // 知识与未完成
