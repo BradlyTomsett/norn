@@ -3,12 +3,12 @@
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-/** 技能上限：默认 100；天赋越好，天花板越高（老存档里 130 的武技不会被砍回 100）。 */
+/** 技能上限：默认 100；传说天赋的那位，四维与技能都放到 200。 */
 export function skillCap(state) {
   const grade = state?.player?.talent?.grade;
-  if (grade === '传说') return 150;
-  if (grade === '史诗') return 130;
-  if (grade === '珍奇') return 115;
+  if (grade === '传说') return 200;
+  if (grade === '史诗') return 150;
+  if (grade === '珍奇') return 130;
   return 100;
 }
 

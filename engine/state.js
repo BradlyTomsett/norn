@@ -13,6 +13,9 @@ import {
 } from './money.js';
 import { priceOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
+import { ensureAssets, assetsText } from './assets.js';
+import { repText } from './reputation.js';
+import { effectOf, isContainer, parseContainer, parseItemEntry } from './items.js';
 
 export {
   accountOf,
@@ -69,7 +72,7 @@ export function bagOf(state) {
   return p.bag;
 }
 
-function bagAdd(state, name, qty) {
+export function bagAdd(state, name, qty) {
   const bag = bagOf(state);
   const key = String(name).slice(0, 40);
   const found = bag.find((x) => x.name === key);
@@ -78,7 +81,7 @@ function bagAdd(state, name, qty) {
   if (bag.length > 80) bag.splice(0, bag.length - 80);
 }
 
-function bagTake(state, name, qty) {
+export function bagTake(state, name, qty) {
   const bag = bagOf(state);
   const found = bag.find((x) => x.name === String(name));
   if (!found || found.qty < qty) return false;
@@ -216,10 +219,39 @@ function settleDebts(state, delta, rejected) {
 }
 
 function settleItems(state, items) {
-  for (const it of toList(items).slice(0, 5)) {
-    const name = typeof it === 'string' ? it : it?.name;
+  for (const it of toList(items).slice(0, 8)) {
+    const raw = typeof it === 'string' ? it : it?.name;
+    if (!raw) continue;
+    if (isContainer(raw)) {
+      for (const sub of parseContainer(raw)) bagAdd(state, sub.name, sub.qty);
+      continue;
+    }
+    const parsed = parseItemEntry(raw);
+    if (!parsed) continue;
+    const qty = Math.max(1, Math.round(n(it?.qty) || parsed.qty || 1));
+    bagAdd(state, parsed.label, qty);
+  }
+}
+
+/** 用药/用道具：只扣数量，效果落到数值上（没有数值效果的只记账）。 */
+function settleUse(state, use, rejected) {
+  for (const it of toList(use).slice(0, 3)) {
+    const name = String(it?.name || it || '').trim();
+    const qty = Math.max(1, Math.round(n(it?.qty) || 1));
     if (!name) continue;
-    bagAdd(state, name, Math.min(10, Math.max(1, Math.round(n(it?.qty) || 1))));
+    if (!bagTake(state, name, qty)) {
+      rejected.push(`身上没有 ${name}`);
+      continue;
+    }
+    const eff = effectOf(name);
+    if (!eff) {
+      logLedger(state, `用了 ${name}×${qty}`);
+      continue;
+    }
+    if (eff.health) state.player.body.health = clamp(state.player.body.health + eff.health, 0, 100);
+    if (eff.fatigue) state.player.body.fatigue = clamp(state.player.body.fatigue + eff.fatigue, 0, 100);
+    if (eff.stress) state.player.mind.stress = clamp(state.player.mind.stress + eff.stress, 0, 100);
+    logLedger(state, `${eff.text}（${name}×${qty}）`);
   }
 }
 
@@ -237,6 +269,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
 
   // 钱（多账户；账户之间随时可调，不计运费）
   ensureAccounts(state);
+  ensureAssets(state);
   if (delta?.money && typeof delta.money === 'object') {
     const m = delta.money;
     // 旧写法 gold/silver/copper 一律算「随身」
@@ -269,6 +302,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
   if (delta?.payDebt || delta?.borrow) settleDebts(state, delta, rejected);
   if (delta?.profession) settleProfession(state, delta.profession);
   if (delta?.items) settleItems(state, delta.items);
+  if (delta?.use) settleUse(state, delta.use, rejected);
   if (delta?.gift) settleGift(state, delta.gift);
 
   // 身体 / 精神
@@ -384,6 +418,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
 
 /** 给模型的紧凑状态块（也是 UI 的数据源之一）。 */
 export function stateBlock(state) {
+  ensureAssets(state);
   const p = state.player;
   const lines = [];
   lines.push(`【时间】${formatDate(state.clock)}`);
@@ -419,10 +454,11 @@ export function stateBlock(state) {
   if (debts.length) lines.push(`【债务】${debts.map((d) => debtText(state, d)).join('；')}`);
   const bagAll = bagText(state);
   if (bagAll) lines.push(`【随身货物】${bagAll}`);
-  if (p.assets.length) lines.push(`【资产】${p.assets.join('、')}`);
+  const assetsAll = assetsText(state);
+  if (assetsAll) lines.push(`【资产】${assetsAll}`);
   if (p.equipment?.length) lines.push(`【装备】${p.equipment.join('、')}`);
   if (p.skills.length) lines.push(`【技能】${p.skills.map((s) => `${s.name} ${s.level}`).join('、')}`);
-  lines.push(`【身份】${p.socialClass}｜声誉：${Object.entries(p.reputation).map(([k, v]) => `${k} ${v}`).join('、') || '无'}`);
+  lines.push(`【身份】${p.socialClass}｜声誉：${repText(p.reputation)}`);
   if (p.relations.length) {
     lines.push('【关系】');
     for (const r of p.relations) {
@@ -460,6 +496,7 @@ export function npcCards(state) {
 
 export function uiState(state) {
   ensureAccounts(state); // 老存档读的时候就把 wallet 迁成 cash
+  ensureAssets(state);
   const p = state.player;
   return {
     saveId: state.saveId,
@@ -514,9 +551,13 @@ export function uiState(state) {
         text: `${copperText(b.amount)}／${{ day: '天', week: '周', month: '月', year: '年' }[b.every] || '月'}`,
       })),
       assets: p.assets,
+      industries: p.industries,
+      livestock: p.livestock,
+      stock: p.stock,
       skills: p.skills,
       socialClass: p.socialClass,
       reputation: p.reputation,
+      reputationText: repText(p.reputation),
       talent: p.talent || null,
       equipment: p.equipment || [],
       incomeMonthly: p.incomeMonthly || 0,

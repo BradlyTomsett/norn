@@ -50,6 +50,7 @@ const RUNTIME = `
     "borrow":{"from":"钱庄","copper":50000,"months":12,"rate":0.05}   借钱
     "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
     "items":[{"name":"狼皮","qty":2}]                    真正收进包里的东西（卖了要有）
+    "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
     **禁止写价钱、禁止写余额**。写了具体金额会被引擎忽略或拒绝。
@@ -473,7 +474,7 @@ async function send() {
 
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
-  const events = advanceWorld(state, judged.minutes, rng);
+  const events = advanceWorld(state, judged.minutes, rng, judged);
 
   const bubble = addMessage('assistant', '');
   bubble.classList.add('cursor');
@@ -628,6 +629,15 @@ function viewOverview(u) {
   }
   if (p.bag?.length) {
     out.push(`<div class="row"><span class="k">货物</span><span class="v">${esc(p.bag.map((b) => `${b.name}×${b.qty}`).join('、'))}</span></div>`);
+  }
+  if (p.industries?.length) {
+    out.push(`<div class="row"><span class="k">产业</span><span class="v">${esc(p.industries.map((i) => i.name).join('、'))}</span></div>`);
+  }
+  if (p.livestock?.length) {
+    out.push(`<div class="row"><span class="k">牲畜</span><span class="v">${esc(p.livestock.map((i) => `${i.name}×${i.qty}`).join('、'))}</span></div>`);
+  }
+  if (p.stock?.length) {
+    out.push(`<div class="row"><span class="k">存货</span><span class="v">${esc(p.stock.map((i) => `${i.name}×${i.qty}`).join('、'))}</span></div>`);
   }
   out.push('</div>');
   if (p.goals?.length) {

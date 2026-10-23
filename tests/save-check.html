@@ -2,9 +2,10 @@
 <html lang="zh"><head><meta charset="utf-8"><title>save migration check</title></head>
 <body><pre id="out">running…</pre>
 <script type="module">
-import { ensureAccounts, addCopper, copperText, accountOf } from '../engine/money.js';
-import { ensureBills, ensureWork, ensureDebts, openDebts } from '../engine/ledger.js';
 import { applyDelta, stateBlock, uiState } from '../engine/state.js';
+import { copperText, accountOf } from '../engine/money.js';
+import { openDebts } from '../engine/ledger.js';
+import { migrateSave } from '../engine/migrate.js';
 import { priceOf } from '../engine/economy.js';
 import { trainSkill } from '../engine/progress.js';
 import { makeRng } from '../engine/rng.js';
@@ -16,49 +17,38 @@ for (const f of files) {
   out.push('==== ' + f);
   try {
     const s = await (await fetch(f)).json();
-    out.push(`回合 ${s.turn} | ${s.player.name} | ${s.player.profession} | ${s.player.socialClass} | 天赋：${s.player.talent?.grade || '无'}`);
+    out.push(`回合 ${s.turn}｜${s.player.name}｜${s.player.profession}｜天赋 ${s.player.talent?.grade}`);
 
-    const before = JSON.stringify(s).length;
+    const r = migrateSave(s);
+    out.push(`装备 ${r.before.equipment} → ${r.after.equipment} 件；搬进袋子 ${r.moved.length} 条；药剂包 ${r.containers} 个`);
+    out.push('  搬走：' + r.moved.slice(0, 8).join('、') + (r.moved.length > 8 ? ' …' : ''));
+    out.push(`袋子（${(s.player.bag || []).length} 种）：` + (s.player.bag || []).map((b) => `${b.name}×${b.qty}`).join('、'));
+    out.push(`产业 ${r.industries}｜牲畜 ${r.livestock}｜存货 ${r.stock}`);
+    out.push('  产业：' + (s.player.industries || []).map((i) => `${i.name}(月 ${i.monthly})`).join('、'));
+    out.push('  牲畜：' + (s.player.livestock || []).map((i) => `${i.name}×${i.qty}`).join('、'));
+    out.push('  存货：' + (s.player.stock || []).map((i) => `${i.name}×${i.qty}`).join('、'));
 
-    ensureAccounts(s);
-    ensureBills(s);
-    ensureWork(s);
-    ensureDebts(s);
+    // 幂等：再跑一次应该什么都不变
+    const bagKey = JSON.stringify(s.player.bag);
+    const eqKey = JSON.stringify(s.player.equipment);
+    const r2 = migrateSave(s);
+    out.push(`再跑一次：新增 ${r2.moved.length} 条，袋子/装备未变 ${bagKey === JSON.stringify(s.player.bag) && eqKey === JSON.stringify(s.player.equipment)}`);
 
-    out.push('账户：' + s.player.accounts.map((a) => `${a.name} ${copperText(a.copper)}`).join(' ｜ '));
-    out.push('余额现金：' + copperText(accountOf(s, 'cash').copper));
-    out.push('账单：' + s.player.bills.map((b) => `${b.label} ${copperText(b.amount)}/${b.every}`).join('；'));
-    out.push('职业收入：' + JSON.stringify(s.player.work));
-    out.push('债务：' + (openDebts(s).length ? openDebts(s).map((d) => d.to + ' ' + copperText(d.remaining)).join('；') : '无'));
-
-    // 价格这块会不会被老存档的物价指数放大
-    out.push('物价指数：' + s.world.priceIndex.toFixed(3));
-    for (const n of ['黑面包', '金疮药', '长剑（紫）', '锁子甲（蓝）', '一匹战马', '一间商铺']) {
-      out.push(`  ${n} → ${copperText(priceOf(s, n).unit)}`);
-    }
-
-    // 技能：130 不该被引擎砍回 100
-    const wu = s.player.skills.find((x) => x.name === '武技');
-    const lv0 = wu?.level;
-    for (let i = 0; i < 50; i++) trainSkill(s, { kind: 'combat', skill: '武技', minutes: 120, margin: 20, outcome: 'success' });
-    out.push(`武技：${lv0} → ${wu?.level}（天赋上限 ${s.player.talent?.grade === '传说' ? 150 : 100}）`);
-
-    // 真实交易
-    const cash0 = accountOf(s, 'cash').copper;
-    applyDelta(s, { trade: { buy: [{ name: '黑面包', qty: 2 }, { name: '回血药水', qty: 1 }] } }, makeRng(5), {});
-    out.push(`买 2 面包 + 1 回血药水：${copperText(cash0 - accountOf(s, 'cash').copper)}；袋子里：${(s.player.bag || []).map((b) => b.name + '×' + b.qty).join('、') || '空'}`);
+    // 用一瓶回血药水
+    const hp0 = s.player.body.health;
+    applyDelta(s, { use: [{ name: '回血', qty: 1 }] }, makeRng(3), {});
+    const after = (s.player.bag || []).find((b) => b.name === '回血');
+    out.push(`用 1 瓶回血：血 ${hp0} → ${s.player.body.health}，剩 ${after ? after.qty : 0}`);
 
     // 状态块
     const block = stateBlock(s);
-    out.push(`状态块 ${block.length} 字，含【账户】${block.includes('【账户】')}【债务】${block.includes('【债务】')}【收入】${block.includes('【收入】')}【随身货物】${block.includes('【随身货物】')}`);
+    out.push(`状态块 ${block.length} 字`);
+    out.push('  ' + block.split('\n').filter((l) => /【资产】|【随身货物】|【身份】|【账户】/.test(l)).map((l) => l.slice(0, 90)).join('\n  '));
     const ui = uiState(s);
-    out.push(`UI：账户 ${ui.player.accounts.length} 个，债务 ${ui.player.debts.length} 条，收入文案「${ui.player.work.text}」`);
-    out.push(`序列化 ${before} → ${JSON.stringify(s).length} 字节`);
+    out.push(`UI：产业 ${ui.player.industries.length}｜牲畜 ${ui.player.livestock.length}｜存货 ${ui.player.stock.length}｜声誉 ${ui.player.reputationText}`);
 
-    // 装备字符串没法进引擎
-    const eq = s.player.equipment || [];
-    const weird = eq.filter((e) => /×|，|\//.test(e));
-    out.push(`装备 ${eq.length} 件，其中带数量/附注的有 ${weird.length} 件：${weird.slice(0, 4).join('、')}…`);
+    const wu = s.player.skills.find((x) => x.name === '武技');
+    out.push(`武技 ${wu.level}（上限 ${s.player.talent?.grade === '传说' ? 200 : 100}）`);
   } catch (e) {
     out.push('EXCEPTION ' + (e && e.stack ? e.stack : e));
   }

@@ -21,6 +21,10 @@ import {
 import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
 import { advanceWorld } from '../engine/tick.js';
 import { decayRelations, trainSkill } from '../engine/progress.js';
+import { parseItemEntry, parseContainer } from '../engine/items.js';
+import { ensureAssets, runIndustries } from '../engine/assets.js';
+import { repLabel } from '../engine/reputation.js';
+import { migrateSave } from '../engine/migrate.js';
 import { makeRng } from '../engine/rng.js';
 
 const lines = [];
@@ -252,6 +256,71 @@ try {
     JSON.stringify(s12.player.accounts.map((a) => a.copper)),
   );
   ok('200 回合后日期正常', Number.isFinite(s12.clock.year) && s12.clock.doy >= 1 && s12.clock.doy <= 365);
+
+  // --- 装备文本解析 ---
+  const a1 = parseItemEntry('长剑（紫）×2');
+  eq('长剑（紫）×2 的品阶', a1.grade, '紫');
+  eq('长剑（紫）×2 的数量', a1.qty, 2);
+  eq('长剑（紫）×2 的名字', a1.label, '长剑（紫）');
+  eq('匕首 ×3（紫）', parseItemEntry('匕首 ×3（紫）').qty, 3);
+  const a3 = parseItemEntry('弓箭（绿，56 支）');
+  eq('弓箭的数量从括号里取', a3.qty, 56);
+  eq('弓箭的品阶', a3.grade, '绿');
+  const box = parseContainer('药剂包（金疮药 49 / 回血 68 / 磨刀石 / 吴掌柜药盒）');
+  eq('药剂包拆出 4 项', box.length, 4);
+  eq('药剂包里金疮药 49', box[0].qty, 49);
+  eq('药剂包里没数字的算 1', box[2].qty, 1);
+
+  // --- 用药扣数量 ---
+  const s13 = fresh();
+  applyDelta(s13, { items: ['金疮药×2'] }, rng, {});
+  s13.player.body.health = 50;
+  applyDelta(s13, { use: [{ name: '金疮药', qty: 1 }] }, rng, {});
+  eq('用一瓶金疮药回 8 血', s13.player.body.health, 58);
+  eq('袋子里只剩 1 瓶', (s13.player.bag.find((b) => b.name === '金疮药') || {}).qty, 1);
+  applyDelta(s13, { use: [{ name: '金疮药', qty: 5 }] }, rng, {});
+  eq('不够就一瓶也不扣', (s13.player.bag.find((b) => b.name === '金疮药') || {}).qty, 1);
+
+  // --- 资产分三类 ---
+  const s14 = fresh();
+  s14.player.assets = ['临河城汽水工坊（阿珍打理）', '六国联盟 165 家分厂', '枣红马一匹', '皮货：牛皮 10、雪狼皮 10', '家中存粮一批'];
+  ensureAssets(s14);
+  eq('产业拆出 2 条', s14.player.industries.length, 2);
+  eq('牲畜拆出 1 条', s14.player.livestock.length, 1);
+  eq('存货拆出 3 条', s14.player.stock.length, 3);
+  eq('皮货按数量拆', s14.player.stock.find((x) => x.name === '牛皮').qty, 10);
+  eq('存粮剩下的 assets 为空', s14.player.assets.length, 0);
+  s14.player.industries[0].monthly = 1000;
+  const home0 = s14.player.accounts.find((a) => a.id === 'home').copper;
+  runIndustries(s14, 2);
+  eq('产业两个月进账 2000', s14.player.accounts.find((a) => a.id === 'home').copper - home0, 2000);
+
+  // --- 声望称号 ---
+  eq('80 是名人', repLabel(80).label, '名人');
+  eq('40 是熟面孔', repLabel(40).label, '熟面孔');
+  eq('-50 是通缉', repLabel(-50).label, '通缉');
+
+  // --- 赶路只算吃喝 ---
+  const s15 = fresh();
+  const cash15 = s15.player.accounts.find((a) => a.id === 'cash').copper;
+  advanceWorld(s15, 240, makeRng(12), { kind: 'travel' });
+  ok('赶路扣了一点干粮钱（1–2 铜）', cash15 - s15.player.accounts.find((a) => a.id === 'cash').copper <= 2, String(cash15 - s15.player.accounts.find((a) => a.id === 'cash').copper));
+
+  // --- 老存档迁移 ---
+  const s16 = fresh();
+  s16.player.equipment = ['长剑（紫）×2', '匕首 ×3（紫）', '药剂包（金疮药 49 / 回血 68）', '厚外套'];
+  s16.player.assets = ['临河城汽水工坊（阿珍打理）', '枣红马一匹', '皮货：牛皮 10'];
+  const rep = migrateSave(s16);
+  eq('两件多件装备搬进袋子', rep.stacked, 2);
+  eq('一个药剂包被拆', rep.containers, 1);
+  eq('礼服装还在装备里', s16.player.equipment.length, 1);
+  eq('袋子有长剑（紫）×2', (s16.player.bag.find((b) => b.name === '长剑（紫）') || {}).qty, 2);
+  eq('袋子有金疮药 49', (s16.player.bag.find((b) => b.name === '金疮药') || {}).qty, 49);
+  eq('迁移拆出一处产业', s16.player.industries.length, 1);
+  const bagSnap = JSON.stringify(s16.player.bag);
+  const rep2 = migrateSave(s16);
+  eq('迁移是幂等的', rep2.moved.length, 0);
+  ok('袋子没被重复加', bagSnap === JSON.stringify(s16.player.bag));
 
   // --- 提示词块 ---
   const s10 = fresh();

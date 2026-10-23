@@ -2,8 +2,9 @@
 // 这里只产出"事实"（事件 + 数值），叙事交给模型。
 import { advanceClock } from './clock.js';
 import { chance, int, pick } from './rng.js';
-import { copperText, logLedger, transferCopper } from './state.js';
+import { addCopper, copperText, logLedger, transferCopper } from './state.js';
 import { accrueDebts, ensureDebts, ensureWork, runBills, runLiving, runWages } from './ledger.js';
+import { ensureAssets, runIndustries } from './assets.js';
 import { decayRelations, decayReputation } from './progress.js';
 
 const DAY_EVENTS = [
@@ -47,7 +48,7 @@ export function recentWorld(state, n = 4) {
 /**
  * 推进世界。返回本回合发生的事件（给叙事用）。
  */
-export function advanceWorld(state, minutes, rng) {
+export function advanceWorld(state, minutes, rng, judged) {
   const { clock, crossed } = advanceClock(state.clock, minutes || 0, rng);
   state.clock = clock;
   const events = [];
@@ -105,7 +106,20 @@ export function advanceWorld(state, minutes, rng) {
     addLedger(runWages(state, wholeDays));
     addLedger(runLiving(state, wholeDays));
   }
+
+  // 赶路：只算吃喝，1 天 2 铜的干粮钱
+  if (judged?.kind === 'travel') {
+    const fee = Math.max(1, Math.round((elapsed / 1440) * 2));
+    const cash = state.player.accounts.find((a) => a.id === 'cash');
+    if (cash && cash.copper >= fee) {
+      addCopper(state, 'cash', -fee);
+      addLedger([{ level: 'local', text: `路上买干粮花了 ${copperText(fee)}。` }]);
+    }
+  }
+
+  ensureAssets(state);
   if (months > 0) {
+    addLedger(runIndustries(state, months));
     addLedger(runBills(state, { months, days, years: crossed.years || 0 }, rng));
     addLedger(accrueDebts(state, months, rng));
     decayReputation(state, months);
