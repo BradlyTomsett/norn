@@ -528,12 +528,7 @@ async function send() {
 }
 
 sendEl.onclick = send;
-inputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    send();
-  }
-});
+// 输入框里回车只换行，不发送；发送只认「说」按钮。
 inputEl.addEventListener('input', () => {
   inputEl.style.height = 'auto';
   inputEl.style.height = Math.min(inputEl.scrollHeight, window.innerHeight * 0.4) + 'px';
