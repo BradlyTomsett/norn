@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>chronicle test</title></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+import { chronicleDue, chronicleText, mergeChronicle, parseChronicle } from '../engine/chronicle.js';
+import { stateBlock } from '../engine/state.js';
+import { generateWorld } from '../engine/worldgen.js';
+import { ensureAccounts } from '../engine/money.js';
+
+const lines = [];
+const ok = (n, c, extra = '') => lines.push(`${c ? 'PASS' : 'FAIL'} ${n}${extra ? ' :: ' + extra : ''}`);
+const eq = (n, a, b) => ok(n, a === b, `got ${JSON.stringify(a)} want ${JSON.stringify(b)}`);
+
+const sample = `【本次行动】
+你进了铁匠铺。
+
+【编年 · 截至 复兴历 224 年秋】
+· 224 年春，你 18 岁，进了郡城的铁匠铺当学徒，师傅姓霍尔。
+· 224 年夏，母亲病了一场，花了 2 银，欠了药铺的钱。
+
+【你现在可以做什么】
+① 干活`;
+
+const parsed = parseChronicle(sample);
+eq('解析出 2 条编年', parsed.length, 2);
+ok('去掉了圆点', !parsed[0].startsWith('·'), parsed[0]);
+ok('第一条内容完整', parsed[0].includes('铁匠铺'), parsed[0]);
+
+const noSection = parseChronicle('【本次行动】\n只是普通叙事。');
+eq('没有编年段就返回空', noSection.length, 0);
+
+const { state } = generateWorld({ regionId: 'greywater', seed: 42 });
+ensureAccounts(state);
+const added = mergeChronicle(state, parsed);
+eq('新增 2 条', added, 2);
+eq('再合并同一批不重复', mergeChronicle(state, parsed), 0);
+eq('状态里存住了', state.chronicle.length, 2);
+
+const block = stateBlock(state);
+ok('状态块带编年段', block.includes('【编年】'));
+ok('状态块里有具体条目', block.includes('铁匠铺'));
+
+// 封顶
+for (let i = 0; i < 80; i++) mergeChronicle(state, [`第 ${i} 条占位事件`]);
+ok('编年封顶 60 条', state.chronicle.length === 60, String(state.chronicle.length));
+ok('保留的是最近的', state.chronicle[59].includes('79'));
+
+// 触发
+ok('第 12 回合要整理', chronicleDue({ turn: 11 }, '随便走走') === true);
+ok('第 13 回合不要', chronicleDue({ turn: 12 }, '随便走走') === false);
+ok('玩家说整理记忆就要', chronicleDue({ turn: 3 }, '整理记忆') === true);
+ok('说 /编年 也要', chronicleDue({ turn: 3 }, '/编年') === true);
+
+lines.push('chronicleText 末条：' + chronicleText(state, 1));
+document.getElementById('out').textContent = lines.join('\n');
+</script></body></html>

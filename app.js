@@ -8,6 +8,7 @@ import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
 import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 import { esc, format } from './format.js';
+import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 
 const BUILD = '2026-10-23 · r5';
 
@@ -86,7 +87,7 @@ async function loadPrompts() {
   if (!app.rules) app.rules = FALLBACK_RULES;
 }
 
-function turnBrief(judged, events, state) {
+function turnBrief(judged, events, state, opts = {}) {
   const injuryLine = judged.injury
     ? `- 引擎判定本回合受伤：${judged.injury.part}，约 ${judged.injury.days} 天。叙事里要写出来。`
     : '- 本回合**没有**受伤。叙事里不要出现流血、骨折、伤口这类需要记录的伤；疼、淤青、擦破皮可以写。';
@@ -110,6 +111,15 @@ function turnBrief(judged, events, state) {
   if (judged.outcome === 'crush') {
     lines.push('', '【碾压局】实力远超眼前这件事。直接写成干净利落办成，不要硬造失败。张力放在旁人怎么看他、这件事牵出什么。');
   }
+  if (opts.chronicleDue) {
+    lines.push(
+      '',
+      '【本回合要做编年】在【你现在可以做什么】之前，单独输出一段：',
+      '【编年 · 截至 复兴历 X 年 Y 季】',
+      '下面列 8–15 条，每条一行，以「· 」开头，只写会影响未来的事（去向、职业、关系变化、欠债、伤病、大事），',
+      '不写日常琐碎，不写没发生的计划。这段会被存进存档长期保留。',
+    );
+  }
   lines.push(
     '',
     '━━━━━━━━━━',
@@ -122,8 +132,8 @@ function turnBrief(judged, events, state) {
   return lines.join('\n');
 }
 
-const buildSystem = (state, judged, events) =>
-  [app.rules, '', app.worldbook, '', ...(state.customSetting ? ['【玩家自定义的世界补充（以此为准，不得推翻）】', state.customSetting, ''] : []), RUNTIME, '', '【当前状态】', stateBlock(state), '', '【在场/相关人物】', npcCards(state), '', turnBrief(judged, events, state)].join('\n');
+const buildSystem = (state, judged, events, opts = {}) =>
+  [app.rules, '', app.worldbook, '', ...(state.customSetting ? ['【玩家自定义的世界补充（以此为准，不得推翻）】', state.customSetting, ''] : []), RUNTIME, '', '【当前状态】', stateBlock(state), '', '【在场/相关人物】', npcCards(state), '', turnBrief(judged, events, state, opts)].join('\n');
 
 /* ---------------- 文本处理 ---------------- */
 
@@ -461,6 +471,7 @@ async function send() {
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
   const events = advanceWorld(state, judged.minutes, rng, judged);
+  const wantChronicle = chronicleDue(state, text);
 
   const bubble = addMessage('assistant', '');
   bubble.classList.add('cursor');
@@ -474,7 +485,7 @@ async function send() {
 
   try {
     const history = store.getMessages(app.saveId).slice(-14).map((m) => ({ role: m.role, content: m.content }));
-    for await (const chunk of llm.streamChat({ system: buildSystem(state, judged, events), messages: history })) {
+    for await (const chunk of llm.streamChat({ system: buildSystem(state, judged, events, { chronicleDue: wantChronicle }), messages: history })) {
       raw += chunk;
       if (!frame) {
         frame = requestAnimationFrame(() => {
@@ -486,6 +497,9 @@ async function send() {
 
     const { text: rawText, delta } = splitDelta(raw);
     const cleanText = pruneEmpty(stripSheet(rawText));
+
+    // 编年：模型这回合写了就存进状态，否则几回合后会被挤出上下文
+    mergeChronicle(state, parseChronicle(cleanText));
 
     applyDelta(state, engineDelta(judged, state), rng, { bump: false, judged });
     const modelDelta = { ...(delta || {}) };

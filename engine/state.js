@@ -16,6 +16,7 @@ import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, pay
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
 import { effectOf, isContainer, parseContainer, parseItemEntry } from './items.js';
+import { chronicleText } from './chronicle.js';
 
 export {
   accountOf,
@@ -472,6 +473,11 @@ export function stateBlock(state) {
   if (state.ledgerLog?.length) {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
+  }
+  const chron = chronicleText(state, 6);
+  if (chron) {
+    lines.push('【编年】（更早发生的事，回忆优先按这个来）');
+    for (const l of chron.split('\n')) lines.push(`  · ${l}`);
   }
   if (state.knowledge.length) {
     lines.push('【玩家已知】（只能用这些）');
