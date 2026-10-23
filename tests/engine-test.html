@@ -5,7 +5,7 @@
 // 引擎自测：不依赖 node，用浏览器直接跑。
 // 打开后看页面里的 PASS / FAIL 列表。
 import { generateWorld } from '../engine/worldgen.js';
-import { priceOf, sellOf, rollBounty } from '../engine/economy.js';
+import { priceOf, sellOf, rollBounty, GRADE_MUL } from '../engine/economy.js';
 import { addCopper, ensureAccounts, totalCopper, copperText } from '../engine/money.js';
 import {
   accrueDebts,
@@ -56,7 +56,11 @@ try {
   eq('战马按坐骑 ×4', priceOf(state, '战马').unit, 8000);
   eq('庄园按不动产 ×3', priceOf(state, '庄园').unit, 600000);
   eq('完全陌生的词也落到杂物', priceOf(state, '不知名的东西').cat, 'misc');
-  eq('品阶影响武器价', priceOf(state, '长剑（紫）').unit, 350 * 8);
+  eq('品阶影响武器价', priceOf(state, '长剑（紫）').unit, Math.round(350 * GRADE_MUL['紫']));
+  eq('品阶影响护甲价', priceOf(state, '锁子甲（蓝）').unit, Math.round(900 * GRADE_MUL['蓝']));
+  eq('品阶不作用于工具', priceOf(state, '锯子（紫）').unit, 60);
+  eq('品阶不作用于首饰', priceOf(state, '项链（紫）').unit, 900);
+  eq('品阶不作用于药剂', priceOf(state, '疗伤药剂（金）').unit, 250);
   eq('数量按件乘', priceOf(state, '黑面包', { qty: 3 }).total, 3);
   eq('物价指数会进来', priceOf({ ...state, world: { ...state.world, priceIndex: 2 } }, '黑面包').unit, 2);
   ok('卖出价低于买入价', sellOf(state, '铁剑').total < priceOf(state, '铁剑').total);

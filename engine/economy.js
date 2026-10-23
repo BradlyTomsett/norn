@@ -11,7 +11,7 @@
 import { int } from './rng.js';
 
 export const GRADES = ['灰', '绿', '蓝', '紫', '金'];
-export const GRADE_MUL = { 灰: 1, 绿: 1.6, 蓝: 3, 紫: 8, 金: 25 };
+export const GRADE_MUL = { 灰: 1, 绿: 3.5, 蓝: 12, 紫: 120, 金: 1525 };
 
 // 锚定价单位：铜。1 金 = 100 银 = 10000 铜。
 export const CATS = {
@@ -131,7 +131,8 @@ export function priceOf(state, name, opts = {}) {
   const cat = classify(name, opts.cat);
   const info = CATS[cat] || CATS.misc;
   const grade = detectGrade(name) || (GRADES.includes(opts.grade) ? opts.grade : '');
-  const gradeMul = grade && ['weapon', 'armor', 'jewelry', 'tool', 'luxury'].includes(cat) ? GRADE_MUL[grade] : 1;
+  // 品阶只用于武器与护甲（见 rules.md 第八条）；工具、首饰、奢侈品只按材质定价
+  const gradeMul = grade && ['weapon', 'armor'].includes(cat) ? GRADE_MUL[grade] : 1;
   const matMul = ['weapon', 'armor', 'tool', 'metal', 'jewelry', 'missile'].includes(cat) ? mulOf(MATERIAL_MUL, name) : 1;
   const specialMul = mulOf(SPECIAL_MUL, name);
   const priceIndex = Number(state?.world?.priceIndex) || 1;
