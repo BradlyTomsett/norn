@@ -39,6 +39,50 @@
   </div>
 </div>
 
+<!-- 起始菜单 -->
+<div id="menu" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>诺恩</h1>
+    <p class="hint">一个已经存在的世界。你出生的时候，它已经转了很多年。</p>
+    <div class="cards" style="margin-top:26px">
+      <button id="menu-load" class="card">
+        <b>载入存档</b>
+        <span>接着之前那一局玩</span>
+      </button>
+      <button id="menu-new" class="card">
+        <b>选择出生地</b>
+        <span>在诺恩大陆上挑一个地方，十二岁开始</span>
+      </button>
+      <button id="menu-custom" class="card">
+        <b>自定义</b>
+        <span>自己写地方、出身和名字</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 自定义开局 -->
+<div id="custom" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>自定义开局</h1>
+    <h2>地方叫什么</h2>
+    <input id="cu-place" class="name-input" placeholder="例：灰港 / 北境·铁砧堡" autocomplete="off" />
+    <h2>这里是什么样子</h2>
+    <textarea id="cu-desc" class="name-input" rows="3" placeholder="例：海边的小城，靠捕鲸和走私过活；城主是个瘸腿的老船长，教堂的钟二十年没响过。"></textarea>
+    <h2>你的出身</h2>
+    <input id="cu-origin" class="name-input" placeholder="例：渔户的女儿 / 孤儿 / 铁匠学徒" autocomplete="off" />
+    <h2>名字（可留空）</h2>
+    <input id="cu-name" class="name-input" placeholder="留空就随机取一个" autocomplete="off" />
+    <h2>你是</h2>
+    <div id="cu-genders" class="chips">
+      <button class="chip" data-gender="male">男孩</button>
+      <button class="chip" data-gender="female">女孩</button>
+    </div>
+    <button id="cu-start" class="primary">出生</button>
+    <button id="cu-back" class="primary" style="background:transparent;color:var(--ink-dim);border:1px solid var(--line)">返回</button>
+  </div>
+</div>
+
 <!-- 开局向导 -->
 <div id="wizard" class="sheet hidden">
   <div class="sheet-inner">

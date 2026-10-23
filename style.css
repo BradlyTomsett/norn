@@ -253,3 +253,5 @@ button.primary {
   .msg { font-size: 15px; }
   #topbar .title { letter-spacing: .2em; }
 }
+
+textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }

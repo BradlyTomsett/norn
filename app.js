@@ -105,7 +105,7 @@ function turnBrief(judged, events, state) {
 }
 
 const buildSystem = (state, judged, events) =>
-  [app.rules, '', app.worldbook, '', RUNTIME, '', '【当前状态】', stateBlock(state), '', '【在场/相关人物】', npcCards(state), '', turnBrief(judged, events, state)].join('\n');
+  [app.rules, '', app.worldbook, '', ...(state.customSetting ? ['【玩家自定义的世界补充（以此为准，不得推翻）】', state.customSetting, ''] : []), RUNTIME, '', '【当前状态】', stateBlock(state), '', '【在场/相关人物】', npcCards(state), '', turnBrief(judged, events, state)].join('\n');
 
 /* ---------------- 文本处理 ---------------- */
 
@@ -728,7 +728,7 @@ $('#btn-new').onclick = () => {
   if (!confirm('开新的一局？当前这局不会被删除，可以在存档里找回来。')) return;
   app.saveId = null;
   app.ui = null;
-  openWizard();
+  showMenu();
 };
 
 $('#btn-del').onclick = () => {
@@ -830,8 +830,99 @@ async function boot() {
 function boot2() {
   const list = store.listSaves();
   if (list.length) loadGame(list[0].id);
-  else openWizard();
+  else showMenu();
 }
+
+/* ---------------- 起始菜单 ---------------- */
+
+function showMenu() {
+  composerEl.classList.add('hidden');
+  logEl.innerHTML = '';
+  for (const id of ['#wizard', '#custom', '#saves', '#settings', '#sheet']) {
+    const el = $(id);
+    if (el) el.classList.add('hidden');
+  }
+  const has = store.listSaves().length > 0;
+  const btn = $('#menu-load');
+  btn.disabled = !has;
+  btn.style.opacity = has ? '1' : '.4';
+  $('#menu').classList.remove('hidden');
+}
+
+$('#menu-load').onclick = () => {
+  if (!store.listSaves().length) return alert('还没有存档。');
+  renderSaves();
+  updateGhStatus();
+  $('#menu').classList.add('hidden');
+  $('#saves').classList.remove('hidden');
+};
+
+$('#menu-new').onclick = () => {
+  $('#menu').classList.add('hidden');
+  openWizard();
+};
+
+$('#menu-custom').onclick = () => {
+  $('#menu').classList.add('hidden');
+  app.customGender = 'male';
+  for (const b of $('#cu-genders').children) b.classList.toggle('selected', b.dataset.gender === 'male');
+  $('#custom').classList.remove('hidden');
+};
+
+$('#cu-back').onclick = () => {
+  $('#custom').classList.add('hidden');
+  showMenu();
+};
+
+$('#cu-genders').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip');
+  if (!b) return;
+  app.customGender = b.dataset.gender;
+  [...$('#cu-genders').children].forEach((c) => c.classList.remove('selected'));
+  b.classList.add('selected');
+});
+
+$('#cu-start').onclick = () => {
+  const place = $('#cu-place').value.trim() || '无名之地';
+  const desc = $('#cu-desc').value.trim();
+  const origin = $('#cu-origin').value.trim();
+  const name = $('#cu-name').value.trim();
+  const gender = app.customGender || 'male';
+  const seed = Math.floor(Math.random() * 1e9);
+
+  const { state } = generateWorld({ regionId: 'greywater', familyKey: 'npc_farmer', name, gender, seed });
+  state.world.name = place;
+  state.world.regionTitle = '自定义';
+  if (desc) {
+    state.world.terrain = desc;
+    state.world.economy = '（玩家设定）';
+    state.world.politics = '（玩家设定）';
+    state.world.risk = '（玩家设定）';
+  }
+  state.customSetting = [desc && `地方：${desc}`, origin && `玩家出身：${origin}`].filter(Boolean).join('\n');
+  state.player.location.siteName = place;
+  if (origin) state.player.profession = origin;
+  state.saveId = store.newId();
+  state.updatedAt = new Date().toISOString();
+
+  const opening = [
+    `你十二岁。家在${place}。`,
+    desc ? desc : '',
+    origin ? `你是${origin}。` : '',
+    '今天要做点什么？',
+  ].filter(Boolean).join('\n\n');
+
+  store.putSave(state, [{ role: 'assistant', content: opening }]);
+  app.saveId = state.saveId;
+  app.ui = uiState(state);
+  app.messages = [{ role: 'assistant', content: opening }];
+  $('#custom').classList.add('hidden');
+  composerEl.classList.remove('hidden');
+  logEl.innerHTML = '';
+  const first = addMessage('assistant', opening);
+  renderSheet();
+  scrollToElement(first);
+};
 
 boot();
 
