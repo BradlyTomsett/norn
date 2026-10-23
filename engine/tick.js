@@ -2,7 +2,7 @@
 // 这里只产出"事实"（事件 + 数值），叙事交给模型。
 import { advanceClock } from './clock.js';
 import { chance, int, pick } from './rng.js';
-import { addCopper, copperText, ensureAccounts } from './state.js';
+import { addCopper, copperText, ensureAccounts, transferCopper } from './state.js';
 
 const DAY_EVENTS = [
   '路上过了一队收羊毛的商人，价压得很低',
@@ -87,6 +87,18 @@ export function advanceWorld(state, minutes, rng) {
     const pay = months * 180 * 10000;
     if (addCopper(state, 'home', pay)) {
       const t = `家族把这个月的月钱送来了：${months * 180} 金，已入「家里」。`;
+      logEvent(state, t);
+      events.push({ level: 'local', text: t });
+    }
+  }
+
+  // 汽水工坊：每个月结一次账，整笔转给玩家（随身）
+  if (crossed.newMonth || crossed.years > 0) {
+    const wk = state.player?.accounts?.find((a) => a.id === 'workshop');
+    const payout = wk ? wk.copper : 0;
+    if (payout > 0) {
+      transferCopper(state, 'workshop', 'cash', payout);
+      const t = `汽水工坊把这个月的账结了：${copperText(payout)} 已转到随身。`;
       logEvent(state, t);
       events.push({ level: 'local', text: t });
     }
