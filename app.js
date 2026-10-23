@@ -42,6 +42,12 @@ const RUNTIME = `
    **不要输出【当前角色】块**（玩家在状态面板里能看）。也不要输出【玩家自由行动】这个小标题。
 2. 另起一行输出一个 json 代码块，只写“变化”。
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
+3b. **钱分账户**：`cash`（随身）、`home`（家里）、`workshop`（汽水工坊）。写法：
+    "money":{"cash":-300}                     随身花掉 300 铜
+    "money":{"workshop":250000}               工坊进账 25 金（记在工坊账上，**不自动进家里**）
+    "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}   从家里拿 50 金到随身
+    账户之间的调度**立刻完成**：没有运费、没有手续费、不花时间。
+    家族每月 180 金的月钱由引擎自动入「家里」，你不要再记这笔；工坊的钱每天从 0 单独累计、日终清算。
 4. relations 只能用下面列出的 npcId，禁止编造。
 5. 叙事里不出现数值、等级、经验值。
 6. 不替玩家说话或做决定。对话场景中，NPC 说完就停。**也不要在正文里写“修正：”“更正：”这类关于自己格式的说明**。
@@ -602,7 +608,11 @@ function viewOverview(u) {
   if (rep) out.push(`<div class="row"><span class="k">声誉</span><span class="v">${esc(rep)}</span></div>`);
   out.push('</div>');
   out.push('<h3>财务</h3><div class="rows">');
-  out.push(`<div class="row"><span class="k">现金</span><span class="v">${esc(p.money)}</span></div>`);
+  if (p.accounts && p.accounts.length) {
+      for (const a of p.accounts) out.push(`<div class="row"><span class="k">${esc(a.name)}</span><span class="v">${esc(a.text)}</span></div>`);
+    } else {
+      out.push(`<div class="row"><span class="k">现金</span><span class="v">${esc(p.money)}</span></div>`);
+    }
   if (p.incomeMonthly) out.push(`<div class="row"><span class="k">月净利</span><span class="v">${p.incomeMonthly.toLocaleString()} 金</span></div>`);
   if (p.debts?.length) out.push(`<div class="row"><span class="k">债务</span><span class="v">${esc(p.debts.map((d) => d.to).join('、'))}</span></div>`);
   out.push('</div>');

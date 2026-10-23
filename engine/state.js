@@ -29,6 +29,75 @@ export function moneyText(w) {
   return parts.join(' ');
 }
 
+/* ---------------- 多账户 ---------------- */
+
+export const DEFAULT_ACCOUNTS = [
+  { id: 'cash', name: '随身', copper: 0 },
+  { id: 'home', name: '家里', copper: 0 },
+  { id: 'workshop', name: '汽水工坊', copper: 0 },
+];
+
+/** 老存档只有 wallet：迁移成 cash，其余账户从 0 起。 */
+export function ensureAccounts(state) {
+  const p = state.player;
+  if (!Array.isArray(p.accounts) || p.accounts.length === 0) {
+    const cash = p.wallet ? copperTotal(p.wallet) : 0;
+    p.accounts = DEFAULT_ACCOUNTS.map((a) => ({ ...a, copper: a.id === 'cash' ? cash : 0 }));
+  }
+  const cash = p.accounts.find((a) => a.id === 'cash');
+  p.wallet = fromCopper(cash ? cash.copper : 0);
+  return p.accounts;
+}
+
+export function accountOf(state, key) {
+  const list = ensureAccounts(state);
+  const k = String(key || '').trim();
+  return list.find((a) => a.id === k || a.name === k) || null;
+}
+
+export function addCopper(state, key, deltaCopper) {
+  const a = accountOf(state, key);
+  if (!a) return false;
+  const d = Math.round(deltaCopper);
+  a.copper = Math.max(0, a.copper + d);
+  if (a.id === 'cash') state.player.wallet = fromCopper(a.copper);
+  if (a.id === 'workshop' && d) {
+    const k = `${state.clock.year}-${state.clock.doy}`;
+    const wd = state.player.workshopDaily;
+    if (!wd || wd.key !== k) state.player.workshopDaily = { key: k, copper: d };
+    else wd.copper += d;
+  }
+  return true;
+}
+
+/** 账户之间调钱：立刻完成，没有运输与手续费。 */
+export function transferCopper(state, from, to, amount) {
+  const a = accountOf(state, from);
+  const b = accountOf(state, to);
+  if (!a || !b || a === b) return false;
+  const amt = Math.min(a.copper, Math.round(amount));
+  if (amt <= 0) return false;
+  a.copper -= amt;
+  b.copper += amt;
+  const cash = state.player.accounts.find((x) => x.id === 'cash');
+  state.player.wallet = fromCopper(cash.copper);
+  return true;
+}
+
+export function accountsText(state) {
+  const list = ensureAccounts(state);
+  return list.map((a) => `${a.name} ${moneyText(fromCopper(a.copper))}`).join(' ｜ ');
+}
+
+export function totalCopper(state) {
+  return ensureAccounts(state).reduce((s, a) => s + a.copper, 0);
+}
+
+/** 铜数转成人话 */
+export function copperText(c) {
+  return moneyText(fromCopper(Math.round(c)));
+}
+
 /** 把「A（金）、B、C（均紫）」这类合并写法拆成一条一件。 */
 export function normalizeEquipment(raw) {
   const s = String(raw || '').trim();
@@ -70,16 +139,31 @@ export function applyDelta(state, delta, rng, opts = {}) {
     state.clock = clock;
   }
 
-  // 钱
-  if (delta?.money && (delta.money.copper != null || delta.money.silver != null || delta.money.gold != null)) {
-    const d =
-      n(delta.money.gold) * 10000 + n(delta.money.silver) * 100 + n(delta.money.copper);
-    const total = copperTotal(state.player.wallet) + Math.round(d);
-    if (total < 0) {
-      state.player.wallet = { gold: 0, silver: 0, copper: 0 };
-      rejected.push('现金不足，已归零');
-    } else {
-      state.player.wallet = fromCopper(total);
+  // 钱（多账户；账户之间随时可调，不计运费）
+  ensureAccounts(state);
+  if (delta?.money && typeof delta.money === 'object') {
+    const m = delta.money;
+    // 旧写法 gold/silver/copper 一律算「随身」
+    const legacy = n(m.gold) * 10000 + n(m.silver) * 100 + n(m.copper);
+    if (legacy) addCopper(state, 'cash', legacy);
+
+    // 新写法：{ cash: -300, home: 1800000, workshop: 2500 }（单位：铜）
+    for (const [k, v] of Object.entries(m)) {
+      if (['gold', 'silver', 'copper', 'transfer', 'note'].includes(k)) continue;
+      const amount =
+        typeof v === 'number' ? v : n(v?.copper) + n(v?.silver) * 100 + n(v?.gold) * 10000;
+      if (!amount) continue;
+      if (!addCopper(state, k, amount)) rejected.push(`没有账户「${k}」`);
+    }
+
+    // 账户间转账：[{from:'home', to:'cash', copper:50000}]
+    const trs = m.transfer ? (Array.isArray(m.transfer) ? m.transfer : [m.transfer]) : [];
+    for (const t of trs) {
+      const from = t?.from;
+      const to = t?.to;
+      const amount = n(t?.copper) + n(t?.silver) * 100 + n(t?.gold) * 10000;
+      if (!from || !to || !amount) continue;
+      if (!transferCopper(state, from, to, amount)) rejected.push(`转账失败：${from} → ${to}`);
     }
   }
 
@@ -213,7 +297,7 @@ export function stateBlock(state) {
     lines.push(`【天赋】${t.name}（${t.grade}）：${t.effect}${t.secret ? '｜**必须严格保密**' : ''}`);
   }
   if (p.incomeMonthly) lines.push(`【月净利】约 ${p.incomeMonthly.toLocaleString()} 金`);
-  lines.push(`【现金】${moneyText(p.wallet)}`);
+  lines.push(`【账户】${accountsText(state)}`);
   if (p.debts.length) lines.push(`【债务】${p.debts.map((d) => `${d.to} ${moneyText(d.amount)}（${d.note || '到期未定'}）`).join('；')}`);
   if (p.assets.length) lines.push(`【资产】${p.assets.join('、')}`);
   if (p.equipment?.length) lines.push(`【装备】${p.equipment.join('、')}`);
@@ -274,6 +358,12 @@ export function uiState(state) {
       body: p.body,
       mind: p.mind,
       money: moneyText(p.wallet),
+      accounts: (p.accounts || []).map((a) => ({
+        id: a.id,
+        name: a.name,
+        copper: a.copper,
+        text: moneyText(fromCopper(a.copper)),
+      })),
       wallet: p.wallet,
       debts: p.debts,
       assets: p.assets,

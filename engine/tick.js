@@ -2,6 +2,7 @@
 // 这里只产出"事实"（事件 + 数值），叙事交给模型。
 import { advanceClock } from './clock.js';
 import { chance, int, pick } from './rng.js';
+import { addCopper, copperText, ensureAccounts } from './state.js';
 
 const DAY_EVENTS = [
   '路上过了一队收羊毛的商人，价压得很低',
@@ -76,6 +77,35 @@ export function advanceWorld(state, minutes, rng) {
       const text = pick(rng, MONTH_EVENTS);
       logEvent(state, text);
       events.push({ level: 'local', text });
+    }
+  }
+
+  // 家族月钱：每月 180 金，直接进「家里」那个账户
+  if (crossed.newMonth || crossed.years > 0) {
+    ensureAccounts(state);
+    const months = Math.max(1, Math.floor(days / 30));
+    const pay = months * 180 * 10000;
+    if (addCopper(state, 'home', pay)) {
+      const t = `家族把这个月的月钱送来了：${months * 180} 金，已入「家里」。`;
+      logEvent(state, t);
+      events.push({ level: 'local', text: t });
+    }
+  }
+
+  // 汽水工坊：每天清一次当天的账（钱留在工坊账户里，等你自己调）
+  const wd = state.player?.workshopDaily;
+  if (wd && state.player.accounts?.some((a) => a.id === 'workshop')) {
+    const key = `${state.clock.year}-${state.clock.doy}`;
+    if (wd.key !== key) {
+      if (wd.copper !== 0) {
+        const t =
+          wd.copper >= 0
+            ? `汽水工坊当日净进 ${copperText(wd.copper)}，记在工坊账上。`
+            : `汽水工坊当日净出 ${copperText(-wd.copper)}，记在工坊账上。`;
+        logEvent(state, t);
+        events.push({ level: 'local', text: t });
+      }
+      state.player.workshopDaily = { key, copper: 0 };
     }
   }
 
