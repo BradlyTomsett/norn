@@ -19,7 +19,7 @@ const PROFILE = {
   labor: { label: '体力活', stat: 'body', skill: '干杂活', diff: 22, minutes: [30, 90], fatigue: [6, 12] },
   combat: { label: '动手', stat: 'body', skill: '武技', diff: 40, minutes: [5, 20], fatigue: [10, 18] },
   stealth: { label: '暗中行事', stat: 'agility', skill: '潜行', diff: 32, minutes: [10, 30], fatigue: [4, 8] },
-  trade: { label: '交易', stat: 'wisdom', skill: '商谈', diff: 26, minutes: [10, 30], fatigue: [1, 3] },
+  trade: { label: '交易', stat: 'wisdom', skill: '交涉', diff: 26, minutes: [10, 30], fatigue: [1, 3] },
   social: { label: '说话', stat: 'wisdom', skill: '交涉', diff: 28, minutes: [10, 30], fatigue: [1, 4] },
   study: { label: '学习', stat: 'wisdom', skill: '识字', diff: 28, minutes: [60, 180], fatigue: [4, 8] },
   observe: { label: '观察', stat: 'wisdom', skill: '察觉', diff: 24, minutes: [10, 20], fatigue: [2, 5] },

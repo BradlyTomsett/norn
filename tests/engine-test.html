@@ -53,9 +53,45 @@ try {
   eq('锁子甲归到护甲', priceOf(state, '锁子甲').cat, 'armor');
   eq('长弓是武器', priceOf(state, '长弓').cat, 'weapon');
   eq('箭矢单独归类', priceOf(state, '箭矢').cat, 'missile');
-  eq('战马按坐骑 ×4', priceOf(state, '战马').unit, 8000);
-  eq('庄园按不动产 ×3', priceOf(state, '庄园').unit, 600000);
   eq('完全陌生的词也落到杂物', priceOf(state, '不知名的东西').cat, 'misc');
+
+  // 牲口：按类目分开，价格拉开
+  eq('鸡按只', priceOf(state, '一只鸡').cat, 'poultry');
+  eq('鸡 15 铜', priceOf(state, '一只鸡').unit, 15);
+  eq('猪 700 铜', priceOf(state, '一头猪').unit, 700);
+  eq('羊 900 铜', priceOf(state, '一头羊').unit, 900);
+  eq('牛 1.2 金', priceOf(state, '一头牛').unit, 12000);
+  eq('耕牛更贵', priceOf(state, '一头耕牛').unit, 15000);
+  eq('普通马 6 银', priceOf(state, '一匹马').unit, 6000);
+  eq('骏马 2.5 金', priceOf(state, '一匹骏马').unit, 25000);
+  eq('战马 8 金', priceOf(state, '一匹战马').unit, 80000);
+  eq('骡子走驮畜', priceOf(state, '一头骡子').cat, 'mount');
+
+  // 皮革：生皮便宜，熟皮贵，按来源再分
+  eq('生皮 8 铜', priceOf(state, '一张生皮').unit, 8);
+  eq('熟皮 25 铜', priceOf(state, '一张熟皮').unit, 25);
+  eq('狼皮 40 铜', priceOf(state, '一张狼皮').unit, 40);
+  eq('熊皮 3 银', priceOf(state, '一张熊皮').unit, 300);
+
+  // 不动产：六档拉开
+  eq('一亩田 5 银', priceOf(state, '一亩田').unit, 5000);
+  eq('乡村住宅 4 金', priceOf(state, '一间农舍').unit, 40000);
+  eq('城市住宅 25 金', priceOf(state, '城里的住宅').unit, 250000);
+  eq('商铺 50 金', priceOf(state, '一间商铺').unit, 500000);
+  eq('别墅 150 金', priceOf(state, '一栋别墅').unit, 1500000);
+  eq('庄园 800 金', priceOf(state, '一座庄园').unit, 8000000);
+
+  // 药水与炼金：按你给的价
+  eq('金疮药 5 铜', priceOf(state, '金疮药').unit, 5);
+  eq('回血药水 2 银', priceOf(state, '回血药水').unit, 200);
+  eq('清醒药 3 银', priceOf(state, '清醒药').unit, 300);
+  eq('浮水 5 银', priceOf(state, '浮水').unit, 500);
+  eq('气力 5 银', priceOf(state, '气力').unit, 500);
+  eq('夜眼 5 银', priceOf(state, '夜眼').unit, 500);
+  eq('火油罐 40 铜', priceOf(state, '火油罐').unit, 40);
+  eq('烟丸 25 铜', priceOf(state, '烟丸').unit, 25);
+  eq('酸液瓶 80 铜', priceOf(state, '酸液瓶').unit, 80);
+
   eq('品阶影响武器价', priceOf(state, '长剑（紫）').unit, Math.round(350 * GRADE_MUL['紫']));
   eq('品阶影响护甲价', priceOf(state, '锁子甲（蓝）').unit, Math.round(900 * GRADE_MUL['蓝']));
   eq('品阶不作用于工具', priceOf(state, '锯子（紫）').unit, 60);
@@ -64,6 +100,13 @@ try {
   eq('数量按件乘', priceOf(state, '黑面包', { qty: 3 }).total, 3);
   eq('物价指数会进来', priceOf({ ...state, world: { ...state.world, priceIndex: 2 } }, '黑面包').unit, 2);
   ok('卖出价低于买入价', sellOf(state, '铁剑').total < priceOf(state, '铁剑').total);
+
+  // 卖价看「交涉」，不看「商谈」
+  const talker = fresh();
+  talker.player.skills.push({ name: '交涉', level: 60 });
+  talker.player.skills.push({ name: '商谈', level: 0 });
+  const ratio = sellOf(talker, '铁剑').total / priceOf(talker, '铁剑').total;
+  ok('卖价比例跟着交涉走', ratio > 0.55 && ratio < 0.6, String(ratio.toFixed(3)));
 
   // --- 交易 ---
   const before = state.player.accounts.find((a) => a.id === 'cash').copper;
