@@ -31,7 +31,7 @@ export {
 };
 
 export const RACES = ['human', 'elf', 'orc', 'dwarf'];
-export const RACE_CN = { human: '人类', elf: '精灵', orc: '兽人', dwarf: '矮人', dragonkin: '龙裔', underdark: '地穴人', highland: '高原人' };
+export const RACE_CN = { human: '人类', elf: '精灵', halfelf: '半精灵', orc: '兽人', dwarf: '矮人', dragonkin: '龙裔', underdark: '地穴人', highland: '高原人' };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -495,7 +495,10 @@ export function npcCards(state) {
         `· [${npc.id}] ${npc.name}｜${npc.age} 岁｜${RACE_CN[npc.race] || npc.race}｜${npc.profession}`,
         `  说话：词汇 ${v.vocabulary || 2}/5，${v.sentence || 'short'} 句，礼貌 ${v.politeness ?? 1}/3，口癖「${(v.tics || []).join('、') || '无'}」，比喻取自${v.metaphor || '日常'}`,
         `  在意：${npc.obsession || '无'}｜性格：${(npc.traits || []).join('、') || '普通'}`,
-      ].join('\n');
+        npc.loadout?.length ? `  惯用：${npc.loadout.join('、')}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
     })
     .join('\n');
 }
