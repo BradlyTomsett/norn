@@ -55,12 +55,12 @@ const FALLBACK_RULES = `你是「西幻人生模拟器」的运行时。你运�
 
 async function loadPrompts() {
   try {
-    app.rules = await (await fetch('prompt/01-核心规则.md')).text();
+    app.rules = await (await fetch('prompt/rules.md')).text();
   } catch {
     app.rules = '';
   }
   try {
-    app.worldbook = await (await fetch('prompt/02-世界设定.md')).text();
+    app.worldbook = await (await fetch('prompt/worldbook.md')).text();
   } catch {
     app.worldbook = '';
   }

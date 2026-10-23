@@ -1,7 +1,7 @@
-﻿const CACHE = 'norn-v1';
+const CACHE = 'norn-v1';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './llm.js', './store.js',
   './engine/clock.js', './engine/rng.js', './engine/state.js', './engine/tick.js', './engine/resolve.js', './engine/worldgen.js',
-  './prompt/01-核心规则.md', './prompt/02-世界设定.md', './manifest.webmanifest'];
+  './prompt/rules.md', './prompt/worldbook.md', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
