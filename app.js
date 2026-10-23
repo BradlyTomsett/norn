@@ -110,13 +110,18 @@ const buildSystem = (state, judged, events) =>
 /* ---------------- 文本处理 ---------------- */
 
 function splitDelta(text) {
-  // 找最后一个 json 代码块，不要求它在结尾——模型常在块后面再补几句
-  const re = /```json\s*([\s\S]*?)```/gi;
+  // 代码块可能用 3 个或更多反引号；也可能不在结尾。取最后一个块当增量。
+  const re = /`{3,}\s*json\s*([\s\S]*?)`{3,}/gi;
   let m;
   let last = null;
   while ((m = re.exec(text)) !== null) last = m;
-  if (!last) return { text: text.trim(), delta: null };
-  const head = text.replace(/`json\s*[\s\S]*?`/gi, '').trim();
+  const stripFence = (s) =>
+    s
+      .replace(/`{3,}\s*json\s*[\s\S]*?`{3,}/gi, '')
+      .replace(/^[ \t]*`{3,}[ \t]*$/gm, '')
+      .trim();
+  if (!last) return { text: stripFence(text), delta: null };
+  const head = stripFence(text);
   try {
     return { text: head, delta: JSON.parse(last[1]) };
   } catch {
