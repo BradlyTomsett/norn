@@ -335,6 +335,7 @@ export function npcCards(state) {
 }
 
 export function uiState(state) {
+  ensureAccounts(state); // 老存档读的时候就把 wallet 迁成 cash
   const p = state.player;
   return {
     saveId: state.saveId,
