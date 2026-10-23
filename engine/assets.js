@@ -84,9 +84,10 @@ export function runIndustries(state, months) {
     const monthly = Math.round(Number(ind.monthly) || 0);
     if (!monthly) continue;
     const pay = monthly * months;
-    const account = ind.account || 'home';
+    const account = ind.account || 'workshop';
     if (!addCopper(state, account, pay)) continue;
-    out.push({ level: 'local', text: `${ind.name}结账：${copperText(pay)}，进「${account === 'home' ? '家里' : '随身'}」。` });
+    const acc = (state.player.accounts || []).find((a) => a.id === account || a.name === account);
+    out.push({ level: 'local', text: `${ind.name}结账：${copperText(pay)}，进「${acc ? acc.name : account}」。` });
   }
   return out;
 }

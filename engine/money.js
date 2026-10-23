@@ -59,12 +59,6 @@ export function addCopper(state, key, deltaCopper) {
   const d = Math.round(deltaCopper);
   a.copper = Math.max(0, a.copper + d);
   if (a.id === 'cash') state.player.wallet = fromCopper(a.copper);
-  if (a.id === 'workshop' && d) {
-    const k = `${state.clock.year}-${state.clock.doy}`;
-    const wd = state.player.workshopDaily;
-    if (!wd || wd.key !== k) state.player.workshopDaily = { key: k, copper: d };
-    else wd.copper += d;
-  }
   return true;
 }
 

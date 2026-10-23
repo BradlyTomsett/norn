@@ -2,7 +2,7 @@
 // 这里只产出"事实"（事件 + 数值），叙事交给模型。
 import { advanceClock } from './clock.js';
 import { chance, int, pick } from './rng.js';
-import { addCopper, copperText, logLedger, transferCopper } from './state.js';
+import { addCopper, copperText, logLedger } from './state.js';
 import { accrueDebts, ensureDebts, ensureWork, runBills, runLiving, runWages } from './ledger.js';
 import { ensureAssets, runIndustries } from './assets.js';
 import { decayRelations, decayReputation } from './progress.js';
@@ -126,34 +126,8 @@ export function advanceWorld(state, minutes, rng, judged) {
     if (months >= 2) addLedger(decayRelations(state, months));
   }
 
-  // 汽水工坊：每个月结一次账，整笔转给玩家（随身）
-  if (months > 0) {
-    const wk = state.player?.accounts?.find((a) => a.id === 'workshop');
-    const payout = wk ? wk.copper : 0;
-    if (payout > 0) {
-      transferCopper(state, 'workshop', 'cash', payout);
-      const t = `汽水工坊把这个月的账结了：${copperText(payout)} 已转到随身。`;
-      logEvent(state, t);
-      events.push({ level: 'local', text: t });
-    }
-  }
-
-  // 汽水工坊：每天清一次当天的账（钱留在工坊账户里，等你自己调）
-  const wd = state.player?.workshopDaily;
-  if (wd && state.player.accounts?.some((a) => a.id === 'workshop')) {
-    const key = `${state.clock.year}-${state.clock.doy}`;
-    if (wd.key !== key) {
-      if (wd.copper !== 0) {
-        const t =
-          wd.copper >= 0
-            ? `汽水工坊当日净进 ${copperText(wd.copper)}，记在工坊账上。`
-            : `汽水工坊当日净出 ${copperText(-wd.copper)}，记在工坊账上。`;
-        logEvent(state, t);
-        events.push({ level: 'local', text: t });
-      }
-      state.player.workshopDaily = { key, copper: 0 };
-    }
-  }
+  // 「汽水工坊」现在是一个正常账户：产业月收益直接进它，不再每月自动转随身。
+  // 要动用里面的钱，由玩家自己写 transfer。
 
   // 年 tick
   if (crossed.years > 0) {
