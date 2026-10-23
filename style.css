@@ -51,7 +51,7 @@ body {
 
 .msg { margin: 0 0 22px; line-height: 1.95; font-size: 16px; white-space: pre-wrap; word-break: break-word; }
 .msg p { margin: 0 0 .62em; }
-.msg .sec { color: var(--accent); letter-spacing: .08em; margin-top: 1.15em; }
+.msg .sec { color: var(--accent); font-weight: 700; letter-spacing: .08em; margin-top: 1.15em; }
 .msg .rule { color: var(--line); letter-spacing: .2em; margin: .9em 0; }
 .msg.me {
   color: #cfe2f8;

@@ -83,12 +83,12 @@ export function advanceClock(clock, minutes, rng) {
 }
 
 export function formatDate(clock) {
-  const m = MONTHS[monthOf(clock.doy) - 1];
+  const m = monthOf(clock.doy);
   const d = dayOfMonth(clock.doy);
   const hh = String(clock.hour).padStart(2, '0');
   const mm = String(clock.minute).padStart(2, '0');
   const wd = WEEKDAYS[(clock.doy + clock.year * 3) % 7];
-  return `复兴历 ${clock.year} 年 · ${m} ${d} 日 · ${hh}:${mm} · ${SEASON_CN[seasonOf(clock.doy)]} · ${WEATHER_CN[clock.weather]} · ${wd}`;
+  return `复兴历 ${clock.year} 年 · ${m} 月 ${d} 日 · ${hh}:${mm} · ${SEASON_CN[seasonOf(clock.doy)]} · ${WEATHER_CN[clock.weather]} · ${wd}`;
 }
 
 export function shortDate(clock) {
