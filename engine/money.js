@@ -31,7 +31,7 @@ export function copperText(c) {
 export const DEFAULT_ACCOUNTS = [
   { id: 'cash', name: '随身', copper: 0 },
   { id: 'home', name: '家里', copper: 0 },
-  { id: 'workshop', name: '汽水工坊', copper: 0 },
+  { id: 'workshop', name: '产业', copper: 0 },
 ];
 
 /** 老存档只有 wallet：迁移成 cash，其余账户从 0 起。 */
@@ -43,6 +43,9 @@ export function ensureAccounts(state) {
   }
   const cash = p.accounts.find((a) => a.id === 'cash');
   p.wallet = fromCopper(cash ? cash.copper : 0);
+  // 老存档里的「汽水工坊」账户统一改叫「产业」（id 不变，仍是 workshop）
+  const ws = p.accounts.find((a) => a.id === 'workshop');
+  if (ws && ws.name !== '产业') ws.name = '产业';
   return p.accounts;
 }
 

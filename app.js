@@ -54,7 +54,7 @@ const RUNTIME = `
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
     **禁止写价钱、禁止写余额**。写了具体金额会被引擎忽略或拒绝。
-    账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（汽水工坊，个人产业月收益进这里）。
+    账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（产业，个人产业月收益进这里）。
     产业收益**不会**自动转到随身，要动用就写 transfer。家族月钱、债息、吃住开销由引擎自动结算，你不要重复记。
 3c. **技能数值不要写。** 技能等级只由引擎按练习时长与难度涨；你最多只能报一个新技能的名字："skills":["商谈"]。
 4. relations 只能用下面列出的 npcId，禁止编造。
