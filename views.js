@@ -1,5 +1,6 @@
 // 角色卡各标签页的渲染：纯字符串拼接，不碰 DOM，方便单独测试。
 import { esc } from './format.js';
+import { isConsumable } from './engine/items.js';
 
 /* ---------------- 角色卡 ---------------- */
 
@@ -111,14 +112,12 @@ function viewOverview(u) {
   return out.join('');
 }
 
-// 药品 / 消耗品：药、丸、瓶、罐、水都算
-const MED_RE = /药|丹|膏|汤|散|丸|瓶|罐|水/;
-
+// 药品 / 消耗品：药、丸、瓶、罐、水、回血、清醒、气力、夜眼都算
 function viewItems(u) {
   const p = u.player;
-  const bag = p.bag || [];
-  const meds = bag.filter((b) => MED_RE.test(b.name));
-  const others = bag.filter((b) => !MED_RE.test(b.name));
+  const lines = ungradedLines(p);
+  const meds = lines.filter(isConsumable);
+  const others = lines.filter((l) => !isConsumable(l));
   const out = [];
 
   const section = (title, list) => {
@@ -130,23 +129,35 @@ function viewItems(u) {
 
   section('存货', (p.stock || []).map((s) => `${s.name} ×${s.qty}`));
   section('牲畜', (p.livestock || []).map((s) => `${s.name} ×${s.qty}`));
-  section('药品 · 消耗', meds.map((b) => `${b.name} ×${b.qty}`));
-  section('其他物品', others.map((b) => `${b.name} ×${b.qty}`));
+  section('药品 · 消耗', meds);
+  section('其他物品', others);
 
   if (!out.length) out.push('<p class="hint">身上没带什么东西。</p>');
   return out.join('');
 }
 
+// 分配原则：带品阶（灰绿蓝紫金）的进「装备」，没品阶的进「物品」。
+const bagLabel = (b) => (b.qty > 1 ? `${b.name} ×${b.qty}` : b.name);
+
+function gradedLines(p) {
+  const lines = [];
+  for (const e of p.equipment || []) if (gradeOf(e)) lines.push(e);
+  for (const b of p.bag || []) if (gradeOf(b.name)) lines.push(bagLabel(b));
+  return lines;
+}
+
+function ungradedLines(p) {
+  const lines = [];
+  for (const e of p.equipment || []) if (!gradeOf(e)) lines.push(e);
+  for (const b of p.bag || []) if (!gradeOf(b.name)) lines.push(bagLabel(b));
+  return lines;
+}
+
 function viewGear(u) {
   const p = u.player;
   const groups = new Map();
-  const others = [];
-  for (const e of p.equipment || []) {
+  for (const e of gradedLines(p)) {
     const ch = gradeOf(e);
-    if (!ch) {
-      others.push(e);
-      continue;
-    }
     if (!groups.has(ch)) groups.set(ch, []);
     groups.get(ch).push(e);
   }
@@ -158,12 +169,7 @@ function viewGear(u) {
     for (const item of list) out.push(`<div class="item">${esc(item)}</div>`);
     out.push('</div></div>');
   }
-  if (others.length) {
-    out.push(`<div class="gear-group"><div class="gh"><b style="color:var(--ink-dim)">其他物品</b><span class="note">不分品阶 · ${others.length} 件</span></div><div class="two-col">`);
-    for (const item of others) out.push(`<div class="item">${esc(item)}</div>`);
-    out.push('</div></div>');
-  }
-  if (!out.length) out.push('<p class="hint">身上没有记下来的东西。</p>');
+  if (!out.length) out.push('<p class="hint">身上还没有带品阶的装备。</p>');
   if (p.assets?.length) {
     out.push('<h3>资产</h3>');
     for (const a of p.assets) out.push(`<div class="item">${esc(a)}</div>`);

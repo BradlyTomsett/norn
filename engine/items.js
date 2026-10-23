@@ -78,3 +78,12 @@ export function effectOf(name) {
   const hit = Object.keys(CONSUMABLES).find((k) => key.includes(k));
   return hit ? CONSUMABLES[hit] : null;
 }
+
+/** 是不是药品/消耗品（用于界面归类）。 */
+export function isConsumable(name) {
+  const s = String(name || '');
+  if (!s) return false;
+  if (CONSUMABLES[s]) return true;
+  if (Object.keys(CONSUMABLES).some((k) => s.includes(k))) return true;
+  return /药|丹|膏|汤|散|丸|瓶|罐|烟|酸|清醒|气力|夜眼|回血|浮水/.test(s);
+}
