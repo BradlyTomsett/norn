@@ -2,7 +2,7 @@
 <html lang="zh"><head><meta charset="utf-8"><title>format test</title></head>
 <body><pre id="out">running…</pre>
 <script type="module">
-import { format, esc } from '../format.js';
+import { format, esc, pruneEmpty } from '../format.js';
 
 const lines = [];
 const ok = (n, c, extra = '') => lines.push(`${c ? 'PASS' : 'FAIL'} ${n}${extra ? ' :: ' + extra : ''}`);
@@ -23,6 +23,50 @@ ok('空输入不炸', format('') === '' && format(null) === '');
 const before = (sample.match(/\n/g) || []).length;
 const after = (html.match(/<p/g) || []).length;
 lines.push(`空行：原文 ${before} 个换行（其中 3 个连续空行）→ 输出 ${after} 个段落，零空段落`);
+
+/* ---------- 空段落 / 重复段落 ---------- */
+
+const withEmptyWorld = `【本次行动】
+你进了铺子。
+
+【世界动态】
+无
+
+【你现在可以做什么】
+① 看看`;
+const pruned = pruneEmpty(withEmptyWorld);
+ok('整段是「无」的小节被删掉', !pruned.includes('【世界动态】'), pruned.replace(/\n/g, ' / '));
+
+const noNews = `【世界动态】
+暂无新消息
+`;
+ok('「暂无」也算空', pruneEmpty(noNews).trim() === '', JSON.stringify(pruneEmpty(noNews)));
+
+const dup = `【当地动态】
+镇上的粮价又涨了，东头那家铺子关了门。
+
+【世界动态】
+镇上的粮价又涨了，东头那家铺子关了门。
+`;
+const dedup = pruneEmpty(dup);
+ok('【世界动态】复述【当地动态】的那句被去掉', !dedup.includes('【世界动态】'), dedup.replace(/\n/g, ' / '));
+ok('原句还在', dedup.includes('镇上的粮价又涨了'));
+
+const twice = `【世界动态】
+北边来了商队。
+
+【世界动态】
+北边来了商队。
+`;
+ok('同一小节出现两次只留一次', (pruneEmpty(twice).match(/【世界动态】/g) || []).length === 1);
+
+const shortRepeat = `【人物关系】
+他点头。
+
+【世界动态】
+他点头。
+`;
+ok('太短的行不做去重', (pruneEmpty(shortRepeat).match(/他点头。/g) || []).length === 2);
 
 document.getElementById('out').textContent = lines.join('\n');
 </script></body></html>

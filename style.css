@@ -9,6 +9,8 @@
   --accent-soft: rgba(91,143,214,.12);
   /* 玩家自己说的话：左侧金色边线，和蓝色气泡拉开距离 */
   --me-line: #c9a227;
+  /* 正文字号缩放，存档页里可调 */
+  --font-scale: 1;
   --red: #b4553f;
   --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
 }
@@ -51,7 +53,7 @@ body {
   scroll-behavior: smooth;
 }
 
-.msg { margin: 0 0 22px; line-height: 1.95; font-size: 16px; white-space: pre-wrap; word-break: break-word; }
+.msg { margin: 0 0 22px; line-height: 1.95; font-size: calc(16px * var(--font-scale)); white-space: pre-wrap; word-break: break-word; }
 .msg p { margin: 0 0 .62em; }
 .msg .sec { color: var(--accent); font-weight: 700; letter-spacing: .08em; margin-top: 1.15em; }
 .msg .rule { color: var(--line); letter-spacing: .2em; margin: .9em 0; }
@@ -62,7 +64,7 @@ body {
   border-radius: 10px;
   padding: 10px 14px;
   margin-left: 18px;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
 }
 .msg.err { color: var(--red); font-size: 14px; }
 .cursor::after { content: "▍"; animation: blink 1s steps(2) infinite; color: var(--accent); }
@@ -80,7 +82,7 @@ body {
   flex: 1; resize: none;
   background: #100e0c; color: var(--ink);
   border: 1px solid var(--line); border-radius: 12px;
-  padding: 11px 12px; font-family: var(--serif); font-size: 16px;
+  padding: 11px 12px; font-family: var(--serif); font-size: calc(16px * var(--font-scale));
   line-height: 1.5; max-height: 40vh;
 }
 #input:focus { outline: none; border-color: #3d342b; }
@@ -253,7 +255,7 @@ button.primary {
   .two-col.people .ob { font-size: 11.5px; }
 }
 @media (max-width: 380px) {
-  .msg { font-size: 15px; }
+  .msg { font-size: calc(15px * var(--font-scale)); }
   #topbar .title { letter-spacing: .2em; }
 }
 

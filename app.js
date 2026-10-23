@@ -7,7 +7,7 @@ import { advanceWorld, engineDelta } from './engine/tick.js';
 import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
 import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
-import { esc, format } from './format.js';
+import { esc, format, pruneEmpty } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 
 const BUILD = '2026-10-23 · r5';
@@ -42,6 +42,7 @@ const RUNTIME = `
    + 【你现在可以做什么】6–8 条
    + 一句「你不需要从以上选项中选择」。
    **没有变化的段落整段省略**——不要写「无。」「无变化。」来占位。
+   【世界动态】只在真有新消息时才写；没有就整段不写，也不要复述【当地动态】里已经说过的事。
    **不要输出【当前角色】块**（玩家在状态面板里能看）。也不要输出【玩家自由行动】这个小标题。
 2. 另起一行输出一个 json 代码块，只写“变化”。
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
@@ -157,54 +158,6 @@ function splitDelta(text) {
   }
 }
 
-const EMPTY_LINE = /^(【[^】]{1,12}】\s*)?(无|没有|无变化|无进出|无明显变化|无异常|（无）)[。.！!]?$/;
-
-function pruneEmpty(text) {
-  const lines = String(text || '').split('\n');
-  const out = [];
-  let head = null;
-  let body = [];
-  const flush = () => {
-    if (!head) return;
-    const kept = [];
-    for (const l of body) {
-      if (EMPTY_LINE.test(l.trim())) continue;
-      if (l.trim() === '' && (kept.length === 0 || kept[kept.length - 1].trim() === '')) continue;
-      kept.push(l);
-    }
-    while (kept.length && kept[kept.length - 1].trim() === '') kept.pop();
-    if (kept.length) out.push(head, ...kept);
-    head = null;
-    body = [];
-  };
-  for (const line of lines) {
-    if (/^【[^】]{1,12}】\s*$/.test(line.trim())) {
-      flush();
-      head = line;
-      body = [];
-    } else if (head) body.push(line);
-    else out.push(line);
-  }
-  flush();
-  let t = out.join('\n');
-  t = t.replace(/(?:^|\n)(?:━{4,}[ \t]*\n){2,}/g, '\n━━━━━━━━━━\n');
-  return t.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function stripSheet(text) {
-  let t = String(text || '');
-  const i = t.indexOf('【当前角色】');
-  if (i >= 0) {
-    const rest = t.slice(i + 6);
-    const m = rest.match(/【世界动态】|【你现在可以做什么】|【玩家自由行动】/);
-    t = m ? t.slice(0, i) + rest.slice(m.index) : t.slice(0, i);
-  }
-  t = t.replace(/\n*(━+\s*)?【玩家自由行动】\s*$/, '');
-  // 模型偶尔会自言自语"修正：……"，那不是游戏内容
-  t = t.split('\n').filter((l) => !/^(修正|更正|补充说明|说明)[：:]/.test(l.trim())).join('\n');
-  return t.replace(/\n{3,}/g, '\n\n').trim();
-}
-
 /* ---------------- 渲染 ---------------- */
 
 function scrollToEnd() {
@@ -314,6 +267,36 @@ $('#start').onclick = () => {
   scrollToElement(first);
 };
 
+/* ---------------- 字号 ---------------- */
+
+const FONT_KEY = 'norn.font';
+
+function currentFont() {
+  const v = Number(localStorage.getItem(FONT_KEY));
+  return Number.isFinite(v) && v >= 0.8 && v <= 1.6 ? v : 1;
+}
+
+function markFontChip(scale) {
+  for (const b of document.querySelectorAll('#font-chips .chip')) {
+    b.classList.toggle('selected', Math.abs(Number(b.dataset.font) - scale) < 0.01);
+  }
+}
+
+function applyFont(v, persist = true) {
+  const s = Math.min(1.6, Math.max(0.8, Number(v) || 1));
+  document.documentElement.style.setProperty('--font-scale', String(s));
+  if (persist) localStorage.setItem(FONT_KEY, String(s));
+  markFontChip(s);
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('#font-chips .chip');
+  if (!b) return;
+  applyFont(b.dataset.font);
+});
+
+applyFont(currentFont(), false);
+
 /* ---------------- 载入 / 存档 ---------------- */
 
 function loadGame(id) {
@@ -356,6 +339,7 @@ function renderSaves() {
 
 $('#btn-saves').onclick = () => {
   renderSaves();
+  markFontChip(currentFont());
   updateGhStatus();
   $('#saves').classList.remove('hidden');
 };
