@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#141210" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>诺恩 · 人生模拟</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header id="topbar">
+  <div class="title">诺恩</div>
+  <div class="date" id="date">——</div>
+  <button id="btn-saves" class="ghost">存档</button>
+  <button id="btn-panel" class="ghost">状态</button>
+</header>
+
+<main id="log" class="log"></main>
+
+<div id="composer" class="composer hidden">
+  <textarea id="input" rows="2" placeholder="你要做什么？（直接说人话）"></textarea>
+  <button id="send" class="send">说</button>
+</div>
+
+<!-- 首次使用：填 Key -->
+<div id="gate" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>先填一个 API Key</h1>
+    <p class="hint">这个游戏没有服务器，所有请求都从这台手机直接发给 DeepSeek。<br>Key 保存在本机浏览器里，不会传到别处。</p>
+    <h2>API Key</h2>
+    <input id="gate-key" class="name-input" placeholder="sk-..." autocomplete="off" />
+    <h2>模型</h2>
+    <input id="gate-model" class="name-input" placeholder="deepseek-flash" autocomplete="off" />
+    <button id="gate-go" class="primary">开始</button>
+    <p class="hint" style="margin-top:14px">没有 Key 的话，去 platform.deepseek.com 申请一个。</p>
+  </div>
+</div>
+
+<!-- 开局向导 -->
+<div id="wizard" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>你要出生在哪里？</h1>
+    <div id="regions" class="cards"></div>
+    <div id="step2" class="hidden">
+      <h2>你的家</h2>
+      <div id="families" class="chips"></div>
+      <h2>你是</h2>
+      <div id="genders" class="chips">
+        <button class="chip" data-gender="male">男孩</button>
+        <button class="chip" data-gender="female">女孩</button>
+      </div>
+      <h2>名字（可留空）</h2>
+      <input id="name" class="name-input" placeholder="留空就随机取一个" />
+      <button id="start" class="primary">出生</button>
+    </div>
+  </div>
+</div>
+
+<!-- 存档 -->
+<div id="saves" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>存档</h1>
+    <p class="hint">每回合自动存在这台手机的浏览器里。换设备请用「导出」。</p>
+    <div class="chips" style="margin: 14px 0 16px">
+      <button id="btn-snap" class="chip">＋ 存一个快照</button>
+      <button id="btn-export" class="chip">导出</button>
+      <button id="btn-import" class="chip">导入</button>
+      <input id="import-file" type="file" accept="application/json,.json" hidden />
+    </div>
+    <div id="save-list" class="cards"></div>
+    <div class="chips" style="margin-top:16px">
+      <button id="btn-settings" class="chip">设置</button>
+    </div>
+    <button id="btn-saves-close" class="primary">返回</button>
+  </div>
+</div>
+
+<!-- 设置 -->
+<div id="settings" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>设置</h1>
+    <h2>API Key</h2>
+    <input id="set-key" class="name-input" placeholder="sk-..." autocomplete="off" />
+    <h2>模型</h2>
+    <input id="set-model" class="name-input" placeholder="deepseek-flash" />
+    <h2>推理强度</h2>
+    <div class="chips" id="set-effort">
+      <button class="chip" data-effort="low">low（快）</button>
+      <button class="chip" data-effort="high">high</button>
+      <button class="chip" data-effort="max">max（细）</button>
+    </div>
+    <button id="set-save" class="primary">保存</button>
+    <button id="set-close" class="primary" style="background:transparent;color:var(--ink-dim);border:1px solid var(--line)">返回</button>
+  </div>
+</div>
+
+<!-- 角色卡 -->
+<div id="sheet" class="sheet hidden">
+  <div class="sheet-inner charsheet">
+    <div class="cs-top">
+      <button id="btn-close" class="ghost">关闭</button>
+      <span class="cs-place" id="cs-place">——</span>
+    </div>
+    <h1 class="cs-name" id="cs-name">——</h1>
+    <div class="cs-sub" id="cs-sub">——</div>
+    <nav class="tabs" id="cs-tabs">
+      <button class="tab active" data-tab="overview">概览</button>
+      <button class="tab" data-tab="stats">属性</button>
+      <button class="tab" data-tab="gear">装备</button>
+      <button class="tab" data-tab="people">关系</button>
+      <button class="tab" data-tab="clues">线索</button>
+    </nav>
+    <div id="cs-body" class="cs-body"></div>
+    <div class="drawer-foot">
+      <button id="btn-new" class="ghost">新的一局</button>
+      <button id="btn-del" class="ghost danger">删档</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

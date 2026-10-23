@@ -1,0 +1,10 @@
+﻿{
+  "name": "诺恩 · 人生模拟",
+  "short_name": "诺恩",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#141210",
+  "theme_color": "#141210",
+  "orientation": "portrait",
+  "icons": []
+}
