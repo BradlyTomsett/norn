@@ -7,6 +7,7 @@ import { advanceWorld, engineDelta } from './engine/tick.js';
 import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
 import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
+import { esc, format } from './format.js';
 
 const BUILD = '2026-10-23 · r5';
 
@@ -195,21 +196,6 @@ function stripSheet(text) {
 }
 
 /* ---------------- 渲染 ---------------- */
-
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-function format(raw) {
-  return esc(raw)
-    .split('\n')
-    .map((line) => {
-      const t = line.trim();
-      if (!t) return '<p>&nbsp;</p>';
-      if (/^【[^】]{1,20}】$/.test(t)) return `<p class="sec">${t}</p>`;
-      if (/^━+$/.test(t)) return '<p class="rule">────────────</p>';
-      return `<p>${line}</p>`;
-    })
-    .join('');
-}
 
 function scrollToEnd() {
   logEl.scrollTop = logEl.scrollHeight;
@@ -760,21 +746,24 @@ $('#btn-panel').onclick = () => openSheet();
 $('#btn-close').onclick = () => $('#sheet').classList.add('hidden');
 
 $('#btn-new').onclick = () => {
-  $('#sheet').classList.add('hidden');
   if (!confirm('开新的一局？当前这局不会被删除，可以在存档里找回来。')) return;
   app.saveId = null;
   app.ui = null;
+  app.messages = [];
   showMenu();
 };
 
 $('#btn-del').onclick = () => {
-  if (!app.saveId) return;
-  if (!confirm('删掉这一局？无法恢复。')) return;
+  if (!app.saveId) {
+    alert('现在没有打开的存档。先在「存档」里选一份进来，再删。');
+    return;
+  }
+  if (!confirm('删掉这一局？删了就找不回来（云端备份还在的话可以恢复）。')) return;
   store.deleteSave(app.saveId);
   app.saveId = null;
   app.ui = null;
-  $('#sheet').classList.add('hidden');
-  location.reload();
+  app.messages = [];
+  showMenu();
 };
 
 /* ---------------- GitHub 云存档 ---------------- */

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>format test</title></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+import { format, esc } from '../format.js';
+
+const lines = [];
+const ok = (n, c, extra = '') => lines.push(`${c ? 'PASS' : 'FAIL'} ${n}${extra ? ' :: ' + extra : ''}`);
+
+const sample = '第一段。\n\n\n第二段，前面有两个空行。\n\n【本回合】\n内容。\n\n\n━━━━━━\n结尾。\n';
+const html = format(sample);
+
+ok('不产生空段落', !html.includes('&nbsp;'));
+ok('没有连续空 <p></p>', !html.includes('<p></p>'));
+ok('章节标题保留样式', html.includes('<p class="sec">【本回合】</p>'));
+ok('分隔线保留', html.includes('<p class="rule">'));
+ok('段落数正确（4 正文 + 标题 + 分隔线）', (html.match(/<p/g) || []).length === 6, String((html.match(/<p/g) || []).length));
+ok('行首尾空格被去掉', html.includes('<p>第二段，前面有两个空行。</p>'));
+ok('HTML 被转义', esc('<b>') === '&lt;b&gt;');
+ok('空输入不炸', format('') === '' && format(null) === '');
+
+// 计算一下空行减少量
+const before = (sample.match(/\n/g) || []).length;
+const after = (html.match(/<p/g) || []).length;
+lines.push(`空行：原文 ${before} 个换行（其中 3 个连续空行）→ 输出 ${after} 个段落，零空段落`);
+
+document.getElementById('out').textContent = lines.join('\n');
+</script></body></html>
