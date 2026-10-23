@@ -71,6 +71,12 @@
       <input id="import-file" type="file" accept="application/json,.json" hidden />
     </div>
     <div id="save-list" class="cards"></div>
+    <h2 style="margin-top:22px">GitHub 云存档</h2>
+    <p class="hint" id="gh-status">未配置。到「设置」里填仓库和令牌，就能把存档同步到 GitHub。</p>
+    <div class="chips" style="margin-top:10px">
+      <button id="btn-gh-backup" class="chip">备份当前</button>
+      <button id="btn-gh-restore" class="chip">从云端恢复</button>
+    </div>
     <div class="chips" style="margin-top:16px">
       <button id="btn-settings" class="chip">设置</button>
     </div>
@@ -92,8 +98,32 @@
       <button class="chip" data-effort="high">high</button>
       <button class="chip" data-effort="max">max（细）</button>
     </div>
+    <h2 style="margin-top:26px">GitHub 云存档</h2>
+    <p class="hint">填一个**只有这个仓库权限**的令牌（Contents: Read and write）。<br>
+      建议单独建一个 <b>private</b> 仓库存存档，不然游戏进度会公开。</p>
+    <h2>仓库（用户名/仓库名）</h2>
+    <input id="set-gh-repo" class="name-input" placeholder="BradlyTomsett/norn-saves" autocomplete="off" />
+    <h2>分支</h2>
+    <input id="set-gh-branch" class="name-input" placeholder="main" autocomplete="off" />
+    <h2>令牌</h2>
+    <input id="set-gh-token" class="name-input" placeholder="github_pat_..." autocomplete="off" />
+    <div class="chips" style="margin-top:12px">
+      <button id="set-gh-test" class="chip">测试连接</button>
+    </div>
+    <p class="hint" id="set-gh-msg" style="margin-top:8px"></p>
+
     <button id="set-save" class="primary">保存</button>
     <button id="set-close" class="primary" style="background:transparent;color:var(--ink-dim);border:1px solid var(--line)">返回</button>
+  </div>
+</div>
+
+<!-- 云端存档 -->
+<div id="restore" class="sheet hidden">
+  <div class="sheet-inner">
+    <h1>从 GitHub 恢复</h1>
+    <p class="hint">选一份装回这台手机。会生成一个新存档，不影响原有的。</p>
+    <div id="gh-list" class="cards" style="margin-top:14px"></div>
+    <button id="btn-restore-close" class="primary">返回</button>
   </div>
 </div>
 

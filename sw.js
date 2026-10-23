@@ -1,5 +1,5 @@
-const CACHE = 'norn-v1';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './llm.js', './store.js',
+const CACHE = 'norn-v2';
+const ASSETS = ['./', './index.html', './style.css', './app.js', './llm.js', './store.js', './sync.js',
   './engine/clock.js', './engine/rng.js', './engine/state.js', './engine/tick.js', './engine/resolve.js', './engine/worldgen.js',
   './prompt/rules.md', './prompt/worldbook.md', './manifest.webmanifest'];
 

@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import * as llm from './llm.js';
+import * as sync from './sync.js';
 import { REGIONS, generateWorld, openingText } from './engine/worldgen.js';
 import { judge, judgeBrief } from './engine/resolve.js';
 import { advanceWorld, engineDelta } from './engine/tick.js';
@@ -331,6 +332,7 @@ function renderSaves() {
 
 $('#btn-saves').onclick = () => {
   renderSaves();
+  updateGhStatus();
   $('#saves').classList.remove('hidden');
 };
 $('#btn-saves-close').onclick = () => $('#saves').classList.add('hidden');
@@ -373,7 +375,34 @@ function openSettings() {
   $('#set-key').value = llm.getKey();
   $('#set-model').value = llm.getModel();
   for (const b of $('#set-effort').children) b.classList.toggle('selected', b.dataset.effort === llm.getEffort());
+  const gh = sync.ghConfig();
+  $('#set-gh-repo').value = gh.owner && gh.repo ? `${gh.owner}/${gh.repo}` : '';
+  $('#set-gh-branch').value = gh.branch || 'main';
+  $('#set-gh-token').value = gh.token || '';
+  $('#set-gh-msg').textContent = sync.ghReady() ? '已配置。' : '';
   $('#settings').classList.remove('hidden');
+}
+
+$('#set-gh-test').onclick = async () => {
+  saveGhFromForm();
+  $('#set-gh-msg').textContent = '测试中…';
+  try {
+    const r = await sync.ghTest();
+    $('#set-gh-msg').textContent = `连接成功：${r.full}（${r.private ? '私有' : '公开'}）`;
+  } catch (e) {
+    $('#set-gh-msg').textContent = '失败：' + e.message;
+  }
+};
+
+function saveGhFromForm() {
+  const repo = $('#set-gh-repo').value.trim();
+  const [owner, name] = repo.split('/');
+  sync.setGhConfig({
+    owner: owner || '',
+    repo: name || '',
+    branch: $('#set-gh-branch').value.trim() || 'main',
+    token: $('#set-gh-token').value.trim(),
+  });
 }
 
 $('#btn-settings').onclick = openSettings;
@@ -388,7 +417,9 @@ $('#set-save').onclick = () => {
   llm.setModel($('#set-model').value);
   const sel = $('#set-effort').querySelector('.selected');
   if (sel) llm.setEffort(sel.dataset.effort);
+  saveGhFromForm();
   $('#settings').classList.add('hidden');
+  updateGhStatus();
   alert('已保存。');
 };
 $('#set-close').onclick = () => $('#settings').classList.add('hidden');
@@ -454,6 +485,12 @@ async function send() {
 
     store.putSave(state);
     store.appendMessage(app.saveId, 'assistant', cleanText);
+    if (sync.ghReady()) {
+      sync.backupSave(state).then(() => updateGhStatus()).catch((e) => {
+        const el = $('#gh-status');
+        if (el) el.textContent = '自动备份失败：' + e.message;
+      });
+    }
     app.ui = uiState(state);
 
     bubble.innerHTML = format(cleanText);
@@ -692,6 +729,73 @@ $('#btn-del').onclick = () => {
   $('#sheet').classList.add('hidden');
   location.reload();
 };
+
+/* ---------------- GitHub 云存档 ---------------- */
+
+function updateGhStatus() {
+  const el = $('#gh-status');
+  if (!el) return;
+  if (!sync.ghReady()) {
+    el.textContent = '未配置。到「设置」里填仓库和令牌，就能把存档同步到 GitHub。';
+    return;
+  }
+  const c = sync.ghConfig();
+  const last = localStorage.getItem('norn.gh.last');
+  el.textContent = `已连接 ${c.owner}/${c.repo}（${c.branch}）` + (last ? ` · 上次备份 ${new Date(last).toLocaleString()}` : ' · 还没备份过');
+}
+
+$('#btn-gh-backup').onclick = async () => {
+  if (!app.saveId) return alert('先开始一局。');
+  if (!sync.ghReady()) return alert('先去「设置」里配置 GitHub。');
+  const el = $('#gh-status');
+  el.textContent = '正在上传…';
+  try {
+    const path = await sync.backupSave(store.getSave(app.saveId));
+    updateGhStatus();
+    alert('已备份：' + path);
+  } catch (e) {
+    el.textContent = '备份失败：' + e.message;
+  }
+};
+
+$('#btn-gh-restore').onclick = async () => {
+  if (!sync.ghReady()) return alert('先去「设置」里配置 GitHub。');
+  const box = $('#gh-list');
+  box.innerHTML = '<p class="hint">读取中…</p>';
+  $('#restore').classList.remove('hidden');
+  try {
+    const files = await sync.ghList('saves');
+    box.innerHTML = '';
+    if (!files.length) {
+      box.innerHTML = '<p class="hint">云端还没有存档。</p>';
+      return;
+    }
+    for (const f of files) {
+      const b = document.createElement('button');
+      b.className = 'card';
+      b.innerHTML = `<b>${esc(f.name)}</b><span>${Math.round(f.size / 1024)} KB</span>`;
+      b.onclick = async () => {
+        try {
+          const state = await sync.restoreSave(f.path);
+          state.saveId = store.newId();
+          state.createdAt = new Date().toISOString();
+          state.label = '来自 GitHub';
+          store.putSave(state, []);
+          $('#restore').classList.add('hidden');
+          loadGame(state.saveId);
+          alert('已恢复：' + state.player.name);
+        } catch (e) {
+          alert('恢复失败：' + e.message);
+        }
+      };
+      box.appendChild(b);
+    }
+  } catch (e) {
+    box.innerHTML = `<p class="hint">读取失败：${esc(e.message)}</p>`;
+  }
+};
+
+$('#btn-restore-close').onclick = () => $('#restore').classList.add('hidden');
 
 /* ---------------- 启动 ---------------- */
 

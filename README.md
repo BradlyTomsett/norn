@@ -121,3 +121,37 @@ mobile/
   engine/               与服务器版同一套引擎（纯 JS，无 Node 依赖）
   prompt/               核心规则 + 世界设定（运行时 fetch）
 ```
+
+---
+
+## 云存档（GitHub）
+
+存档除了存在手机里，还可以同步到 GitHub 仓库——换设备、清缓存都不怕。
+
+### 准备
+
+1. 新建一个仓库，**建议 private**（否则你的游戏进度会公开）
+2. 建一个 **Fine-grained token**：
+   - Repository access → 只选这个仓库
+   - Permissions → **Contents: Read and write**
+   - 有效期按需，别设永久
+
+### 配置
+
+游戏里「存档」→「设置」→ 填：
+
+| 项 | 例子 |
+|---|---|
+| 仓库 | `BradlyTomsett/norn-saves` |
+| 分支 | `main` |
+| 令牌 | `github_pat_...` |
+
+点「测试连接」，成功会显示仓库名和公开/私有。
+
+### 使用
+
+- **自动**：每回合结束后自动备份到 `saves/<存档id>.json`
+- **手动**：「存档」→「备份当前」
+- **恢复**：「存档」→「从云端恢复」→ 选一份 → 生成本地副本
+
+> 令牌存在手机浏览器的 localStorage 里，和 API Key 一样。只给它一个仓库的 Contents 权限，泄露面就很小。
