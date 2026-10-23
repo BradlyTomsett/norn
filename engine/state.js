@@ -581,7 +581,9 @@ export function uiState(state) {
         const npc = state.npcs.find((x) => x.id === r.npcId);
         return {
           name: npc?.name || r.npcId,
+          race: RACE_CN[npc?.race] || npc?.race || '',
           profession: npc?.profession || '',
+          loadout: npc?.loadout || [],
           observable: r.observable,
           trust: r.trust,
           closeness: r.closeness,

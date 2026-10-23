@@ -176,7 +176,12 @@ function viewPeople(u) {
   if (!list.length) return '<p class="hint">还没有记下来的人。</p>';
   const out = [`<p class="hint">共 ${list.length} 人，按亲近程度排。</p><div class="two-col people">`];
   for (const r of list) {
-    out.push(`<div class="person"><div class="nm">${esc(r.name)}<span>${esc(r.profession || '')}</span></div><div class="ob">${esc(r.observable || '')}</div></div>`);
+    const who = [r.race, r.profession].filter(Boolean).join(' · ');
+    out.push(
+      `<div class="person"><div class="nm">${esc(r.name)}<span>${esc(who)}</span></div>` +
+        (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
+        `<div class="ob">${esc(r.observable || '')}</div></div>`,
+    );
   }
   out.push('</div>');
   return out.join('');

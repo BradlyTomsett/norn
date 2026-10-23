@@ -29,6 +29,10 @@ const u = {
     reputation: { 临河城: 80 }, location: { siteName: '石桥铺 · 粮行后巷' },
     goals: ['成为世界第一的剑士'], problems: ['走私线只交了半截'], unfinished: [],
     equipment: ['定制长剑（金）', '长剑（紫）×2', '厚外套'],
+    relations: [
+      { name: '瑟拉', race: '半精灵', profession: '冒险者（B级）', loadout: ['弓箭', '短刀'], observable: '她跟在你半步之后', closeness: 88 },
+      { name: '老杜', race: '人类', profession: '冒险者（B级）', loadout: ['大锤×2'], observable: '他叫你「头儿」', closeness: 45 },
+    ],
   },
 };
 
@@ -55,6 +59,11 @@ ok('金疮药归到药品', /药品 · 消耗[\s\S]*金疮药/.test(items));
 ok('短刀归到其他物品', /其他物品[\s\S]*短刀（绿）/.test(items));
 
 ok('装备页仍按品阶分组', gear.includes('传说') && gear.includes('史诗'));
+
+const people = VIEWS.people(u);
+ok('关系页显示半精灵', people.includes('半精灵'));
+ok('关系页显示惯用武器', people.includes('惯用：弓箭、短刀'), people.match(/惯用：[^<]*/g)?.join(' | '));
+ok('关系页显示大锤×2', people.includes('大锤×2'));
 
 document.getElementById('stage').innerHTML = ov;
 document.getElementById('out').textContent = lines.join('\n');
