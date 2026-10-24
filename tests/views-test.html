@@ -68,6 +68,9 @@ ok('带品阶的短刀不在物品-其他', !/其他物品[\s\S]*短刀/.test(it
 ok('引水石不算药品', /其他物品[\s\S]*引水石/.test(items));
 
 ok('装备页仍按品阶分组', gear.includes('传说') && gear.includes('史诗'));
+ok('同名同色合并并写数量', gear.includes('长剑 ×2'), gear.match(/长剑[^<]*/)?.[0]);
+ok('单件也写 ×1', gear.includes('短刀 ×1'));
+ok('不同颜色分开计', /定制长剑 ×1/.test(gear) && /长剑 ×2/.test(gear));
 
 const people = VIEWS.people(u);
 ok('关系页显示半精灵', people.includes('半精灵'));

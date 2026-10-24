@@ -232,18 +232,34 @@ const baseName = (s) => String(s || '').replace(/（(灰|绿|蓝|紫|金)(?:[，
 
 function viewGear(u) {
   const p = u.player;
-  const groups = new Map();
-  for (const e of gradedLines(p)) {
-    const ch = gradeOf(e);
-    if (!groups.has(ch)) groups.set(ch, []);
-    groups.get(ch).push(e);
+  // 同名（含同品阶）合并成一条，后面写数量
+  const counts = new Map();
+  for (const e of p.equipment || []) {
+    if (!gradeOf(e)) continue;
+    const m = String(e).match(/[×xX]\s*(\d+)\s*$/);
+    const qty = m ? parseInt(m[1], 10) || 1 : 1;
+    const name = m ? String(e).replace(/[×xX]\s*\d+\s*$/, '').trim() : e;
+    counts.set(name, (counts.get(name) || 0) + qty);
   }
+  for (const b of p.bag || []) {
+    if (!gradeOf(b.name)) continue;
+    counts.set(b.name, (counts.get(b.name) || 0) + b.qty);
+  }
+
+  const groups = new Map();
+  for (const [name, qty] of counts) {
+    const ch = gradeOf(name);
+    if (!groups.has(ch)) groups.set(ch, []);
+    groups.get(ch).push({ name, qty });
+  }
+
   const out = [];
   for (const [ch, label, cls] of GRADE_ORDER) {
     const list = groups.get(ch);
     if (!list?.length) continue;
-    out.push(`<div class="gear-group"><div class="gh"><span class="badge c-${cls}">${ch}</span><b>${label}</b><span class="note">${list.length} 件</span></div><div class="two-col">`);
-    for (const item of list) out.push(`<div class="item g-${cls}">${esc(baseName(item))}</div>`);
+    const total = list.reduce((s, x) => s + x.qty, 0);
+    out.push(`<div class="gear-group"><div class="gh"><span class="badge c-${cls}">${ch}</span><b>${label}</b><span class="note">${total} 件</span></div><div class="two-col">`);
+    for (const item of list) out.push(`<div class="item g-${cls}">${esc(baseName(item.name))} ×${item.qty}</div>`);
     out.push('</div></div>');
   }
   if (!out.length) out.push('<p class="hint">身上还没有带品阶的装备。</p>');
@@ -255,10 +271,7 @@ function viewGear(u) {
   const gearGroups = GRADE_ORDER.map(([ch, label, cls]) => ({
     label,
     cls,
-    names: [
-      ...(p.equipment || []).filter((e) => gradeOf(e) === ch),
-      ...(p.bag || []).filter((b) => gradeOf(b.name) === ch).map((b) => b.name),
-    ],
+    names: [...counts.keys()].filter((n) => gradeOf(n) === ch),
   }));
   out.push(itemTool('gear', gearGroups, '带品阶的装备，同名再加大一次就是多一件；没品阶的会进物品页。'));
   return out.join('');
