@@ -160,6 +160,65 @@ function addMessage(role, text) {
   return el;
 }
 
+/* ---------------- 右侧快速索引 ---------------- */
+
+function markTocActive(tick) {
+  const rail = $('#toc');
+  if (!rail) return;
+  for (const t of rail.children) t.classList.toggle('on', t === tick);
+}
+
+function renderToc() {
+  const rail = $('#toc');
+  if (!rail) return;
+  const msgs = Array.from(logEl.querySelectorAll('.msg'));
+  rail.innerHTML = '';
+  if (msgs.length < 6) {
+    rail.classList.add('hidden');
+    return;
+  }
+  rail.classList.remove('hidden');
+  msgs.forEach((el, i) => {
+    const tick = document.createElement('i');
+    if (el.classList.contains('me')) tick.classList.add('me');
+    tick.title = `第 ${i + 1} 条`;
+    tick.addEventListener('click', (e) => {
+      e.stopPropagation();
+      scrollToElement(el);
+      markTocActive(tick);
+    });
+    rail.appendChild(tick);
+  });
+  markTocActive(rail.lastElementChild);
+}
+
+let tocFrame = null;
+
+function updateTocActive() {
+  const rail = $('#toc');
+  if (!rail || rail.classList.contains('hidden')) return;
+  const msgs = Array.from(logEl.querySelectorAll('.msg'));
+  if (!msgs.length) return;
+  const top = logEl.getBoundingClientRect().top + 40;
+  let idx = 0;
+  msgs.forEach((el, i) => {
+    if (el.getBoundingClientRect().top <= top) idx = i;
+  });
+  markTocActive(rail.children[idx]);
+}
+
+logEl.addEventListener(
+  'scroll',
+  () => {
+    if (tocFrame) return;
+    tocFrame = requestAnimationFrame(() => {
+      tocFrame = null;
+      updateTocActive();
+    });
+  },
+  { passive: true },
+);
+
 /* ---------------- 开局 ---------------- */
 
 const FAMILY_LABEL = {
@@ -292,6 +351,7 @@ function loadGame(id) {
   let last = null;
   for (const m of app.messages) last = addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
   renderSheet();
+  renderToc();
   if (last) scrollToElement(last);
   else scrollToEnd();
 }
@@ -499,6 +559,7 @@ async function send() {
     app.streaming = false;
     sendEl.disabled = false;
     inputEl.focus();
+    renderToc();
   }
 }
 
@@ -667,6 +728,8 @@ function boot2() {
 function showMenu() {
   composerEl.classList.add('hidden');
   logEl.innerHTML = '';
+  $('#toc').classList.add('hidden');
+  $('#toc').innerHTML = '';
   for (const id of ['#wizard', '#custom', '#saves', '#settings', '#sheet']) {
     const el = $(id);
     if (el) el.classList.add('hidden');
