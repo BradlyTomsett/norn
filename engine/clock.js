@@ -6,7 +6,7 @@ export const MONTHS = [
   '日长月', '金月', '收获月', '酒月', '叶落月', '长夜月',
 ];
 
-export const WEEKDAYS = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'];
+export const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
 export function seasonOf(doy) {
   const m = monthOf(doy);
