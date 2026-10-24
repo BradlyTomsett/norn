@@ -123,10 +123,22 @@ export function addItem(state, name, qty = 1) {
     return { ok: true, where: 'stock', count };
   }
 
-  const inBeast = Array.isArray(p.livestock) ? p.livestock.find((s) => s.name === n) : null;
-  if (inBeast) {
-    inBeast.qty += count;
-    return { ok: true, where: 'livestock', count };
+  const inVehicle = Array.isArray(p.vehicles) ? p.vehicles.find((s) => s.name === n) : null;
+  if (inVehicle) {
+    inVehicle.qty += count;
+    return { ok: true, where: 'vehicle', count };
+  }
+
+  // 新名字按语义归位：马/车/船 → 交通工具，猪牛羊鸡鸭 → 存货
+  if (/马|车|船|舟|雪橇|驮兽|骆驼/.test(n)) {
+    if (!Array.isArray(p.vehicles)) p.vehicles = [];
+    p.vehicles.push({ name: n, qty: count });
+    return { ok: true, where: 'vehicle', count };
+  }
+  if (/猪|牛|羊|鸡|鹅|鸭|牲畜|牲口/.test(n)) {
+    if (!Array.isArray(p.stock)) p.stock = [];
+    p.stock.push({ name: n, qty: count });
+    return { ok: true, where: 'stock', count };
   }
 
   p.bag.push({ name: n, qty: count });
@@ -160,7 +172,11 @@ export function removeItem(state, name, qty = 1) {
     return { ok: true, where: 'equipment', count: drop.length };
   }
 
-  for (const [listKey, where] of [['stock', 'stock'], ['livestock', 'livestock']]) {
+  for (const [listKey, where] of [
+    ['stock', 'stock'],
+    ['vehicles', 'vehicle'],
+    ['livestock', 'livestock'],
+  ]) {
     const list = Array.isArray(p[listKey]) ? p[listKey] : [];
     const row = list.find((s) => s.name === n);
     if (!row) continue;

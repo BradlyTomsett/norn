@@ -295,7 +295,8 @@ try {
   s14.player.assets = ['临河城汽水工坊（阿珍打理）', '六国联盟 165 家分厂', '枣红马一匹', '皮货：牛皮 10、雪狼皮 10', '家中存粮一批'];
   ensureAssets(s14);
   eq('产业拆出 2 条', s14.player.industries.length, 2);
-  eq('牲畜拆出 1 条', s14.player.livestock.length, 1);
+  eq('马拆成交通工具 1 条', s14.player.vehicles.length, 1);
+  eq('牲畜列表清空', s14.player.livestock.length, 0);
   eq('存货拆出 3 条', s14.player.stock.length, 3);
   eq('皮货按数量拆', s14.player.stock.find((x) => x.name === '牛皮').qty, 10);
   eq('存粮剩下的 assets 为空', s14.player.assets.length, 0);
@@ -350,15 +351,15 @@ try {
   // 存货 / 牲畜 也能按名字增减
   const s19 = fresh();
   s19.player.stock = [{ name: '牛皮', qty: 10 }];
-  s19.player.livestock = [{ name: '枣红马', qty: 1 }];
+  s19.player.vehicles = [{ name: '枣红马', qty: 1 }];
   const st1 = addItem(s19, '牛皮', 2);
   ok('存货按名字累加', st1.where === 'stock' && s19.player.stock[0].qty === 12, JSON.stringify(s19.player.stock));
   const st2 = removeItem(s19, '牛皮', 5);
   ok('存货能减', st2.where === 'stock' && s19.player.stock[0].qty === 7);
   const st3 = addItem(s19, '枣红马', 1);
-  ok('牲畜按名字累加', st3.where === 'livestock' && s19.player.livestock[0].qty === 2);
+  ok('交通工具按名字累加', st3.where === 'vehicle' && s19.player.vehicles[0].qty === 2);
   const st4 = removeItem(s19, '枣红马', 2);
-  ok('牲畜减到 0 就消失', st4.ok && s19.player.livestock.length === 0);
+  ok('交通工具减到 0 就消失', st4.ok && s19.player.vehicles.length === 0);
 
   // --- 提示词块 ---
   const s10 = fresh();

@@ -22,7 +22,8 @@ const u = {
     accounts: [{ name: '随身', text: '363 金' }, { name: '家里', text: '2778 万金' }, { name: '产业', text: '3314 万金' }],
     money: '363 金', work: { text: '靠赏金，无固定收入' }, bills: [], debts: [],
     industries: [{ name: '汽水工坊', text: '3,314,000 金／月' }],
-    livestock: [{ name: '枣红马', qty: 1 }],
+    vehicles: [{ name: '枣红马', qty: 1 }],
+  livestock: [],
     stock: [{ name: '牛皮', qty: 10 }, { name: '雪狼皮', qty: 10 }],
     bag: [{ name: '金疮药', qty: 4 }, { name: '回血药水', qty: 68 }, { name: '短刀（绿）', qty: 1 }, { name: '火油罐', qty: 9 }, { name: '磨刀石', qty: 1 }, { name: '引水石', qty: 1 }],
     skills: [{ name: '武技', level: 130 }, { name: '交涉', level: 55 }],
@@ -52,7 +53,8 @@ ok('概览不再列存货行', !ov.includes('>存货<'));
 ok('概览保留产业行', ov.includes('汽水工坊'));
 
 ok('物品页有存货段', items.includes('<h3>存货</h3>'));
-ok('物品页有牲畜段', items.includes('<h3>牲畜</h3>'));
+ok('物品页有交通工具段', items.includes('<h3>交通工具</h3>') && items.includes('枣红马'));
+ok('物品页不再有牲畜段', !items.includes('<h3>牲畜</h3>'));
 ok('物品页有药品段', items.includes('药品 · 消耗'));
 ok('物品页有其他物品段', items.includes('其他物品'));
 ok('金疮药归到药品', /药品 · 消耗[\s\S]*金疮药/.test(items));

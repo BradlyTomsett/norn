@@ -743,7 +743,7 @@ document.addEventListener('click', (e) => {
 
   const after = $('#it-msg');
   if (after) {
-    const unit = { equipment: '件装备', bag: '个物品', stock: '份存货', livestock: '头牲畜' }[res.where] || '个';
+    const unit = { equipment: '件装备', bag: '个物品', stock: '份存货', vehicle: '件交通工具', livestock: '头牲畜' }[res.where] || '个';
     after.textContent = `${adding ? '增加' : '减少'} ${res.count} ${unit}：${name}`;
     after.className = 'hint it-msg ok';
   }

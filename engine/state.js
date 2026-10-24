@@ -570,6 +570,7 @@ export function uiState(state) {
         text: i.monthly ? `${copperText(i.monthly)}／月` : '未定',
       })),
       livestock: p.livestock,
+      vehicles: p.vehicles,
       stock: p.stock,
       skills: p.skills,
       socialClass: p.socialClass,

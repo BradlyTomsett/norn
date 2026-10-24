@@ -178,7 +178,7 @@ function viewItems(u) {
   };
 
   section('存货', (p.stock || []).map((s) => `${s.name} ×${s.qty}`));
-  section('牲畜', (p.livestock || []).map((s) => `${s.name} ×${s.qty}`));
+  section('交通工具', (p.vehicles || []).map((s) => `${s.name} ×${s.qty}`));
   section('药品 · 消耗', meds);
   section('其他物品', others);
 
@@ -197,7 +197,7 @@ function viewItems(u) {
         { label: '药品', names: medNames },
         { label: '其他', names: otherNames },
         { label: '存货', names: (p.stock || []).map((s) => s.name) },
-        { label: '牲畜', names: (p.livestock || []).map((s) => s.name) },
+        { label: '交通', names: (p.vehicles || []).map((s) => s.name) },
       ],
       '同名会自动累加；带品阶（灰绿蓝紫金）的会进装备页。',
     ),

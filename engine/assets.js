@@ -11,6 +11,9 @@ const isIndustry = (s) => /工坊|分厂|厂|铺|店|商号|商会|产业|庄园
 const isStock = (s) => /皮货|存货|存粮|库存/.test(s);
 const isLivestock = (s) => /马|牛|羊|猪|鸡|鹅|鸭|牲畜|骡|驴/.test(s);
 
+/** 交通工具：马、车、船这类代步的。 */
+export const isVehicle = (s) => /马|马车|车|船|舟|雪橇|驮兽|骆驼/.test(String(s || ''));
+
 /** "皮货：牛皮 10、羊皮 7" / "枣红马一匹" → [{name, qty}] */
 function parseStockText(text) {
   const s = String(text || '');
@@ -28,12 +31,30 @@ function parseStockText(text) {
   return out;
 }
 
-/** 老存档迁移：把 assets 字符串拆进 industries / livestock / stock。幂等。 */
+/** 老存档迁移：把 assets 字符串拆进 industries / vehicles / stock。幂等。 */
 export function ensureAssets(state) {
   const p = state.player;
   if (!Array.isArray(p.industries)) p.industries = [];
+  if (!Array.isArray(p.vehicles)) p.vehicles = [];
   if (!Array.isArray(p.livestock)) p.livestock = [];
   if (!Array.isArray(p.stock)) p.stock = [];
+
+  const pushTo = (list, name, qty) => {
+    const found = list.find((x) => x.name === name);
+    if (found) found.qty += qty;
+    else list.push({ name, qty });
+  };
+
+  // 旧的「牲畜」拆开：马/车/船 → 交通工具，其余（猪牛羊鸡鸭）→ 存货
+  if (p.livestock.length) {
+    const left = [];
+    for (const row of p.livestock) {
+      if (isVehicle(row.name)) pushTo(p.vehicles, row.name, row.qty);
+      else pushTo(p.stock, row.name, row.qty);
+    }
+    p.livestock = left;
+  }
+
   if (!Array.isArray(p.assets) || p.assets.length === 0) return p;
 
   const rest = [];
@@ -46,16 +67,11 @@ export function ensureAssets(state) {
         p.industries.push({ id: `ind_${p.industries.length}`, name, monthly: 0, account: 'home' });
       }
     } else if (isStock(s)) {
-      for (const it of parseStockText(s)) {
-        const found = p.stock.find((x) => x.name === it.name);
-        if (found) found.qty += it.qty;
-        else p.stock.push({ name: it.name, qty: it.qty });
-      }
+      for (const it of parseStockText(s)) pushTo(p.stock, it.name, it.qty);
     } else if (isLivestock(s)) {
       for (const it of parseStockText(s)) {
-        const found = p.livestock.find((x) => x.name === it.name);
-        if (found) found.qty += it.qty;
-        else p.livestock.push({ name: it.name, qty: it.qty });
+        if (isVehicle(it.name)) pushTo(p.vehicles, it.name, it.qty);
+        else pushTo(p.stock, it.name, it.qty);
       }
     } else {
       rest.push(s);
@@ -69,7 +85,7 @@ export function assetsText(state) {
   const p = state.player;
   const parts = [];
   if (p.industries?.length) parts.push(`产业：${p.industries.map((i) => i.name).join('、')}`);
-  if (p.livestock?.length) parts.push(`牲畜：${p.livestock.map((i) => `${i.name}×${i.qty}`).join('、')}`);
+  if (p.vehicles?.length) parts.push(`交通工具：${p.vehicles.map((i) => `${i.name}×${i.qty}`).join('、')}`);
   if (p.stock?.length) parts.push(`存货：${p.stock.map((i) => `${i.name}×${i.qty}`).join('、')}`);
   if (p.assets?.length) parts.push(`其他：${p.assets.join('、')}`);
   return parts.join(' ｜ ');
