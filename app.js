@@ -353,7 +353,14 @@ function loadGame(id) {
   composerEl.classList.remove('hidden');
   logEl.innerHTML = '';
   let last = null;
-  for (const m of app.messages) last = addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
+  for (const m of app.messages) {
+    if (!String(m.content || '').trim()) continue; // 空的回复不渲染
+    last = addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
+  }
+  const tail = app.messages[app.messages.length - 1];
+  if (tail && tail.role === 'user') {
+    addMessage('error', '上一条消息没有收到回复——多半是回复写到一半断线了。可以再发一次。');
+  }
   renderSheet();
   renderToc();
   if (last) scrollToElement(last);
@@ -524,6 +531,16 @@ async function send() {
 
   let raw = '';
   let cleanText = '';
+  let assistantSaved = false;
+  const saveAssistant = (text) => {
+    if (assistantSaved || !text) return;
+    assistantSaved = true;
+    try {
+      store.appendMessage(app.saveId, 'assistant', text);
+    } catch {
+      /* 存不下也别把这一回合整个搞崩 */
+    }
+  };
   let frame = null;
   const paint = () => {
     bubble.innerHTML = format(raw) || '<p>&nbsp;</p>';
@@ -549,7 +566,8 @@ async function send() {
       delta = await recoverDelta(raw);
       if (delta) rawText = splitDelta(raw).text;
     }
-    const cleanText2 = pruneEmpty(stripSheet(rawText));
+    const cleanText2 =
+      pruneEmpty(stripSheet(rawText)) || '（这一回合只见动作，没有留下文字。）';
     cleanText = cleanText2;
 
     // 编年：模型这回合写了就存进状态，否则几回合后会被挤出上下文
@@ -567,9 +585,9 @@ async function send() {
     }
 
     store.putSave(state);
-    store.appendMessage(app.saveId, 'assistant', cleanText);
+    saveAssistant(cleanText);
     if (sync.ghReady()) {
-      sync.backupSave(state).then(() => updateGhStatus()).catch((e) => {
+      sync.backupSave(state, store.getMessages(app.saveId)).then(() => updateGhStatus()).catch((e) => {
         const el = $('#gh-status');
         if (el) el.textContent = '自动备份失败：' + e.message;
       });
@@ -583,7 +601,12 @@ async function send() {
     scrollToElement(bubble);
   } catch (err) {
     bubble.classList.remove('cursor');
-    // 即使后面某一步出错，也不能让流式过程中那坨 JSON 留在气泡里
+    // 断线也把已经写出来的部分存下，避免「我记得说过、回复却没了」
+    const partial = raw ? pruneEmpty(stripSheet(splitDelta(raw).text)) : '';
+    if (partial) {
+      cleanText = cleanText || partial;
+      saveAssistant(`${partial}\n\n（这条回复中途断了，可以再说一次。）`);
+    }
     if (cleanText) bubble.innerHTML = format(cleanText);
     addMessage('error', '这一回合失败了：' + err.message);
   } finally {
@@ -642,7 +665,7 @@ $('#btn-save-now').onclick = async () => {
   btn.textContent = '已保存';
   if (sync.ghReady()) {
     try {
-      await sync.backupSave(state);
+      await sync.backupSave(state, store.getMessages(app.saveId));
       btn.textContent = '已备份';
       updateGhStatus();
     } catch {
@@ -690,7 +713,7 @@ function doTransfer() {
     after.textContent = `已转 ${copperText(copper)}。`;
     after.className = 'hint ok';
   }
-  if (sync.ghReady()) sync.backupSave(state).catch(() => {});
+  if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
 }
 
 document.addEventListener('click', (e) => {
@@ -756,7 +779,7 @@ document.addEventListener('click', (e) => {
     after.textContent = `${adding ? '增加' : '减少'} ${res.count} ${unit}：${name}`;
     after.className = 'hint it-msg ok';
   }
-  if (sync.ghReady()) sync.backupSave(state).catch(() => {});
+  if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
 });
 
 $('#btn-new').onclick = () => {
@@ -800,7 +823,7 @@ $('#btn-gh-backup').onclick = async () => {
   const el = $('#gh-status');
   el.textContent = '正在上传…';
   try {
-    const path = await sync.backupSave(store.getSave(app.saveId));
+    const path = await sync.backupSave(store.getSave(app.saveId), store.getMessages(app.saveId));
     updateGhStatus();
     alert('已备份：' + path);
   } catch (e) {
@@ -847,10 +870,12 @@ $('#btn-gh-restore').onclick = async () => {
           )}${when ? ' · ' + esc(when) : ''}</span>`;
           b.onclick = () => {
             try {
+              const carried = Array.isArray(state.messages) ? state.messages : [];
+              delete state.messages;
               state.saveId = store.newId();
               state.createdAt = new Date().toISOString();
               state.label = '来自 GitHub';
-              store.putSave(state, []);
+              store.putSave(state, carried);
               $('#restore').classList.add('hidden');
               loadGame(state.saveId);
               alert(`已恢复：${state.player.name} · 第 ${state.turn ?? 0} 回合`);

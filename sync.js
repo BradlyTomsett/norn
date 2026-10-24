@@ -126,9 +126,11 @@ export async function ghDelete(path, message) {
 }
 
 /** 备份一份存档 */
-export async function backupSave(state) {
+export async function backupSave(state, messages) {
   const path = `saves/${state.saveId}.json`;
-  await ghPut(path, JSON.stringify(state, null, 2), `存档 ${state.player.name} · 第 ${state.turn} 回合`);
+  // 连最近 20 条对话一起上传，换设备恢复时记录还在
+  const payload = Array.isArray(messages) && messages.length ? { ...state, messages: messages.slice(-20) } : state;
+  await ghPut(path, JSON.stringify(payload, null, 2), `存档 ${state.player.name} · 第 ${state.turn} 回合`);
   localStorage.setItem('norn.gh.last', new Date().toISOString());
   return path;
 }
