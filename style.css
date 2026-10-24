@@ -41,8 +41,13 @@ body {
   backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 5;
 }
-#topbar .title { font-size: 17px; letter-spacing: .32em; color: var(--accent); }
 #topbar .date { flex: 1; font-size: 12px; color: var(--ink-dim); text-align: right; }
+#topbar .saves-primary {
+  background: var(--accent-dim); color: #eef5ff; border: none;
+  border-radius: 10px; padding: 7px 15px; font-family: var(--serif);
+  font-size: 14px; letter-spacing: .12em;
+}
+#topbar .saves-primary:active { background: var(--accent); }
 
 /* 正文 */
 .log {
@@ -198,7 +203,7 @@ button.primary {
 /* 角色卡 */
 .charsheet { display: flex; flex-direction: column; min-height: calc(100dvh - 60px); padding-bottom: 8px; overflow-x: hidden; }
 .cs-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.cs-place { font-size: 12px; color: var(--ink-dim); letter-spacing: .08em; text-align: right; overflow-wrap: anywhere; }
+.cs-place { font-size: 12px; color: var(--ink-dim); letter-spacing: .08em; text-align: left; overflow-wrap: anywhere; }
 .cs-name { font-size: 26px; font-weight: 400; margin: 0 0 4px; letter-spacing: .1em; }
 .cs-sub { font-size: 13px; color: var(--ink-dim); line-height: 1.7; margin-bottom: 16px; overflow-wrap: anywhere; }
 
@@ -289,7 +294,8 @@ button.primary {
 }
 @media (max-width: 380px) {
   .msg { font-size: calc(15px * var(--font-scale)); }
-  #topbar .title { letter-spacing: .2em; }
+  #topbar { gap: 8px; }
+  #topbar .saves-primary { padding: 7px 12px; font-size: 13px; }
 }
 
 textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }

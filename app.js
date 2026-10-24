@@ -597,6 +597,33 @@ function openSheet(tab) {
 $('#btn-panel').onclick = () => openSheet();
 $('#btn-close').onclick = () => $('#sheet').classList.add('hidden');
 
+// 手动保存：写一次本地，能云备份就顺手备份
+$('#btn-save-now').onclick = async () => {
+  const btn = $('#btn-save-now');
+  const state = store.getSave(app.saveId);
+  if (!state) {
+    btn.textContent = '没有存档';
+    setTimeout(() => (btn.textContent = '保存'), 1200);
+    return;
+  }
+  store.putSave(state);
+  btn.disabled = true;
+  btn.textContent = '已保存';
+  if (sync.ghReady()) {
+    try {
+      await sync.backupSave(state);
+      btn.textContent = '已备份';
+      updateGhStatus();
+    } catch {
+      btn.textContent = '备份失败';
+    }
+  }
+  setTimeout(() => {
+    btn.textContent = '保存';
+    btn.disabled = false;
+  }, 1400);
+};
+
 /* ---------------- 账户间转账（不经过模型） ---------------- */
 
 function doTransfer() {
