@@ -139,5 +139,29 @@ ok('空的世界动态被删掉', !html2.includes('世界动态'));
 ok('【当前角色】被删掉', !html2.includes('当前角色'));
 ok('输出里没有空段落', !html2.includes('&nbsp;'));
 
+/* ---------- 数值块的容错：模型经常写坏或写一半 ---------- */
+
+const trailingComma = '正文。\n\n```json\n{"mind":{"mood":"有点累",},}\n```';
+const tc = splitDelta(trailingComma);
+ok('尾逗号能救回来', tc.delta && tc.delta.mind.mood === '有点累', JSON.stringify(tc.delta));
+ok('正文不含 JSON', !tc.text.includes('有点累'), tc.text);
+
+const truncated = '正文。\n\n```json\n{"money":{"cash":-300},"relations":[{"npcId":"npc_mother","trust":1';
+const tr = splitDelta(truncated);
+ok('截断的 JSON 能补齐', tr.delta && tr.delta.money.cash === -300, JSON.stringify(tr.delta));
+
+const bare = '正文写完了。\n{"skills":["商谈"]}';
+const bd = splitDelta(bare);
+ok('没有代码块也认裸 JSON', bd.delta && bd.delta.skills[0] === '商谈', JSON.stringify(bd.delta));
+ok('裸 JSON 从正文里剔掉', !bd.text.includes('"skills"'), bd.text);
+
+const smart = '正文。\n```json\n{“mind”：{“mood”：“平静”}}\n```';
+const sm = splitDelta(smart);
+ok('中文引号能救回来', sm.delta && sm.delta.mind.mood === '平静', JSON.stringify(sm.delta));
+
+const broken = '正文，没有任何 JSON。';
+const bk = splitDelta(broken);
+ok('真的没有就返回 null', bk.delta === null && bk.text.includes('正文'));
+
 document.getElementById('out').textContent = lines.join('\n');
 </script></body></html>

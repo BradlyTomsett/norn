@@ -475,6 +475,22 @@ $('#set-close').onclick = () => $('#settings').classList.add('hidden');
 
 /* ---------------- 一回合 ---------------- */
 
+/** 模型漏了数值块时，单独再要一次 JSON（便宜、短）。 */
+async function recoverDelta(raw) {
+  try {
+    const system =
+      '你是数据抽取器。只输出一个 JSON 代码块，内容是本回合的状态增量（money / trade / relations / knowledge / mind / goals / problems / items / use 等），不要解释、不要叙事、不要省略。';
+    const messages = [
+      { role: 'user', content: '从下面这段本回合输出里，补出 JSON 增量：\n\n' + String(raw).slice(-6000) },
+    ];
+    let out = '';
+    for await (const chunk of llm.streamChat({ system, messages, maxTokens: 1500, temperature: 0.2 })) out += chunk;
+    return splitDelta(out).delta;
+  } catch {
+    return null;
+  }
+}
+
 async function send() {
   const text = inputEl.value.trim();
   if (!text || app.streaming) return;
@@ -520,7 +536,14 @@ async function send() {
       }
     }
 
-    const { text: rawText, delta } = splitDelta(raw);
+    const parsed = splitDelta(raw);
+    let rawText = parsed.text;
+    let delta = parsed.delta;
+    // 没有增量块时补一次「只输出 JSON」的短请求，救回钱与关系结算
+    if (!delta) {
+      delta = await recoverDelta(raw);
+      if (delta) rawText = splitDelta(raw).text;
+    }
     const cleanText = pruneEmpty(stripSheet(rawText));
 
     // 编年：模型这回合写了就存进状态，否则几回合后会被挤出上下文
@@ -549,7 +572,7 @@ async function send() {
 
     bubble.innerHTML = format(cleanText);
     bubble.classList.remove('cursor');
-    if (!delta) addMessage('error', '（这一回合模型没有输出数值块，钱与关系未结算。）');
+    if (!delta) addMessage('error', '（这一回合没有可用的数值块，钱与关系未结算；已自动重试一次补数据。）');
     renderSheet();
     scrollToElement(bubble);
   } catch (err) {

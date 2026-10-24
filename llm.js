@@ -15,7 +15,7 @@ export const hasKey = () => Boolean(getKey());
 const ENDPOINT = 'https://api.deepseek.com/v1/chat/completions';
 
 /** 流式对话：yield 文本片段。 */
-export async function* streamChat({ system, messages, temperature = 0.95, maxTokens = 4000, signal }) {
+export async function* streamChat({ system, messages, temperature = 0.95, maxTokens = 6000, signal }) {
   const key = getKey();
   if (!key) throw new Error('还没有填 API Key');
 

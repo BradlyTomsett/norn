@@ -53,25 +53,120 @@ export function pruneEmpty(text) {
   return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** 只在字符串外部替换字符，避免把正文里的中文逗号也改掉。 */
+function fixOutsideStrings(s, map) {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  for (const ch of s) {
+    if (inStr) {
+      out += ch;
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      out += ch;
+      continue;
+    }
+    out += map[ch] || ch;
+  }
+  return out;
+}
+
+/** 容错解析：尾逗号、中文引号、注释、被截断的括号都尽量救回来。 */
+export function parseLooseJson(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  const tryParse = (t) => {
+    try {
+      return JSON.parse(t);
+    } catch {
+      return null;
+    }
+  };
+  let v = tryParse(raw);
+  if (v) return v;
+
+  let t = raw
+    .replace(/^[^{[]*/, '')
+    .replace(/[^}\]]*$/, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, '$1');
+  t = fixOutsideStrings(t, { '：': ':', '，': ',', '｛': '{', '｝': '}', '【': '{', '】': '}' });
+  v = tryParse(t);
+  if (v) return v;
+
+  // 可能被 max_tokens 截断：把没闭合的引号与括号补齐再试
+  const stack = [];
+  let inStr = false;
+  let esc = false;
+  for (const ch of t) {
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  let fixed = t;
+  if (inStr) fixed += '"';
+  while (stack.length) fixed += stack.pop() === '{' ? '}' : ']';
+  return tryParse(fixed);
+}
+
+/** 从文本里找最后一段像增量的 JSON 对象。 */
+function lastJsonObject(src) {
+  for (let start = src.lastIndexOf('{'); start >= 0; start = src.lastIndexOf('{', start - 1)) {
+    const slice = src.slice(start);
+    if (parseLooseJson(slice)) return slice;
+    if (start === 0) break;
+  }
+  return null;
+}
+
 /** 把模型输出拆成「正文」和「最后一个 json 代码块」。 */
 export function splitDelta(text) {
   const src = String(text || '');
-  const re = /`{3,}\s*json\s*([\s\S]*?)`{3,}/gi;
-  let m;
-  let last = null;
-  while ((m = re.exec(src)) !== null) last = m;
   const stripFence = (s) =>
     s
-      .replace(/`{3,}\s*json\s*[\s\S]*?`{3,}/gi, '')
+      .replace(/`{3,}\s*(?:json)?[\s\S]*?`{3,}/gi, '')
       .replace(/^[ \t]*`{3,}[ \t]*$/gm, '')
       .trim();
-  if (!last) return { text: stripFence(src), delta: null };
-  const head = stripFence(src);
-  try {
-    return { text: head, delta: JSON.parse(last[1]) };
-  } catch {
-    return { text: head || src.trim(), delta: null };
+
+  // 1) 找代码块：允许没有收尾的 ``` （被截断的情况）
+  const blocks = [...src.matchAll(/`{3,}\s*(?:json)?\s*([\s\S]*?)(?:`{3,}|$)/gi)]
+    .map((m) => m[1])
+    .filter((b) => b.includes('{'));
+
+  let candidate = null;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const v = parseLooseJson(blocks[i]);
+    if (v) {
+      candidate = { body: blocks[i], value: v };
+      break;
+    }
   }
+  // 2) 没有代码块：正文末尾裸着的 JSON 也认
+  if (!candidate) {
+    const tail = lastJsonObject(src);
+    if (tail) {
+      const v = parseLooseJson(tail);
+      if (v) candidate = { body: tail, value: v };
+    }
+  }
+
+  if (!candidate) return { text: stripFence(src), delta: null };
+
+  const idx = src.lastIndexOf(candidate.body);
+  const head = idx >= 0 ? src.slice(0, idx) + src.slice(idx + candidate.body.length) : stripFence(src);
+  return { text: stripFence(head), delta: candidate.value };
 }
 
 /** 去掉模型不该输出的【当前角色】大表、结尾小标题和自言自语。 */
