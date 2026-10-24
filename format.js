@@ -199,23 +199,24 @@ export function splitDelta(text) {
     if (best) candidate = { body: best.slice, value: best.value };
   }
 
-  if (!candidate) return { text: cutTrailingJson(stripFence(src)), delta: null };
+  if (!candidate) return { text: stripDataBlocks(stripFence(src)), delta: null };
 
   const idx = src.lastIndexOf(candidate.body);
   const head = idx >= 0 ? src.slice(0, idx) + src.slice(idx + candidate.body.length) : stripFence(src);
-  return { text: cutTrailingJson(stripFence(head)), delta: candidate.value };
+  return { text: stripDataBlocks(stripFence(head)), delta: candidate.value };
 }
 
-/** 解析不出来的时候，也别把末尾那坨 JSON 当正文显示出来。 */
-function cutTrailingJson(s) {
-  const text = String(s || '');
-  const at = text.lastIndexOf('\n{');
-  if (at >= 0) {
-    const tail = text.slice(at);
-    if (/^\s*\{[\s\S]*$/.test(tail) && !tail.includes('【')) return text.slice(0, at).trim();
-  }
-  if (/^\s*[{[][\s\S]*$/.test(text) && !text.includes('【')) return '';
-  return text.trim();
+/**
+ * 兜底：把任何看起来像数据块的东西从展示文本里删掉。
+ * 不管是没解析成功的、被截断的、还是夹在中间的 JSON。
+ */
+export function stripDataBlocks(input) {
+  let t = String(input || '');
+  // 代码块（含未闭合）
+  t = t.replace(/`{3,}[^\n]*\n?[\s\S]*?(?:`{3,}|$)/g, '');
+  // 行首开始的一整块 JSON，直到文本结尾或下一个【小节】
+  t = t.replace(/(?:^|\n)[ \t]*\{[\s\S]*?(?=\n[ \t]*【|$)/g, (m) => (m.startsWith('\n') ? '\n' : ''));
+  return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** 去掉模型不该输出的【当前角色】大表、结尾小标题和自言自语。 */
@@ -237,7 +238,7 @@ export function stripSheet(text) {
 }
 
 export function format(raw) {
-  const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n');
+  const lines = stripDataBlocks(String(raw || '')).replace(/\r\n/g, '\n').split('\n');
   const out = [];
   for (const line of lines) {
     const t = line.trim();

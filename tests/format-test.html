@@ -2,7 +2,7 @@
 <html lang="zh"><head><meta charset="utf-8"><title>format test</title></head>
 <body><pre id="out">running…</pre>
 <script type="module">
-import { format, esc, pruneEmpty, splitDelta, stripSheet } from '../format.js';
+import { format, esc, pruneEmpty, splitDelta, stripDataBlocks, stripSheet } from '../format.js';
 
 const lines = [];
 const ok = (n, c, extra = '') => lines.push(`${c ? 'PASS' : 'FAIL'} ${n}${extra ? ' :: ' + extra : ''}`);
@@ -175,6 +175,11 @@ const middle = '正文。' + NL + '{"mind":{"mood":"平静"}}' + NL + '【你现
 const md = splitDelta(middle);
 ok('夹在中间也能剥掉', !md.text.includes('"mind"') && md.text.includes('【你现在可以做什么】'), md.text);
 ok('夹在中间也能解析', md.delta && md.delta.mind.mood === '平静');
+// 展示层兜底：无论解析成不成功，JSON 都不该出现在气泡里
+const leak = '正文一段。' + NL + '{"relations":[{"npcId":"npc_sera","trust":1}],"mind":{"mood":"盯车"}}';
+ok('format 兜底删掉裸 JSON', !format(leak).includes('npc_sera'), format(leak));
+ok('format 保留正文', format(leak).includes('正文一段'));
+ok('stripDataBlocks 删围栏块', !stripDataBlocks('前' + NL + BT + 'json' + NL + '{"a":1}' + NL + BT + NL + '后').includes('"a"'));
 const broken = '正文，没有任何 JSON。';
 const bk = splitDelta(broken);
 ok('真的没有就返回 null', bk.delta === null && bk.text.includes('正文'));
