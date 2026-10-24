@@ -97,6 +97,23 @@ function viewOverview(u) {
     out.push(`<div class="row"><span class="k">产业</span><span class="v">${esc(p.industries.map((i) => `${i.name}${i.text ? '（' + i.text + '）' : ''}`).join('、'))}</span></div>`);
   }
   out.push('</div>');
+
+  // 账户之间直接转账：不经过模型，点了就生效
+  const accs = p.accounts || [];
+  if (accs.length > 1) {
+    const opts = (sel) =>
+      accs
+        .map((a, i) => `<option value="${esc(a.id)}"${i === sel ? ' selected' : ''}>${esc(a.name)}</option>`)
+        .join('');
+    out.push(`<div class="tf">
+      <div class="tf-row"><span class="k">从</span><select id="tf-from">${opts(0)}</select>
+      <span class="k">到</span><select id="tf-to">${opts(1)}</select></div>
+      <div class="tf-row"><input id="tf-amount" type="number" min="0" step="any" inputmode="decimal" placeholder="金额" />
+      <select id="tf-unit"><option value="10000">金</option><option value="100">银</option><option value="1">铜</option></select>
+      <button id="tf-do" class="chip">转账</button></div>
+      <div class="hint" id="tf-msg">立刻到账，不收手续费。</div>
+    </div>`);
+  }
   if (p.goals?.length) {
     out.push('<h3>当前目标</h3>');
     for (const g of p.goals) out.push(`<div class="item">${esc(g)}</div>`);

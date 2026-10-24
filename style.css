@@ -247,8 +247,7 @@ button.primary {
 .stat-grid.mini .stat-cell .v { font-size: 17px; margin-top: 1px; }
 .stat-grid.mini .stat-cell .t { font-size: 9px; margin-top: 1px; }
 
-.rows { border-top: 1px solid var(--line); }
-.rows .row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid #241f1b; font-size: 14px; }
+.rows { border-top: 1px solid var(--line); }.rows .row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid #241f1b; font-size: 14px; }
 .rows .row .k { color: var(--ink-dim); flex: none; }
 .rows .row .v { text-align: right; line-height: 1.6; }
 
@@ -294,3 +293,17 @@ button.primary {
 }
 
 textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
+/* 账户间转账小工具 */
+.tf { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); display: grid; gap: 8px; }
+.tf-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tf-row .k { color: var(--ink-dim); font-size: 13px; flex: none; }
+.tf select, .tf input {
+  background: #100e0c; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 9px; padding: 7px 8px; font-family: var(--serif); font-size: 13px;
+  min-width: 0; flex: 1;
+}
+.tf #tf-unit { flex: 0 0 58px; }
+.tf #tf-do { flex: none; padding: 7px 14px; }
+.tf #tf-msg { font-size: 12px; }
+.tf #tf-msg.ok { color: #7fa06c; }
+.tf #tf-msg.err { color: var(--red); }

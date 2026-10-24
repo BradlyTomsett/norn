@@ -4,7 +4,7 @@ import * as sync from './sync.js';
 import { REGIONS, generateWorld, openingText } from './engine/worldgen.js';
 import { judge, judgeBrief } from './engine/resolve.js';
 import { advanceWorld, engineDelta } from './engine/tick.js';
-import { stateBlock, npcCards, uiState, applyDelta } from './engine/state.js';
+import { stateBlock, npcCards, uiState, applyDelta, transferCopper, copperText } from './engine/state.js';
 import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
@@ -596,6 +596,48 @@ function openSheet(tab) {
 
 $('#btn-panel').onclick = () => openSheet();
 $('#btn-close').onclick = () => $('#sheet').classList.add('hidden');
+
+/* ---------------- 账户间转账（不经过模型） ---------------- */
+
+function doTransfer() {
+  const msg = $('#tf-msg');
+  const say = (t, cls = '') => {
+    if (!msg) return;
+    msg.textContent = t;
+    msg.className = 'hint ' + cls;
+  };
+
+  const state = store.getSave(app.saveId);
+  if (!state) return say('没有打开的存档。', 'err');
+
+  const from = $('#tf-from')?.value;
+  const to = $('#tf-to')?.value;
+  const raw = Number($('#tf-amount')?.value);
+  const unit = Number($('#tf-unit')?.value) || 10000;
+
+  if (!from || !to) return say('先选两个账户。', 'err');
+  if (from === to) return say('同一个账户，不用转。', 'err');
+  if (!(raw > 0)) return say('先填个金额。', 'err');
+
+  const copper = Math.round(raw * unit);
+  const acc = (state.player.accounts || []).find((a) => a.id === from || a.name === from);
+  if (!acc || acc.copper < copper) return say('那边钱不够。', 'err');
+  if (!transferCopper(state, from, to, copper)) return say('转账失败。', 'err');
+
+  store.putSave(state);
+  app.ui = uiState(state);
+  renderSheet(app.tab);
+  const after = $('#tf-msg');
+  if (after) {
+    after.textContent = `已转 ${copperText(copper)}。`;
+    after.className = 'hint ok';
+  }
+  if (sync.ghReady()) sync.backupSave(state).catch(() => {});
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#tf-do')) doTransfer();
+});
 
 $('#btn-new').onclick = () => {
   if (!confirm('开新的一局？当前这局不会被删除，可以在存档里找回来。')) return;
