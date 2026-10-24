@@ -1,10 +1,19 @@
-﻿{
+{
+  "id": "/norn/",
   "name": "诺恩 · 人生模拟",
   "short_name": "诺恩",
+  "description": "文字人生模拟：一回合一天，钱、债、手艺、人情都算得清。",
+  "lang": "zh-CN",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "fullscreen"],
+  "orientation": "portrait",
   "background_color": "#141210",
   "theme_color": "#141210",
-  "orientation": "portrait",
-  "icons": []
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }

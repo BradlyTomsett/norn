@@ -465,6 +465,44 @@ function saveGhFromForm() {
   });
 }
 
+/* ---------------- 安装到桌面（PWA） ---------------- */
+let installEvent = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installEvent = e;
+});
+
+window.addEventListener('appinstalled', () => {
+  installEvent = null;
+  const b = $('#btn-install');
+  if (b) b.textContent = '已安装';
+});
+
+$('#btn-install').onclick = async () => {
+  const standalone =
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (standalone) {
+    alert('已经在桌面模式下运行：从手机桌面的「诺恩」图标点进来就是这样。');
+    return;
+  }
+  if (installEvent) {
+    installEvent.prompt();
+    const { outcome } = await installEvent.userChoice;
+    installEvent = null;
+    if (outcome === 'accepted') {
+      $('#btn-install').textContent = '已安装';
+      return;
+    }
+  }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  alert(
+    ios
+      ? '在 Safari 里点底部「分享」按钮 → 往下找「添加到主屏幕」→「添加」。桌面就会出现「诺恩」图标。'
+      : '点浏览器右上角「⋮」→「安装应用」（或「添加到主屏幕」）。装好后桌面会有「诺恩」图标，点开是全屏的，没有地址栏。',
+  );
+};
+
 $('#btn-settings').onclick = openSettings;
 $('#set-effort').addEventListener('click', (e) => {
   const b = e.target.closest('.chip');
