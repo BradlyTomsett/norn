@@ -361,6 +361,13 @@ try {
   const st4 = removeItem(s19, '枣红马', 2);
   ok('交通工具减到 0 就消失', st4.ok && s19.player.vehicles.length === 0);
 
+  // --- 存货旧名归一 ---
+  const s20 = fresh();
+  s20.player.stock = [{ name: '家中存粮', qty: 1 }, { name: '小麦', qty: 2 }];
+  ensureAssets(s20);
+  eq('家中存粮并入小麦', s20.player.stock.find((x) => x.name === '小麦').qty, 3);
+  eq('旧名不再存在', s20.player.stock.some((x) => x.name === '家中存粮'), false);
+
   // --- 名字与品阶的拼装 ---
   eq('去掉品阶后缀', stripGrade('短刀（绿）'), '短刀');
   eq('名字+品阶拼起来', composeName('短刀', '绿'), '短刀（绿）');

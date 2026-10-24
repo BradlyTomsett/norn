@@ -14,6 +14,9 @@ const isLivestock = (s) => /马|牛|羊|猪|鸡|鹅|鸭|牲畜|骡|驴/.test(s);
 /** 交通工具：马、车、船这类代步的。 */
 export const isVehicle = (s) => /马|马车|车|船|舟|雪橇|驮兽|骆驼/.test(String(s || ''));
 
+/** 存货旧名 → 新名。 */
+const STOCK_ALIASES = { 家中存粮: '小麦', 存粮: '小麦' };
+
 /** "皮货：牛皮 10、羊皮 7" / "枣红马一匹" → [{name, qty}] */
 function parseStockText(text) {
   const s = String(text || '');
@@ -44,15 +47,28 @@ export function ensureAssets(state) {
     if (found) found.qty += qty;
     else list.push({ name, qty });
   };
+  const pushStock = (name, qty) => pushTo(p.stock, STOCK_ALIASES[name] || name, qty);
 
   // 旧的「牲畜」拆开：马/车/船 → 交通工具，其余（猪牛羊鸡鸭）→ 存货
   if (p.livestock.length) {
     const left = [];
     for (const row of p.livestock) {
       if (isVehicle(row.name)) pushTo(p.vehicles, row.name, row.qty);
-      else pushTo(p.stock, row.name, row.qty);
+      else pushStock(row.name, row.qty);
     }
     p.livestock = left;
+  }
+
+  // 存货旧名统一：家中存粮 → 小麦（重名就合并数量）
+  if (p.stock.length) {
+    const merged = [];
+    for (const row of p.stock) {
+      const name = STOCK_ALIASES[row.name] || row.name;
+      const hit = merged.find((x) => x.name === name);
+      if (hit) hit.qty += row.qty;
+      else merged.push({ name, qty: row.qty });
+    }
+    p.stock = merged;
   }
 
   if (!Array.isArray(p.assets) || p.assets.length === 0) return p;
@@ -67,11 +83,11 @@ export function ensureAssets(state) {
         p.industries.push({ id: `ind_${p.industries.length}`, name, monthly: 0, account: 'home' });
       }
     } else if (isStock(s)) {
-      for (const it of parseStockText(s)) pushTo(p.stock, it.name, it.qty);
+      for (const it of parseStockText(s)) pushStock(it.name, it.qty);
     } else if (isLivestock(s)) {
       for (const it of parseStockText(s)) {
         if (isVehicle(it.name)) pushTo(p.vehicles, it.name, it.qty);
-        else pushTo(p.stock, it.name, it.qty);
+        else pushStock(it.name, it.qty);
       }
     } else {
       rest.push(s);
