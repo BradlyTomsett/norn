@@ -59,11 +59,12 @@ ok('物品页有药品段', items.includes('药品 · 消耗'));
 ok('物品页有其他物品段', items.includes('其他物品'));
 ok('金疮药归到药品', /药品 · 消耗[\s\S]*金疮药/.test(items));
 ok('回血归到药品', /药品 · 消耗[\s\S]*回血/.test(items));
-ok('带品阶的短刀进装备页', gear.includes('短刀（绿）'));
+ok('带品阶的短刀进装备页', gear.includes('短刀') && gear.includes('g-uncommon'));
+ok('装备名不再带品阶后缀', !/<div class="item[^"]*">[^<]*（[灰绿蓝紫金]）/.test(gear));
 ok('没品阶的厚外套不进装备页', !gear.includes('厚外套'));
 ok('没品阶的厚外套落到物品-其他', /其他物品[\s\S]*厚外套/.test(items));
 ok('装备页不再有「其他物品」段', !gear.includes('其他物品'));
-ok('带品阶的短刀不在物品-其他', !/其他物品[\s\S]*短刀（绿）/.test(items));
+ok('带品阶的短刀不在物品-其他', !/其他物品[\s\S]*短刀/.test(items));
 ok('引水石不算药品', /其他物品[\s\S]*引水石/.test(items));
 
 ok('装备页仍按品阶分组', gear.includes('传说') && gear.includes('史诗'));

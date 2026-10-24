@@ -135,7 +135,12 @@ function itemTool(kind, groups, hint) {
     .map((g) => {
       const names = Array.from(new Set((g.names || []).map((n) => String(n).trim()).filter(Boolean)));
       if (!names.length) return '';
-      const chips = names.map((n) => `<button class="it-pick" data-name="${esc(n)}">${esc(n)}</button>`).join('');
+      const chips = names
+        .map(
+          (n) =>
+            `<button class="it-pick${g.cls ? ' g-' + g.cls : ''}" data-name="${esc(n)}">${esc(baseName(n))}</button>`,
+        )
+        .join('');
       return `<div class="it-group"><span class="it-lab">${esc(g.label)}</span>${chips}</div>`;
     })
     .filter(Boolean)
@@ -222,6 +227,9 @@ function ungradedLines(p) {
   return lines;
 }
 
+// 装备名字去掉「（紫）」这类后缀，改用字体颜色表达品阶
+const baseName = (s) => String(s || '').replace(/（(灰|绿|蓝|紫|金)(?:[，,]\s*[^）]*)?）/g, '').trim();
+
 function viewGear(u) {
   const p = u.player;
   const groups = new Map();
@@ -235,7 +243,7 @@ function viewGear(u) {
     const list = groups.get(ch);
     if (!list?.length) continue;
     out.push(`<div class="gear-group"><div class="gh"><span class="badge c-${cls}">${ch}</span><b>${label}</b><span class="note">${list.length} 件</span></div><div class="two-col">`);
-    for (const item of list) out.push(`<div class="item">${esc(item)}</div>`);
+    for (const item of list) out.push(`<div class="item g-${cls}">${esc(baseName(item))}</div>`);
     out.push('</div></div>');
   }
   if (!out.length) out.push('<p class="hint">身上还没有带品阶的装备。</p>');
@@ -244,8 +252,9 @@ function viewGear(u) {
     for (const a of p.assets) out.push(`<div class="item">${esc(a)}</div>`);
   }
 
-  const gearGroups = GRADE_ORDER.map(([ch, label]) => ({
+  const gearGroups = GRADE_ORDER.map(([ch, label, cls]) => ({
     label,
+    cls,
     names: [
       ...(p.equipment || []).filter((e) => gradeOf(e) === ch),
       ...(p.bag || []).filter((b) => gradeOf(b.name) === ch).map((b) => b.name),
