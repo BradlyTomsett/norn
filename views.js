@@ -129,12 +129,18 @@ function viewOverview(u) {
   return out.join('');
 }
 
-// 手动增减：已有物品全部平铺出来，点一下就选中；也能直接输新名字
-function itemTool(kind, names, hint) {
-  const uniq = Array.from(new Set((names || []).map((n) => String(n).trim()).filter(Boolean)));
-  const picks = uniq.length
-    ? uniq.map((n) => `<button class="it-pick" data-name="${esc(n)}">${esc(n)}</button>`).join('')
-    : '<span class="hint">这一类还没有东西，直接输入新名字。</span>';
+// 手动增减：已有物品按类别平铺，点一下就选中；也能直接输新名字
+function itemTool(kind, groups, hint) {
+  const rows = (groups || [])
+    .map((g) => {
+      const names = Array.from(new Set((g.names || []).map((n) => String(n).trim()).filter(Boolean)));
+      if (!names.length) return '';
+      const chips = names.map((n) => `<button class="it-pick" data-name="${esc(n)}">${esc(n)}</button>`).join('');
+      return `<div class="it-group"><span class="it-lab">${esc(g.label)}</span>${chips}</div>`;
+    })
+    .filter(Boolean)
+    .join('');
+  const picks = rows || '<span class="hint">这一类还没有东西，直接输入新名字。</span>';
   const gradeSel =
     kind === 'gear'
       ? `<select id="it-grade" class="it-grade"><option value="">颜色</option>${['灰', '绿', '蓝', '紫', '金']
@@ -178,11 +184,24 @@ function viewItems(u) {
 
   if (!out.length) out.push('<p class="hint">身上没带什么东西。</p>');
 
-  const names = [
-    ...(p.bag || []).filter((b) => !gradeOf(b.name)).map((b) => b.name),
+  const bagUngraded = (p.bag || []).filter((b) => !gradeOf(b.name));
+  const medNames = bagUngraded.filter((b) => isConsumable(b.name)).map((b) => b.name);
+  const otherNames = [
+    ...bagUngraded.filter((b) => !isConsumable(b.name)).map((b) => b.name),
     ...(p.equipment || []).filter((e) => !gradeOf(e)),
   ];
-  out.push(itemTool('items', names, '同名会自动累加；带品阶（灰绿蓝紫金）的会进装备页。'));
+  out.push(
+    itemTool(
+      'items',
+      [
+        { label: '药品', names: medNames },
+        { label: '其他', names: otherNames },
+        { label: '存货', names: (p.stock || []).map((s) => s.name) },
+        { label: '牲畜', names: (p.livestock || []).map((s) => s.name) },
+      ],
+      '同名会自动累加；带品阶（灰绿蓝紫金）的会进装备页。',
+    ),
+  );
   return out.join('');
 }
 
@@ -225,11 +244,14 @@ function viewGear(u) {
     for (const a of p.assets) out.push(`<div class="item">${esc(a)}</div>`);
   }
 
-  const names = [
-    ...(p.equipment || []).filter((e) => gradeOf(e)),
-    ...(p.bag || []).filter((b) => gradeOf(b.name)).map((b) => b.name),
-  ];
-  out.push(itemTool('gear', names, '带品阶的装备，同名再加大一次就是多一件；没品阶的会进物品页。'));
+  const gearGroups = GRADE_ORDER.map(([ch, label]) => ({
+    label,
+    names: [
+      ...(p.equipment || []).filter((e) => gradeOf(e) === ch),
+      ...(p.bag || []).filter((b) => gradeOf(b.name) === ch).map((b) => b.name),
+    ],
+  }));
+  out.push(itemTool('gear', gearGroups, '带品阶的装备，同名再加大一次就是多一件；没品阶的会进物品页。'));
   return out.join('');
 }
 

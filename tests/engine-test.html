@@ -347,6 +347,19 @@ try {
   ok('装备能减掉一件', itDel2.ok && !s18.player.equipment.includes('长剑（灰）'));
   ok('减不存在的东西返回失败', removeItem(s18, '不存在的东西').ok === false);
 
+  // 存货 / 牲畜 也能按名字增减
+  const s19 = fresh();
+  s19.player.stock = [{ name: '牛皮', qty: 10 }];
+  s19.player.livestock = [{ name: '枣红马', qty: 1 }];
+  const st1 = addItem(s19, '牛皮', 2);
+  ok('存货按名字累加', st1.where === 'stock' && s19.player.stock[0].qty === 12, JSON.stringify(s19.player.stock));
+  const st2 = removeItem(s19, '牛皮', 5);
+  ok('存货能减', st2.where === 'stock' && s19.player.stock[0].qty === 7);
+  const st3 = addItem(s19, '枣红马', 1);
+  ok('牲畜按名字累加', st3.where === 'livestock' && s19.player.livestock[0].qty === 2);
+  const st4 = removeItem(s19, '枣红马', 2);
+  ok('牲畜减到 0 就消失', st4.ok && s19.player.livestock.length === 0);
+
   // --- 提示词块 ---
   const s10 = fresh();
   addDebt(s10, { to: '钱庄', copper: 50000, months: 6 });

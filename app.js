@@ -743,7 +743,8 @@ document.addEventListener('click', (e) => {
 
   const after = $('#it-msg');
   if (after) {
-    after.textContent = `${adding ? '增加' : '减少'} ${res.count} ${res.where === 'equipment' ? '件装备' : '个物品'}：${name}`;
+    const unit = { equipment: '件装备', bag: '个物品', stock: '份存货', livestock: '头牲畜' }[res.where] || '个';
+    after.textContent = `${adding ? '增加' : '减少'} ${res.count} ${unit}：${name}`;
     after.className = 'hint it-msg ok';
   }
   if (sync.ghReady()) sync.backupSave(state).catch(() => {});

@@ -97,7 +97,7 @@ export function gradeOfName(name) {
   return m ? m[1] : '';
 }
 
-/** 加物品：带品阶的进装备，其余进袋子；同名自动累加。 */
+/** 加物品：带品阶的进装备；存货/牲畜按名字归位；其余进袋子。同名自动累加。 */
 export function addItem(state, name, qty = 1) {
   const p = state.player;
   const n = String(name || '').trim().slice(0, 40);
@@ -111,13 +111,29 @@ export function addItem(state, name, qty = 1) {
   }
 
   if (!Array.isArray(p.bag)) p.bag = [];
-  const hit = p.bag.find((b) => b.name === n);
-  if (hit) hit.qty += count;
-  else p.bag.push({ name: n, qty: count });
+  const inBag = p.bag.find((b) => b.name === n);
+  if (inBag) {
+    inBag.qty += count;
+    return { ok: true, where: 'bag', count };
+  }
+
+  const inStock = Array.isArray(p.stock) ? p.stock.find((s) => s.name === n) : null;
+  if (inStock) {
+    inStock.qty += count;
+    return { ok: true, where: 'stock', count };
+  }
+
+  const inBeast = Array.isArray(p.livestock) ? p.livestock.find((s) => s.name === n) : null;
+  if (inBeast) {
+    inBeast.qty += count;
+    return { ok: true, where: 'livestock', count };
+  }
+
+  p.bag.push({ name: n, qty: count });
   return { ok: true, where: 'bag', count };
 }
 
-/** 减物品：先找袋子，再找装备。返回实际减掉多少。 */
+/** 减物品：袋子 → 装备 → 存货 → 牲畜。返回实际减掉多少。 */
 export function removeItem(state, name, qty = 1) {
   const p = state.player;
   const n = String(name || '').trim();
@@ -138,8 +154,21 @@ export function removeItem(state, name, qty = 1) {
   eq.forEach((e, i) => {
     if (e === n) idx.push(i);
   });
-  if (!idx.length) return { ok: false, reason: `没有「${n}」` };
-  const drop = idx.slice(0, count);
-  p.equipment = eq.filter((_, i) => !drop.includes(i));
-  return { ok: true, where: 'equipment', count: drop.length };
+  if (idx.length) {
+    const drop = idx.slice(0, count);
+    p.equipment = eq.filter((_, i) => !drop.includes(i));
+    return { ok: true, where: 'equipment', count: drop.length };
+  }
+
+  for (const [listKey, where] of [['stock', 'stock'], ['livestock', 'livestock']]) {
+    const list = Array.isArray(p[listKey]) ? p[listKey] : [];
+    const row = list.find((s) => s.name === n);
+    if (!row) continue;
+    const took = Math.min(row.qty, count);
+    row.qty -= took;
+    if (row.qty <= 0) p[listKey] = list.filter((s) => s !== row);
+    return { ok: true, where, count: took };
+  }
+
+  return { ok: false, reason: `没有「${n}」` };
 }
