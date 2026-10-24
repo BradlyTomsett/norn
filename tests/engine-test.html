@@ -21,6 +21,7 @@ import {
 import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
 import { advanceWorld } from '../engine/tick.js';
 import { decayRelations, trainSkill } from '../engine/progress.js';
+import { dateLine } from '../engine/clock.js';
 import { parseItemEntry, parseContainer, addItem, removeItem, stripGrade, composeName, normalizeItems } from '../engine/items.js';
 import { ensureAssets, runIndustries } from '../engine/assets.js';
 import { repLabel } from '../engine/reputation.js';
@@ -386,6 +387,9 @@ try {
   ensureAssets(s20);
   eq('家中存粮并入小麦', s20.player.stock.find((x) => x.name === '小麦').qty, 3);
   eq('旧名不再存在', s20.player.stock.some((x) => x.name === '家中存粮'), false);
+
+  // --- 顶栏日期 ---
+  eq('顶栏日期不带复兴历', dateLine({ year: 222, doy: 302, hour: 7, minute: 5 }), '222年11月2日 07时05分');
 
   // --- 名字与品阶的拼装 ---
   eq('去掉品阶后缀', stripGrade('短刀（绿）'), '短刀');

@@ -605,7 +605,7 @@ function renderSheet(tab = app.tab) {
   const u = app.ui;
   if (!u) return;
   app.tab = tab;
-  dateEl.textContent = u.date.split('·').slice(0, 2).join('·').trim();
+  dateEl.textContent = u.dateLine || u.date.split('·').slice(0, 2).join('·').trim();
   const p = u.player;
   $('#cs-name').textContent = p.name;
   $('#cs-place').textContent = p.location.siteName;

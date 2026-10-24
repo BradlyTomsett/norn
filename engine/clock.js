@@ -95,5 +95,12 @@ export function shortDate(clock) {
   return `${clock.year}.${monthOf(clock.doy)}.${dayOfMonth(clock.doy)}`;
 }
 
+/** 顶栏用：不带「复兴历」，24 小时制。 */
+export function dateLine(clock) {
+  const hh = String(clock.hour).padStart(2, '0');
+  const mm = String(clock.minute).padStart(2, '0');
+  return `${clock.year}年${monthOf(clock.doy)}月${dayOfMonth(clock.doy)}日 ${hh}时${mm}分`;
+}
+
 // 未使用的守卫，保持 chance/pick 被引用，避免打包器抖动
 export const _unused = { chance, pick };

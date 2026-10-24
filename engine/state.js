@@ -1,5 +1,5 @@
 // 状态的创建、增量应用、校验、序列化。
-import { advanceClock, formatDate, monthOf, dayOfMonth, SEASON_CN, WEATHER_CN, seasonOf } from './clock.js';
+import { advanceClock, dateLine, formatDate, monthOf, dayOfMonth, SEASON_CN, WEATHER_CN, seasonOf } from './clock.js';
 import {
   accountOf,
   accountsText,
@@ -517,6 +517,7 @@ export function uiState(state) {
     saveId: state.saveId,
     turn: state.turn,
     date: formatDate(state.clock),
+    dateLine: dateLine(state.clock),
     calendar: {
       year: state.clock.year,
       month: monthOf(state.clock.doy),
