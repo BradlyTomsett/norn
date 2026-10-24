@@ -109,6 +109,22 @@ export async function ghList(dir) {
   return Array.isArray(j) ? j.filter((x) => x.type === 'file') : [];
 }
 
+/** 删除云端的一个文件 */
+export async function ghDelete(path, message) {
+  const c = ghConfig();
+  if (!ghReady()) throw new Error('还没填完 GitHub 配置');
+  const head = await fetch(`${api(c, path)}?ref=${encodeURIComponent(c.branch)}`, { headers: headers(c) });
+  if (!head.ok) throw await fail(head);
+  const sha = (await head.json()).sha;
+  const res = await fetch(api(c, path), {
+    method: 'DELETE',
+    headers: { ...headers(c), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: message || `删除 ${path}`, sha, branch: c.branch }),
+  });
+  if (!res.ok) throw await fail(res);
+  return res.json();
+}
+
 /** 备份一份存档 */
 export async function backupSave(state) {
   const path = `saves/${state.saveId}.json`;

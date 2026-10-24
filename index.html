@@ -32,7 +32,7 @@
     <h1>先填一个 API Key</h1>
     <p class="hint">这个游戏没有服务器，所有请求都从这台手机直接发给 DeepSeek。<br>Key 保存在本机浏览器里，不会传到别处。</p>
     <h2>API Key</h2>
-    <input id="gate-key" class="name-input" placeholder="sk-..." autocomplete="off" />
+    <input id="gate-key" class="name-input secret" type="password" placeholder="sk-..." autocomplete="new-password" spellcheck="false" />
     <h2>模型</h2>
     <input id="gate-model" class="name-input" placeholder="deepseek-flash" autocomplete="off" />
     <button id="gate-go" class="primary">开始</button>
@@ -120,7 +120,7 @@
     <h2 style="margin-top:22px">GitHub 云存档</h2>
     <p class="hint" id="gh-status">未配置。到「设置」里填仓库和令牌，就能把存档同步到 GitHub。</p>
     <div class="chips" style="margin-top:10px">
-      <button id="btn-gh-backup" class="chip">备份当前</button>
+      <button id="btn-gh-backup" class="chip">备份到云端</button>
       <button id="btn-gh-restore" class="chip">从云端恢复</button>
     </div>
     <div class="chips" style="margin-top:16px">
@@ -150,7 +150,7 @@
   <div class="sheet-inner">
     <h1>设置</h1>
     <h2>API Key</h2>
-    <input id="set-key" class="name-input" placeholder="sk-..." autocomplete="off" />
+    <input id="set-key" class="name-input secret" type="password" placeholder="sk-..." autocomplete="new-password" spellcheck="false" />
     <h2>模型</h2>
     <input id="set-model" class="name-input" placeholder="deepseek-flash" />
     <h2>推理强度</h2>
@@ -167,7 +167,7 @@
     <h2>分支</h2>
     <input id="set-gh-branch" class="name-input" placeholder="main" autocomplete="off" />
     <h2>令牌</h2>
-    <input id="set-gh-token" class="name-input" placeholder="github_pat_..." autocomplete="off" />
+    <input id="set-gh-token" class="name-input secret" type="password" placeholder="github_pat_..." autocomplete="new-password" spellcheck="false" />
     <div class="chips" style="margin-top:12px">
       <button id="set-gh-test" class="chip">测试连接</button>
     </div>

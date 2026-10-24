@@ -666,6 +666,14 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('#tf-do')) doTransfer();
 });
 
+// 密钥类输入框：禁止复制/剪切走（配合 type=password，屏幕上只显示圆点）
+for (const ev of ['copy', 'cut']) {
+  document.addEventListener(ev, (e) => {
+    const el = e.target;
+    if (el && el.tagName === 'INPUT' && el.classList.contains('secret')) e.preventDefault();
+  });
+}
+
 $('#btn-new').onclick = () => {
   if (!confirm('开新的一局？当前这局不会被删除，可以在存档里找回来。')) return;
   app.saveId = null;
@@ -728,17 +736,28 @@ $('#btn-gh-restore').onclick = async () => {
       return;
     }
     for (const f of files) {
+      const row = document.createElement('div');
+      row.className = 'cloud-row';
+
       const b = document.createElement('button');
-      b.className = 'card';
+      b.className = 'card cloud';
       b.innerHTML = `<b>${esc(f.name)}</b><span>读取中…</span>`;
-      box.appendChild(b);
+
+      const del = document.createElement('button');
+      del.className = 'cloud-del';
+      del.textContent = '删';
+      del.title = '删除云端存档';
+
+      row.append(b, del);
+      box.appendChild(row);
 
       // 先把云端文件读出来看元信息，免得点了才发现拿错版本
       sync
         .restoreSave(f.path)
         .then((state) => {
+          const who = `${state.player?.name || f.name} · 第 ${state.turn ?? 0} 回合`;
           const when = state.updatedAt ? new Date(state.updatedAt).toLocaleString() : '';
-          b.innerHTML = `<b>${esc(state.player?.name || f.name)} · 第 ${state.turn ?? 0} 回合</b><span>${esc(
+          b.innerHTML = `<b>${esc(who)}</b><span>${esc(
             state.player?.location?.siteName || '',
           )}${when ? ' · ' + esc(when) : ''}</span>`;
           b.onclick = () => {
@@ -754,10 +773,26 @@ $('#btn-gh-restore').onclick = async () => {
               alert('恢复失败：' + e.message);
             }
           };
+          del.onclick = async (ev) => {
+            ev.stopPropagation();
+            if (!confirm(`删除云端存档？\n\n${who}\n\n删掉之后找不回来。本机的那份不受影响。`)) return;
+            del.disabled = true;
+            del.textContent = '…';
+            try {
+              await sync.ghDelete(f.path, `删除云端存档 ${who}`);
+              row.remove();
+              if (!box.querySelector('.cloud-row')) box.innerHTML = '<p class="hint">云端还没有存档。</p>';
+            } catch (err) {
+              alert('删除失败：' + err.message);
+              del.disabled = false;
+              del.textContent = '删';
+            }
+          };
         })
         .catch(() => {
           b.innerHTML = `<b>${esc(f.name)}</b><span>读不到（${Math.round(f.size / 1024)} KB）</span>`;
           b.onclick = () => alert('这个存档读不出来，检查令牌权限。');
+          del.onclick = () => alert('读不到这个存档，没法删。');
         });
     }
   } catch (e) {

@@ -62,7 +62,7 @@ body {
 
 /* 右侧快速索引：一条一条对应每次发言，点一下跳过去 */
 .toc {
-  position: fixed; right: 10px; top: 62px; bottom: 110px;
+  position: fixed; right: 10px; top: 20vh; height: 38vh;
   width: 22px; padding: 4px 0;
   display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end;
   z-index: 6; opacity: .85;
@@ -313,3 +313,15 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .tf #tf-msg { font-size: 12px; }
 .tf #tf-msg.ok { color: #7fa06c; }
 .tf #tf-msg.err { color: var(--red); }
+
+/* 云端存档卡片：蓝调底色 + 右侧删除 */
+.cloud-row { display: flex; gap: 8px; align-items: stretch; }
+.cloud-row .card { flex: 1; }
+.card.cloud { border-color: #2f4a6d; background: linear-gradient(180deg, rgba(91,143,214,.16), rgba(91,143,214,.04)); }
+.card.cloud b { color: #9cc0ee; }
+.card.cloud span { color: #8fa6c2; }
+.cloud-del {
+  flex: none; width: 44px; border-radius: 14px; border: 1px solid #3a241f;
+  background: var(--bg2); color: var(--red); font-family: var(--serif); font-size: 13px;
+}
+.cloud-del:disabled { opacity: .5; }

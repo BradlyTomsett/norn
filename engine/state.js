@@ -354,12 +354,15 @@ export function applyDelta(state, delta, rng, opts = {}) {
       }
       const rel = state.player.relations.find((x) => x.npcId === npc.id);
       if (!rel) continue;
-      rel.trust = clamp(rel.trust + n(r.trust), -100, 100);
-      rel.closeness = clamp(rel.closeness + n(r.closeness), -100, 100);
+      const dTrust = n(r.trust);
+      const dClose = n(r.closeness);
+      const obs = typeof r.observable === 'string' ? r.observable.trim() : '';
+      const obsOk = Boolean(obs) && !/^[（(]?\s*(无变化|没有变化|无|未变|不变|同上|略)\s*[）)]?$/.test(obs);
+      if (!dTrust && !dClose && !obsOk) continue; // 整条都是「无变化」，直接跳过
+      rel.trust = clamp(rel.trust + dTrust, -100, 100);
+      rel.closeness = clamp(rel.closeness + dClose, -100, 100);
       rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
-      if (typeof r.observable === 'string' && r.observable.trim()) {
-        rel.observable = r.observable.trim().slice(0, 60);
-      }
+      if (obsOk) rel.observable = obs.slice(0, 60);
     }
   }
 
@@ -385,8 +388,10 @@ export function applyDelta(state, delta, rng, opts = {}) {
     for (const k of (Array.isArray(list) ? list : []).slice(0, 4)) {
       const text = typeof k === 'string' ? k : k?.text;
       if (!text) continue;
+      const clean = String(text).trim();
+      if (!clean || /^[（(]?\s*(无变化|没有变化|无|同上|略)\s*[）)]?$/.test(clean)) continue;
       state.knowledge.push({
-        text: String(text).slice(0, 80),
+        text: clean.slice(0, 80),
         source: typeof k === 'object' && k.source ? String(k.source).slice(0, 20) : '亲历',
         day: state.clock.doy,
       });
