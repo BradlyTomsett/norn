@@ -21,7 +21,7 @@ import {
 import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
 import { advanceWorld } from '../engine/tick.js';
 import { decayRelations, trainSkill } from '../engine/progress.js';
-import { parseItemEntry, parseContainer } from '../engine/items.js';
+import { parseItemEntry, parseContainer, addItem, removeItem } from '../engine/items.js';
 import { ensureAssets, runIndustries } from '../engine/assets.js';
 import { repLabel } from '../engine/reputation.js';
 import { migrateSave } from '../engine/migrate.js';
@@ -330,6 +330,22 @@ try {
   const rep2 = migrateSave(s16);
   eq('迁移是幂等的', rep2.moved.length, 0);
   ok('袋子没被重复加', bagSnap === JSON.stringify(s16.player.bag));
+
+  // --- 手动增减物品 ---
+  const s18 = fresh();
+  s18.player.bag = [{ name: '金疮药', qty: 2 }];
+  s18.player.equipment = ['长剑（灰）'];
+  const itAdd1 = addItem(s18, '金疮药', 3);
+  ok('同名物品自动累加', itAdd1.ok && s18.player.bag[0].qty === 5, JSON.stringify(s18.player.bag));
+  addItem(s18, '狼皮', 1);
+  ok('新名字当新物品加', s18.player.bag.some((b) => b.name === '狼皮'));
+  const itAdd2 = addItem(s18, '短刀（绿）', 1);
+  ok('带品阶的自动进装备', itAdd2.where === 'equipment' && s18.player.equipment.includes('短刀（绿）'));
+  const itDel1 = removeItem(s18, '金疮药', 5);
+  ok('减到 0 就从袋子里消失', itDel1.ok && !s18.player.bag.some((b) => b.name === '金疮药'));
+  const itDel2 = removeItem(s18, '长剑（灰）', 1);
+  ok('装备能减掉一件', itDel2.ok && !s18.player.equipment.includes('长剑（灰）'));
+  ok('减不存在的东西返回失败', removeItem(s18, '不存在的东西').ok === false);
 
   // --- 提示词块 ---
   const s10 = fresh();

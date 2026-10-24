@@ -129,6 +129,24 @@ function viewOverview(u) {
   return out.join('');
 }
 
+// 手动增减：下拉选已有的，也可以直接输新名字
+function itemTool(kind, names, hint) {
+  const uniq = Array.from(new Set((names || []).map((n) => String(n).trim()).filter(Boolean)));
+  const opts = uniq.map((n) => `<option value="${esc(n)}"></option>`).join('');
+  return `<div class="itool" data-kind="${kind}">
+    <div class="it-row">
+      <input id="it-name" class="it-name" list="it-opts" placeholder="物品名（可手输）" autocomplete="off" />
+      <datalist id="it-opts">${opts}</datalist>
+      <input id="it-qty" class="it-qty" type="number" min="1" value="1" inputmode="numeric" />
+    </div>
+    <div class="it-row">
+      <button class="chip" data-item-act="add">＋ 增加</button>
+      <button class="chip danger" data-item-act="del">－ 减少</button>
+    </div>
+    <div class="hint it-msg" id="it-msg">${hint}</div>
+  </div>`;
+}
+
 // 药品 / 消耗品：药、丸、瓶、罐、水、回血、清醒、气力、夜眼都算
 function viewItems(u) {
   const p = u.player;
@@ -150,6 +168,12 @@ function viewItems(u) {
   section('其他物品', others);
 
   if (!out.length) out.push('<p class="hint">身上没带什么东西。</p>');
+
+  const names = [
+    ...(p.bag || []).filter((b) => !gradeOf(b.name)).map((b) => b.name),
+    ...(p.equipment || []).filter((e) => !gradeOf(e)),
+  ];
+  out.push(itemTool('items', names, '同名会自动累加；带品阶（灰绿蓝紫金）的会进装备页。'));
   return out.join('');
 }
 
@@ -191,6 +215,12 @@ function viewGear(u) {
     out.push('<h3>资产</h3>');
     for (const a of p.assets) out.push(`<div class="item">${esc(a)}</div>`);
   }
+
+  const names = [
+    ...(p.equipment || []).filter((e) => gradeOf(e)),
+    ...(p.bag || []).filter((b) => gradeOf(b.name)).map((b) => b.name),
+  ];
+  out.push(itemTool('gear', names, '带品阶的装备，同名再加大一次就是多一件；没品阶的会进物品页。'));
   return out.join('');
 }
 

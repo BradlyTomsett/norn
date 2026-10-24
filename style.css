@@ -325,3 +325,16 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
   background: var(--bg2); color: var(--red); font-family: var(--serif); font-size: 13px;
 }
 .cloud-del:disabled { opacity: .5; }
+
+/* 物品/装备 手动增减 */
+.itool { margin-top: 18px; padding-top: 12px; border-top: 1px dashed var(--line); display: grid; gap: 8px; }
+.it-row { display: flex; gap: 8px; align-items: center; }
+.it-name, .it-qty {
+  background: #100e0c; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 9px; padding: 8px 10px; font-family: var(--serif); font-size: 14px; min-width: 0;
+}
+.it-name { flex: 1; }
+.it-qty { flex: 0 0 68px; text-align: center; }
+.itool .chip { flex: 1; padding: 8px 10px; }
+.it-msg.ok { color: #7fa06c; }
+.it-msg.err { color: var(--red); }

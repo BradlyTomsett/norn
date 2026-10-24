@@ -87,3 +87,59 @@ export function isConsumable(name) {
   if (Object.keys(CONSUMABLES).some((k) => s.includes(k))) return true;
   return /药|丹|膏|汤|散|丸|瓶|罐|烟|酸|清醒|气力|夜眼|回血|浮水/.test(s);
 }
+
+/* ---------------- 手动增减物品 ---------------- */
+
+const GRADE_IN_NAME = /（(灰|绿|蓝|紫|金)(?:[，,]\s*[^）]*)?）/;
+
+export function gradeOfName(name) {
+  const m = String(name || '').match(GRADE_IN_NAME);
+  return m ? m[1] : '';
+}
+
+/** 加物品：带品阶的进装备，其余进袋子；同名自动累加。 */
+export function addItem(state, name, qty = 1) {
+  const p = state.player;
+  const n = String(name || '').trim().slice(0, 40);
+  if (!n) return { ok: false, reason: '名称是空的' };
+  const count = Math.max(1, Math.round(Number(qty) || 1));
+
+  if (gradeOfName(n)) {
+    if (!Array.isArray(p.equipment)) p.equipment = [];
+    for (let i = 0; i < count; i++) p.equipment.push(n);
+    return { ok: true, where: 'equipment', count };
+  }
+
+  if (!Array.isArray(p.bag)) p.bag = [];
+  const hit = p.bag.find((b) => b.name === n);
+  if (hit) hit.qty += count;
+  else p.bag.push({ name: n, qty: count });
+  return { ok: true, where: 'bag', count };
+}
+
+/** 减物品：先找袋子，再找装备。返回实际减掉多少。 */
+export function removeItem(state, name, qty = 1) {
+  const p = state.player;
+  const n = String(name || '').trim();
+  if (!n) return { ok: false, reason: '名称是空的' };
+  const count = Math.max(1, Math.round(Number(qty) || 1));
+
+  const bag = Array.isArray(p.bag) ? p.bag : [];
+  const hit = bag.find((b) => b.name === n);
+  if (hit) {
+    const took = Math.min(hit.qty, count);
+    hit.qty -= took;
+    if (hit.qty <= 0) p.bag = bag.filter((b) => b !== hit);
+    return { ok: true, where: 'bag', count: took };
+  }
+
+  const eq = Array.isArray(p.equipment) ? p.equipment : [];
+  const idx = [];
+  eq.forEach((e, i) => {
+    if (e === n) idx.push(i);
+  });
+  if (!idx.length) return { ok: false, reason: `没有「${n}」` };
+  const drop = idx.slice(0, count);
+  p.equipment = eq.filter((_, i) => !drop.includes(i));
+  return { ok: true, where: 'equipment', count: drop.length };
+}

@@ -9,6 +9,7 @@ import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
+import { addItem, removeItem } from './engine/items.js';
 import { VIEWS } from './views.js';
 
 const BUILD = '2026-10-23 · r5';
@@ -698,6 +699,40 @@ for (const ev of ['copy', 'cut']) {
     if (el && el.tagName === 'INPUT' && el.classList.contains('secret')) e.preventDefault();
   });
 }
+
+/* ---------------- 物品 / 装备 手动增减 ---------------- */
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-item-act]');
+  if (!btn) return;
+
+  const msg = $('#it-msg');
+  const say = (t, cls = '') => {
+    if (!msg) return;
+    msg.textContent = t;
+    msg.className = 'hint it-msg ' + cls;
+  };
+
+  const state = store.getSave(app.saveId);
+  if (!state) return say('没有打开的存档。', 'err');
+
+  const name = ($('#it-name')?.value || '').trim();
+  const qty = Math.max(1, Math.round(Number($('#it-qty')?.value) || 1));
+  const adding = btn.dataset.itemAct === 'add';
+  const res = adding ? addItem(state, name, qty) : removeItem(state, name, qty);
+  if (!res.ok) return say(res.reason || '没成功', 'err');
+
+  store.putSave(state);
+  app.ui = uiState(state);
+  renderSheet(app.tab);
+
+  const after = $('#it-msg');
+  if (after) {
+    after.textContent = `${adding ? '增加' : '减少'} ${res.count} ${res.where === 'equipment' ? '件装备' : '个物品'}：${name}`;
+    after.className = 'hint it-msg ok';
+  }
+  if (sync.ghReady()) sync.backupSave(state).catch(() => {});
+});
 
 $('#btn-new').onclick = () => {
   if (!confirm('开新的一局？当前这局不会被删除，可以在存档里找回来。')) return;
