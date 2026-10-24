@@ -15,7 +15,7 @@ import { priceOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
-import { effectOf, isContainer, parseContainer, parseItemEntry } from './items.js';
+import { effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry } from './items.js';
 import { chronicleText } from './chronicle.js';
 
 export {
@@ -511,6 +511,7 @@ export function npcCards(state) {
 export function uiState(state) {
   ensureAccounts(state); // 老存档读的时候就把 wallet 迁成 cash
   ensureAssets(state);
+  normalizeItems(state);
   const p = state.player;
   return {
     saveId: state.saveId,

@@ -21,7 +21,7 @@ import {
 import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
 import { advanceWorld } from '../engine/tick.js';
 import { decayRelations, trainSkill } from '../engine/progress.js';
-import { parseItemEntry, parseContainer, addItem, removeItem, stripGrade, composeName } from '../engine/items.js';
+import { parseItemEntry, parseContainer, addItem, removeItem, stripGrade, composeName, normalizeItems } from '../engine/items.js';
 import { ensureAssets, runIndustries } from '../engine/assets.js';
 import { repLabel } from '../engine/reputation.js';
 import { migrateSave } from '../engine/migrate.js';
@@ -363,6 +363,22 @@ try {
   ok('交通工具按名字累加', st3.where === 'vehicle' && s19.player.vehicles[0].qty === 2);
   const st4 = removeItem(s19, '枣红马', 2);
   ok('交通工具减到 0 就消失', st4.ok && s19.player.vehicles.length === 0);
+
+  // --- 物品唯一化：粮食归存货、同名合并 ---
+  const s21 = fresh();
+  s21.player.stock = [{ name: '小麦', qty: 2 }];
+  s21.player.bag = [{ name: '小麦', qty: 1 }];
+  normalizeItems(s21);
+  eq('袋子里的小麦并入存货', s21.player.stock.find((x) => x.name === '小麦').qty, 3);
+  ok('袋子里不再有小麦', !s21.player.bag.some((x) => x.name === '小麦'));
+  const g1 = addItem(s21, '小麦', 2);
+  eq('再加小麦仍进存货', g1.where, 'stock');
+  eq('小麦总数 5', s21.player.stock.find((x) => x.name === '小麦').qty, 5);
+  const g2 = addItem(s21, '面粉', 1);
+  eq('新粮食也进存货', g2.where, 'stock');
+  s21.player.stock.push({ name: '牛皮', qty: 1 });
+  normalizeItems(s21);
+  eq('同类同名合并成一条', s21.player.stock.filter((x) => x.name === '小麦').length, 1);
 
   // --- 存货旧名归一 ---
   const s20 = fresh();

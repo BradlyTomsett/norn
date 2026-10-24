@@ -113,6 +113,45 @@ export function composeName(base, grade) {
 }
 
 /** 加物品：带品阶的进装备；存货/牲畜按名字归位；其余进袋子。同名自动累加。 */
+/** 粮食类：一律算存货。 */
+export const GRAIN_RE = /小麦|大麦|麦子|大米|稻米|面粉|谷物|粮食/;
+
+/** 同名合并：同一类里同名的只留一条，数量相加。 */
+function dedupe(list) {
+  const out = [];
+  for (const row of list || []) {
+    const hit = out.find((x) => x.name === row.name);
+    if (hit) hit.qty += row.qty;
+    else out.push({ ...row });
+  }
+  return out.filter((x) => x.qty > 0);
+}
+
+/**
+ * 物品唯一化：一个名字在整份存档里只出现一次。
+ * - 袋子里的粮食并入存货
+ * - 各列表内同名合并
+ */
+export function normalizeItems(state) {
+  const p = state.player;
+  if (!Array.isArray(p.bag)) p.bag = [];
+  if (!Array.isArray(p.stock)) p.stock = [];
+  if (!Array.isArray(p.vehicles)) p.vehicles = [];
+
+  for (const row of [...p.bag]) {
+    if (!GRAIN_RE.test(row.name)) continue;
+    const hit = p.stock.find((s) => s.name === row.name);
+    if (hit) hit.qty += row.qty;
+    else p.stock.push({ name: row.name, qty: row.qty });
+    p.bag.splice(p.bag.indexOf(row), 1);
+  }
+
+  p.bag = dedupe(p.bag);
+  p.stock = dedupe(p.stock);
+  p.vehicles = dedupe(p.vehicles);
+  return p;
+}
+
 export function addItem(state, name, qty = 1) {
   const p = state.player;
   const n = String(name || '').trim().slice(0, 40);
@@ -126,16 +165,23 @@ export function addItem(state, name, qty = 1) {
   }
 
   if (!Array.isArray(p.bag)) p.bag = [];
-  const inBag = p.bag.find((b) => b.name === n);
-  if (inBag) {
-    inBag.qty += count;
-    return { ok: true, where: 'bag', count };
-  }
 
   const inStock = Array.isArray(p.stock) ? p.stock.find((s) => s.name === n) : null;
   if (inStock) {
     inStock.qty += count;
     return { ok: true, where: 'stock', count };
+  }
+
+  if (GRAIN_RE.test(n)) {
+    if (!Array.isArray(p.stock)) p.stock = [];
+    p.stock.push({ name: n, qty: count });
+    return { ok: true, where: 'stock', count };
+  }
+
+  const inBag = p.bag.find((b) => b.name === n);
+  if (inBag) {
+    inBag.qty += count;
+    return { ok: true, where: 'bag', count };
   }
 
   const inVehicle = Array.isArray(p.vehicles) ? p.vehicles.find((s) => s.name === n) : null;

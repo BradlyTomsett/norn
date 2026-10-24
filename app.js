@@ -9,7 +9,8 @@ import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
-import { addItem, removeItem, gradeOfName, stripGrade, composeName } from './engine/items.js';
+import { addItem, removeItem, gradeOfName, stripGrade, composeName, normalizeItems } from './engine/items.js';
+import { ensureAssets } from './engine/assets.js';
 import { VIEWS } from './views.js';
 
 const BUILD = '2026-10-23 · r5';
@@ -730,6 +731,8 @@ document.addEventListener('click', (e) => {
 
   const state = store.getSave(app.saveId);
   if (!state) return say('没有打开的存档。', 'err');
+  ensureAssets(state);
+  normalizeItems(state);
 
   const raw = ($('#it-name')?.value || '').trim();
   const grade = $('#it-grade')?.value || '';
