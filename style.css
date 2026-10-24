@@ -338,3 +338,15 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .itool .chip { flex: 1; padding: 8px 10px; }
 .it-msg.ok { color: #7fa06c; }
 .it-msg.err { color: var(--red); }
+
+/* 已有物品平铺，点一下选中 */
+.it-picks { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; padding: 2px; }
+.it-pick {
+  background: var(--bg2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 11px; font-family: var(--serif); font-size: 12.5px;
+}
+.it-pick:active { border-color: var(--accent); color: var(--accent); }
+.it-grade {
+  flex: 0 0 74px; background: #100e0c; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 9px; padding: 8px 6px; font-family: var(--serif); font-size: 13px;
+}

@@ -9,7 +9,7 @@ import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
-import { addItem, removeItem } from './engine/items.js';
+import { addItem, removeItem, gradeOfName } from './engine/items.js';
 import { VIEWS } from './views.js';
 
 const BUILD = '2026-10-23 · r5';
@@ -703,6 +703,19 @@ for (const ev of ['copy', 'cut']) {
 /* ---------------- 物品 / 装备 手动增减 ---------------- */
 
 document.addEventListener('click', (e) => {
+  // 点已有的物品名 → 填进输入框
+  const pick = e.target.closest('.it-pick');
+  if (pick) {
+    const input = $('#it-name');
+    if (input) {
+      input.value = pick.dataset.name || '';
+      input.focus();
+    }
+    const grade = $('#it-grade');
+    if (grade) grade.value = '';
+    return;
+  }
+
   const btn = e.target.closest('[data-item-act]');
   if (!btn) return;
 
@@ -716,7 +729,9 @@ document.addEventListener('click', (e) => {
   const state = store.getSave(app.saveId);
   if (!state) return say('没有打开的存档。', 'err');
 
-  const name = ($('#it-name')?.value || '').trim();
+  const raw = ($('#it-name')?.value || '').trim();
+  const grade = $('#it-grade')?.value || '';
+  const name = grade && raw && !gradeOfName(raw) ? `${raw}（${grade}）` : raw;
   const qty = Math.max(1, Math.round(Number($('#it-qty')?.value) || 1));
   const adding = btn.dataset.itemAct === 'add';
   const res = adding ? addItem(state, name, qty) : removeItem(state, name, qty);

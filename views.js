@@ -129,14 +129,23 @@ function viewOverview(u) {
   return out.join('');
 }
 
-// 手动增减：下拉选已有的，也可以直接输新名字
+// 手动增减：已有物品全部平铺出来，点一下就选中；也能直接输新名字
 function itemTool(kind, names, hint) {
   const uniq = Array.from(new Set((names || []).map((n) => String(n).trim()).filter(Boolean)));
-  const opts = uniq.map((n) => `<option value="${esc(n)}"></option>`).join('');
+  const picks = uniq.length
+    ? uniq.map((n) => `<button class="it-pick" data-name="${esc(n)}">${esc(n)}</button>`).join('')
+    : '<span class="hint">这一类还没有东西，直接输入新名字。</span>';
+  const gradeSel =
+    kind === 'gear'
+      ? `<select id="it-grade" class="it-grade"><option value="">颜色</option>${['灰', '绿', '蓝', '紫', '金']
+          .map((g) => `<option value="${g}">${g}</option>`)
+          .join('')}</select>`
+      : '';
   return `<div class="itool" data-kind="${kind}">
+    <div class="it-picks">${picks}</div>
     <div class="it-row">
-      <input id="it-name" class="it-name" list="it-opts" placeholder="物品名（可手输）" autocomplete="off" />
-      <datalist id="it-opts">${opts}</datalist>
+      <input id="it-name" class="it-name" placeholder="名字（点上面，或手输）" autocomplete="off" />
+      ${gradeSel}
       <input id="it-qty" class="it-qty" type="number" min="1" value="1" inputmode="numeric" />
     </div>
     <div class="it-row">
