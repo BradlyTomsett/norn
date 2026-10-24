@@ -49,6 +49,9 @@ try {
   const bread = priceOf(state, '黑面包');
   eq('面包归到主食', bread.cat, 'staple');
   eq('面包 1 铜', bread.unit, 1);
+  eq('小麦一袋 40 铜', priceOf(state, '小麦').unit, 40);
+  eq('大米一袋 40 铜', priceOf(state, '一袋大米').unit, 40);
+  eq('稻米同价', priceOf(state, '稻米').unit, 40);
 
   const sword = priceOf(state, '铁剑');
   eq('铁剑归到武器', sword.cat, 'weapon');
