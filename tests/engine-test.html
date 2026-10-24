@@ -21,7 +21,7 @@ import {
 import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
 import { advanceWorld } from '../engine/tick.js';
 import { decayRelations, trainSkill } from '../engine/progress.js';
-import { parseItemEntry, parseContainer, addItem, removeItem } from '../engine/items.js';
+import { parseItemEntry, parseContainer, addItem, removeItem, stripGrade, composeName } from '../engine/items.js';
 import { ensureAssets, runIndustries } from '../engine/assets.js';
 import { repLabel } from '../engine/reputation.js';
 import { migrateSave } from '../engine/migrate.js';
@@ -360,6 +360,12 @@ try {
   ok('交通工具按名字累加', st3.where === 'vehicle' && s19.player.vehicles[0].qty === 2);
   const st4 = removeItem(s19, '枣红马', 2);
   ok('交通工具减到 0 就消失', st4.ok && s19.player.vehicles.length === 0);
+
+  // --- 名字与品阶的拼装 ---
+  eq('去掉品阶后缀', stripGrade('短刀（绿）'), '短刀');
+  eq('名字+品阶拼起来', composeName('短刀', '绿'), '短刀（绿）');
+  eq('已经带品阶就不再叠', composeName('短刀（绿）', '紫'), '短刀（绿）');
+  eq('不带品阶原样返回', composeName('小麦', ''), '小麦');
 
   // --- 提示词块 ---
   const s10 = fresh();

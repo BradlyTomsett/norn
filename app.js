@@ -9,7 +9,7 @@ import { trainSkill } from './engine/progress.js';
 import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
-import { addItem, removeItem, gradeOfName } from './engine/items.js';
+import { addItem, removeItem, gradeOfName, stripGrade, composeName } from './engine/items.js';
 import { VIEWS } from './views.js';
 
 const BUILD = '2026-10-23 · r5';
@@ -706,13 +706,15 @@ document.addEventListener('click', (e) => {
   // 点已有的物品名 → 填进输入框
   const pick = e.target.closest('.it-pick');
   if (pick) {
+    const full = pick.dataset.name || '';
+    const g = gradeOfName(full);
     const input = $('#it-name');
     if (input) {
-      input.value = pick.dataset.name || '';
+      input.value = g ? stripGrade(full) : full;
       input.focus();
     }
-    const grade = $('#it-grade');
-    if (grade) grade.value = '';
+    const sel = $('#it-grade');
+    if (sel) sel.value = g || '';
     return;
   }
 
@@ -731,7 +733,7 @@ document.addEventListener('click', (e) => {
 
   const raw = ($('#it-name')?.value || '').trim();
   const grade = $('#it-grade')?.value || '';
-  const name = grade && raw && !gradeOfName(raw) ? `${raw}（${grade}）` : raw;
+  const name = composeName(raw, grade);
   const qty = Math.max(1, Math.round(Number($('#it-qty')?.value) || 1));
   const adding = btn.dataset.itemAct === 'add';
   const res = adding ? addItem(state, name, qty) : removeItem(state, name, qty);

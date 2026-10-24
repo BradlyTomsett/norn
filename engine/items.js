@@ -97,6 +97,21 @@ export function gradeOfName(name) {
   return m ? m[1] : '';
 }
 
+/** 去掉名字里的「（紫）」这类品阶标记。 */
+export function stripGrade(name) {
+  return String(name || '')
+    .replace(/（(灰|绿|蓝|紫|金)(?:[，,]\s*[^）]*)?）/g, '')
+    .trim();
+}
+
+/** 名字 + 品阶 → 完整名；已经带品阶的原样返回。 */
+export function composeName(base, grade) {
+  const b = String(base || '').trim();
+  if (!b) return '';
+  if (!grade) return b;
+  return gradeOfName(b) ? b : `${stripGrade(b)}（${grade}）`;
+}
+
 /** 加物品：带品阶的进装备；存货/牲畜按名字归位；其余进袋子。同名自动累加。 */
 export function addItem(state, name, qty = 1) {
   const p = state.player;
