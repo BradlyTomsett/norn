@@ -159,6 +159,22 @@ const smart = '正文。\n```json\n{“mind”：{“mood”：“平静”}}\n`
 const sm = splitDelta(smart);
 ok('中文引号能救回来', sm.delta && sm.delta.mind.mood === '平静', JSON.stringify(sm.delta));
 
+const BT = String.fromCharCode(96, 96, 96);
+const NL = String.fromCharCode(10);
+
+const unterminated = '正文。' + NL + BT + 'json' + NL + '{"mind":{"mood":"平静"}}';
+const ut = splitDelta(unterminated);
+ok('没有收尾的代码块也能剥掉', !ut.text.includes('mind') && ut.text.includes('正文'));
+ok('没有收尾也能解析出增量', ut.delta && ut.delta.mind.mood === '平静');
+
+const badBlock = '正文。' + NL + BT + 'json' + NL + '{不是 json' + NL + BT;
+const bt = splitDelta(badBlock);
+ok('坏 JSON 也不显示在正文里', !bt.text.includes('不是 json'), bt.text);
+
+const middle = '正文。' + NL + '{"mind":{"mood":"平静"}}' + NL + '【你现在可以做什么】' + NL + '① 看看';
+const md = splitDelta(middle);
+ok('夹在中间也能剥掉', !md.text.includes('"mind"') && md.text.includes('【你现在可以做什么】'), md.text);
+ok('夹在中间也能解析', md.delta && md.delta.mind.mood === '平静');
 const broken = '正文，没有任何 JSON。';
 const bk = splitDelta(broken);
 ok('真的没有就返回 null', bk.delta === null && bk.text.includes('正文'));

@@ -121,22 +121,62 @@ export function parseLooseJson(input) {
   return tryParse(fixed);
 }
 
-/** 从文本里找最后一段像增量的 JSON 对象。 */
-function lastJsonObject(src) {
-  for (let start = src.lastIndexOf('{'); start >= 0; start = src.lastIndexOf('{', start - 1)) {
-    const slice = src.slice(start);
-    if (parseLooseJson(slice)) return slice;
-    if (start === 0) break;
+/** 从 start 处的 { 找到与它配对的 }（跳过字符串里的括号）。 */
+function matchBrace(s, start) {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
   }
-  return null;
+  return -1;
+}
+
+/** 增量的常见字段，用来判断哪段 JSON 才是状态块（而不是里面某个嵌套对象）。 */
+const DELTA_KEYS = [
+  'money', 'trade', 'relations', 'knowledge', 'mind', 'body', 'goals', 'problems',
+  'items', 'use', 'skills', 'unfinished', 'bounty', 'payDebt', 'borrow', 'gift', 'profession', 'time',
+];
+
+/** 从文本里找最像增量的那个 JSON 对象（取最外层、命中字段最多的）。 */
+function lastJsonObject(src) {
+  let best = null;
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] !== '{') continue;
+    const end = matchBrace(src, i);
+
+    // 截断的情况：从这个 { 一直到结尾
+    const slices = end > i ? [src.slice(i, end + 1)] : [src.slice(i)];
+    for (const slice of slices) {
+      const v = parseLooseJson(slice);
+      if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+      const hits = DELTA_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(v, k)).length;
+      const score = hits * 100000 + slice.length;
+      if (!best || score > best.score) best = { slice, value: v, score };
+    }
+  }
+  return best;
 }
 
 /** 把模型输出拆成「正文」和「最后一个 json 代码块」。 */
 export function splitDelta(text) {
   const src = String(text || '');
+  // 收尾的 ``` 可能被截断掉了，所以到「下一个 ``` 或 文本结束」都算块内容
   const stripFence = (s) =>
     s
-      .replace(/`{3,}\s*(?:json)?[\s\S]*?`{3,}/gi, '')
+      .replace(/`{3,}\s*(?:json|JSON)?[\s\S]*?(?:`{3,}|$)/g, '')
       .replace(/^[ \t]*`{3,}[ \t]*$/gm, '')
       .trim();
 
@@ -153,20 +193,29 @@ export function splitDelta(text) {
       break;
     }
   }
-  // 2) 没有代码块：正文末尾裸着的 JSON 也认
+  // 2) 没有代码块：正文里裸着的 JSON 也认
   if (!candidate) {
-    const tail = lastJsonObject(src);
-    if (tail) {
-      const v = parseLooseJson(tail);
-      if (v) candidate = { body: tail, value: v };
-    }
+    const best = lastJsonObject(src);
+    if (best) candidate = { body: best.slice, value: best.value };
   }
 
-  if (!candidate) return { text: stripFence(src), delta: null };
+  if (!candidate) return { text: cutTrailingJson(stripFence(src)), delta: null };
 
   const idx = src.lastIndexOf(candidate.body);
   const head = idx >= 0 ? src.slice(0, idx) + src.slice(idx + candidate.body.length) : stripFence(src);
-  return { text: stripFence(head), delta: candidate.value };
+  return { text: cutTrailingJson(stripFence(head)), delta: candidate.value };
+}
+
+/** 解析不出来的时候，也别把末尾那坨 JSON 当正文显示出来。 */
+function cutTrailingJson(s) {
+  const text = String(s || '');
+  const at = text.lastIndexOf('\n{');
+  if (at >= 0) {
+    const tail = text.slice(at);
+    if (/^\s*\{[\s\S]*$/.test(tail) && !tail.includes('【')) return text.slice(0, at).trim();
+  }
+  if (/^\s*[{[][\s\S]*$/.test(text) && !text.includes('【')) return '';
+  return text.trim();
 }
 
 /** 去掉模型不该输出的【当前角色】大表、结尾小标题和自言自语。 */

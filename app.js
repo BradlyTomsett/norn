@@ -523,6 +523,7 @@ async function send() {
   scrollToElement(bubble);
 
   let raw = '';
+  let cleanText = '';
   let frame = null;
   const paint = () => {
     bubble.innerHTML = format(raw) || '<p>&nbsp;</p>';
@@ -548,7 +549,8 @@ async function send() {
       delta = await recoverDelta(raw);
       if (delta) rawText = splitDelta(raw).text;
     }
-    const cleanText = pruneEmpty(stripSheet(rawText));
+    const cleanText2 = pruneEmpty(stripSheet(rawText));
+    cleanText = cleanText2;
 
     // 编年：模型这回合写了就存进状态，否则几回合后会被挤出上下文
     mergeChronicle(state, parseChronicle(cleanText));
@@ -581,6 +583,8 @@ async function send() {
     scrollToElement(bubble);
   } catch (err) {
     bubble.classList.remove('cursor');
+    // 即使后面某一步出错，也不能让流式过程中那坨 JSON 留在气泡里
+    if (cleanText) bubble.innerHTML = format(cleanText);
     addMessage('error', '这一回合失败了：' + err.message);
   } finally {
     app.streaming = false;
