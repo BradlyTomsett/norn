@@ -392,7 +392,7 @@ try {
   ok('星期用「星期几」不用「曜日」', formatDate({ year: 222, doy: 302, hour: 5, minute: 55, weather: 'clear' }).includes('星期') && !formatDate({ year: 222, doy: 302, hour: 5, minute: 55, weather: 'clear' }).includes('曜'));
 
   // --- 顶栏日期 ---
-  eq('顶栏日期不带复兴历', dateLine({ year: 222, doy: 302, hour: 7, minute: 5 }), '222年11月2日 07时05分');
+  eq('顶栏日期带星期、不带复兴历', dateLine({ year: 222, doy: 302, hour: 7, minute: 5 }), '222年11月2日 星期二 07时05分');
 
   // --- 名字与品阶的拼装 ---
   eq('去掉品阶后缀', stripGrade('短刀（绿）'), '短刀');

@@ -291,8 +291,10 @@ button.primary {
   .two-col .item { font-size: 12.5px; }
   .two-col.people .nm { font-size: 13.5px; }
   .two-col.people .ob { font-size: 11.5px; }
-  #topbar { gap: 8px; }
-  #topbar .date { font-size: 11px; }
+  #topbar { gap: 6px; padding-left: 10px; padding-right: 10px; }
+  #topbar .date { font-size: 10.5px; }
+  #topbar .saves-primary { padding: 6px 10px; font-size: 13px; }
+  #topbar button.ghost { padding: 6px 10px; font-size: 13px; }
 }
 @media (max-width: 380px) {
   .msg { font-size: calc(15px * var(--font-scale)); }
