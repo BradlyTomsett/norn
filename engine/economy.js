@@ -301,6 +301,10 @@ export function learnRate(state, label, copper, { force = false } = {}) {
   return true;
 }
 
+export const SERVICE_RE = /送信|跑腿|打杂|帮工|带路|向导|盯梢|打听|卖消息|护送|押运|邮差|邮资|邮费|雇人|代笔|抄写/;
+
+export const isService = (name) => SERVICE_RE.test(String(name || ''));
+
 export function rateOf(state, label) {
   return Math.round(Number(state?.rates?.[String(label || '').trim()]) || 0);
 }

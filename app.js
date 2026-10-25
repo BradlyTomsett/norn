@@ -53,11 +53,12 @@ const RUNTIME = `
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
 3b. **钱不要自己算，也不要自己定价。** 你只写"做了什么"，价格、到账、扣款全部由引擎结算：
     "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}],"sell":[{"name":"狼皮","qty":1}]}
-    "bounty":{"label":"清掉林子边的狼","tier":2}          **接活**：酬劳此刻定死，引擎按威胁等级开
+    "bounty":{"label":"清掉林子边的狼","copper":2400000}  **接活**：委托报酬由你按物价水平报，报了就记进存档（不报则引擎按 tier 掷）
     "bounty":{"result":"完成"}                            **交活**：完成=全额，一半=半额，未完成=一分没有
     "earn":{"label":"替粮行送信","copper":300}          非战斗进账：你按下面的参考价自己报一个铜数，第一次定下后存档记住，以后同类按这个
     参考价（铜/次）：跑腿送信 300｜打杂帮工 150｜带路 600｜盯梢打听 500｜卖消息 800｜抄写代笔 400｜卖艺 200｜护送押运 8000｜商队长途 3 万｜赌 1000
     "prices":[{"name":"刻纹银匕首","copper":1200}]       价目表里没有的东西：你按物价水平给个铜数，引擎记进存档并一直沿用
+                                                        送信/跑腿/护送这类**服务**也写这里，引擎会自动归到「活计收入」
     "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
     "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.01}   借钱（默认月息 1%）
     "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
@@ -451,6 +452,7 @@ function openSettings() {
   showBuildInfo();
   renderPrices();
   renderRates();
+  renderContract();
   $('#settings').classList.remove('hidden');
 }
 
@@ -497,6 +499,34 @@ $('#btn-price-save').onclick = () => {
   if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
 };
 
+/** 当前委托：显示名字与酬劳，可直接改。 */
+function renderContract() {
+  const box = $('#contract-box');
+  if (!box) return;
+  const state = store.getSave(app.saveId);
+  const c = state?.player?.contract;
+  if (!c) {
+    box.innerHTML = '<p class="hint">现在手上没有接下的活。</p>';
+    return;
+  }
+  box.innerHTML =
+    `<div class="price-row"><span class="nm">${esc(c.label)}</span>` +
+    `<input id="contract-pay" type="number" min="1" step="1" inputmode="numeric" value="${Math.round(Number(c.copper) || 0)}" /></div>` +
+    `<div class="chips" style="margin-top:8px"><button id="btn-contract-save" class="chip">保存酬劳</button></div>`;
+  const btn = $('#btn-contract-save');
+  if (btn) {
+    btn.onclick = () => {
+      const st = store.getSave(app.saveId);
+      if (!st?.player?.contract) return;
+      const v = Math.round(Number($('#contract-pay')?.value) || 0);
+      if (v <= 0) return;
+      st.player.contract.copper = v;
+      store.putSave(st);
+      app.ui = uiState(st);
+      renderContract();
+    };
+  }
+}
 /** 活计收入表，结构与物价表一样。 */
 function renderRates() {
   const box = $('#rate-list');

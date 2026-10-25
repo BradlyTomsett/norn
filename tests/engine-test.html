@@ -5,7 +5,7 @@
 // 引擎自测：不依赖 node，用浏览器直接跑。
 // 打开后看页面里的 PASS / FAIL 列表。
 import { generateWorld } from '../engine/worldgen.js';
-import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice } from '../engine/economy.js';
+import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice, earnRef } from '../engine/economy.js';
 import { addCopper, ensureAccounts, totalCopper, copperText, transferCopper } from '../engine/money.js';
 import {
   accrueDebts,
@@ -18,7 +18,7 @@ import {
   runWages,
   workOf,
 } from '../engine/ledger.js';
-import { applyDelta, bagText, stateBlock, uiState } from '../engine/state.js';
+import { applyDelta, bagText, ensurePriceTable, stateBlock, uiState } from '../engine/state.js';
 import { advanceWorld } from '../engine/tick.js';
 import { decayRelations, trainSkill } from '../engine/progress.js';
 import { dateLine, formatDate } from '../engine/clock.js';
@@ -292,6 +292,28 @@ try {
   ok('减到 0 就消失', !s26.player.bag.some((b) => b.name === '羊皮'));
   const rej26 = applyDelta(s26, { lose: [{ name: '没有的东西', qty: 1 }] }, makeRng(4), { judged: null });
   ok('丢没有的东西会被拒绝', rej26.rejected.length > 0, JSON.stringify(rej26.rejected));
+  // --- 委托报价与活计归类 ---
+  const s27 = fresh();
+  applyDelta(s27, { bounty: { label: '护送商队到加隆城', copper: 24000000 } }, makeRng(1), { judged: null });
+  eq('委托按 AI 报的价定', s27.player.contract.copper, 24000000);
+  eq('接活不进账', s27.player.accounts.find((a) => a.id === 'cash').copper, 100000);
+  applyDelta(s27, { bounty: { result: '完成' } }, makeRng(2), { judged: null });
+  eq('完成拿全款', s27.player.accounts.find((a) => a.id === 'cash').copper, 100000 + 24000000);
+
+  const s28 = fresh();
+  applyDelta(s28, { prices: [{ name: '雇人送信（到加隆城）', copper: 568437 }] }, makeRng(3), { judged: null });
+  ok('服务报价进活计表', s28.rates['雇人送信（到加隆城）'] === 568437, JSON.stringify(s28.rates));
+  ok('不混进物品价表', !s28.prices || s28.prices['雇人送信（到加隆城）'] === undefined);
+
+  const s29 = fresh();
+  s29.prices = { 送信: 300, 刻纹银匕首: 1200 };
+  ensurePriceTable(s29);
+  ok('旧数据里的服务价被搬走', s29.prices['送信'] === undefined && s29.rates['送信'] === 300, JSON.stringify(s29.prices));
+  ok('物品价不受影响', s29.prices['刻纹银匕首'] === 1200);
+  const s30 = fresh();
+  s30.prices = { '雇人送信（到加隆城）': 568437 };
+  ensurePriceTable(s30);
+  ok('离谱的服务价被重置为参考价', s30.rates['雇人送信（到加隆城）'] === earnRef('雇人送信（到加隆城）'), String(s30.rates['雇人送信（到加隆城）']));
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';

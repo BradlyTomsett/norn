@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { earnAmount, learnPrice, learnRate, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
+import { earnAmount, isService, learnPrice, learnRate, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -99,6 +99,19 @@ export function bagText(state) {
 
 /* ---------------- 账目日志 ---------------- */
 
+/** 老数据清洗：活计类的价从 prices 挪到 rates；离谱的数按参考价重置。 */
+export function ensurePriceTable(state) {
+  if (!state.prices || typeof state.prices !== 'object') return;
+  if (!state.rates || typeof state.rates !== 'object') state.rates = {};
+  for (const [name, v] of Object.entries(state.prices)) {
+    if (!isService(name)) continue;
+    if (!state.rates[name]) {
+      // 一件跑腿记成几十金显然是模型写错了，落回参考价
+      state.rates[name] = v > 50000 ? earnAmount(state, name, 0).copper : v;
+    }
+    delete state.prices[name];
+  }
+}
 export function logLedger(state, text) {
   state.ledgerLog ||= [];
   state.ledgerLog.push({ year: state.clock.year, doy: state.clock.doy, text: String(text).slice(0, 100) });
@@ -178,9 +191,13 @@ function settleBounty(state, bounty, rng, judged, rejected) {
       continue;
     }
 
-    // 接活：酬劳当场定死，之后不再改
+    // 接活：酬劳当场定死。委托生成时 AI 报的价优先，没报才按威胁等级掷
     const tier = Math.min(5, Math.max(1, Math.round(n(b?.tier) || 1)));
-    const pay = rollBounty(state, tier, rng);
+    const quoted = Math.round(n(b?.copper ?? b?.price) || 0);
+    const pay =
+      quoted > 0
+        ? Math.min(50000000, Math.max(100, quoted))
+        : rollBounty(state, tier, rng);
     p.contract = { label: String(b?.label || '一桩活').slice(0, 30), copper: pay, tier };
     logLedger(
       state,
@@ -371,7 +388,11 @@ export function applyDelta(state, delta, rng, opts = {}) {
   if (Array.isArray(delta?.prices)) {
     for (const pr of delta.prices.slice(0, 8)) {
       const nm = String(pr?.name || '').trim();
-      if (nm && learnPrice(state, nm, pr?.copper ?? pr?.price)) logLedger(state, `记下价：${nm} ` + copperText(Number(pr?.copper ?? pr?.price) || 0));
+      const v = Math.round(Number(pr?.copper ?? pr?.price) || 0);
+      if (!nm || v <= 0) continue;
+      // 送信、跑腿、护送这类是「活计」，记进 rates，不混进物品价表
+      const ok = isService(nm) ? learnRate(state, nm, v) : learnPrice(state, nm, Math.min(v, 5000000));
+      if (ok) logLedger(state, `记下价：${nm} ` + copperText(v));
     }
   }
   if (delta?.payDebt || delta?.borrow) settleDebts(state, delta, rejected);
@@ -500,6 +521,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
 /** 给模型的紧凑状态块（也是 UI 的数据源之一）。 */
 export function stateBlock(state) {
   ensureAssets(state);
+  ensurePriceTable(state);
   const p = state.player;
   const lines = [];
   lines.push(`【时间】${formatDate(state.clock)}`);
@@ -591,6 +613,7 @@ export function npcCards(state) {
 export function uiState(state) {
   ensureAccounts(state); // 老存档读的时候就把 wallet 迁成 cash
   ensureAssets(state);
+  ensurePriceTable(state);
   normalizeItems(state);
   const p = state.player;
   return {

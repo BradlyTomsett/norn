@@ -93,6 +93,10 @@ function viewOverview(u) {
       out.push(`<div class="row"><span class="k">欠${esc(d.to)}</span><span class="v">${esc(d.text)}${d.overdueMonths ? ` · 逾期${d.overdueMonths}月` : ''}</span></div>`);
     }
   }
+  if (p.contract?.label) {
+    const pay = `${Math.floor(p.contract.copper / 10000)} 金 ${Math.floor((p.contract.copper % 10000) / 100)} 银 ${p.contract.copper % 100} 铜`;
+    out.push(`<div class="row"><span class="k">手上的活</span><span class="v">${esc(p.contract.label)}（${esc(pay)}）</span></div>`);
+  }
   if (p.industries?.length) {
     out.push(`<div class="row"><span class="k">产业</span><span class="v">${esc(p.industries.map((i) => `${i.name}${i.text ? '（' + i.text + '）' : ''}`).join('、'))}</span></div>`);
   }
