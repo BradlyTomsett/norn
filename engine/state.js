@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { earnAmount, isService, learnPrice, learnRate, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
+import { earnAmount, isService, learnPrice, learnRate, priceEntryText, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -137,25 +137,39 @@ function settleTrade(state, trade, rejected) {
       rejected.push(`身上没有 ${name}`);
       continue;
     }
-    const p = sellOf(state, name, { qty });
-    if (p.source === 'table') learnPrice(state, name, p.unit);
-    addCopper(state, acc.id, p.total);
-    logLedger(state, `卖了 ${name}×${qty}，得 ${copperText(p.total)}`);
+    const quoted = Math.round(n(it?.copper ?? it?.amount) || 0);
+    let total;
+    if (quoted > 0) {
+      total = quoted; // 模型按物价表谈定的价钱
+    } else {
+      const p = sellOf(state, name, { qty });
+      if (p.source === 'table') learnPrice(state, name, p.unit);
+      total = p.total;
+    }
+    addCopper(state, acc.id, total);
+    logLedger(state, `卖了 ${name}×${qty}，得 ${copperText(total)}`);
   }
 
   for (const it of toList(trade?.buy)) {
     const name = String(it?.name || it?.item || '').trim();
     const qty = Math.max(1, Math.round(n(it?.qty) || 1));
     if (!name) continue;
-    const p = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade });
-    if (p.source === 'table') learnPrice(state, name, p.unit);
-    if (acc.copper < p.total) {
-      rejected.push(`钱不够：${name}×${qty} 要 ${copperText(p.total)}`);
+    const quoted = Math.round(n(it?.copper ?? it?.amount) || 0);
+    let total = quoted;
+    let noBag = false;
+    if (total <= 0) {
+      const p = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade });
+      if (p.source === 'table') learnPrice(state, name, p.unit);
+      total = p.total;
+      noBag = p.noBag;
+    }
+    if (acc.copper < total) {
+      rejected.push(`钱不够：${name}×${qty} 要 ${copperText(total)}`);
       continue;
     }
-    addCopper(state, acc.id, -p.total);
-    if (!p.noBag) bagAdd(state, name, qty);
-    logLedger(state, `买了 ${name}×${qty}，花 ${copperText(p.total)}`);
+    addCopper(state, acc.id, -total);
+    if (!noBag) bagAdd(state, name, qty);
+    logLedger(state, `买了 ${name}×${qty}，花 ${copperText(total)}`);
   }
 }
 
@@ -340,6 +354,23 @@ function settleLose(state, lose, rejected) {
   }
 }
 
+/** 模型直接记的一笔钱的进出（买卖、打赏、路费、罚金都走这里）。 */
+function settleMoneyChange(state, change, rejected) {
+  for (const m of toList(change).slice(0, 8)) {
+    const acc = accountOf(state, m?.account || 'cash');
+    const want = Math.round(n(m?.copper ?? m?.amount));
+    if (!acc || !want) continue;
+    const delta = want > 0 ? want : -Math.min(acc.copper, -want);
+    if (!delta) {
+      rejected.push(`${acc.name}不够`);
+      continue;
+    }
+    addCopper(state, acc.id, delta);
+    const note = String(m?.note || m?.label || '零用').slice(0, 24);
+    logLedger(state, `${delta > 0 ? '进账' : '支出'}：${note} ${copperText(Math.abs(delta))}`);
+  }
+}
+
 /** 把一次输出的增量（LLM 提议）安全地合入状态。返回被拒绝的条目。 */
 export function applyDelta(state, delta, rng, opts = {}) {
   const rejected = [];
@@ -385,6 +416,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
   if (delta?.trade) settleTrade(state, delta.trade, rejected);
   if (delta?.bounty) settleBounty(state, delta.bounty, rng, opts.judged, rejected);
   if (delta?.earn) settleEarn(state, delta.earn, rng);
+  if (delta?.money?.change) settleMoneyChange(state, delta.money.change, rejected);
   if (Array.isArray(delta?.prices)) {
     for (const pr of delta.prices.slice(0, 8)) {
       const nm = String(pr?.name || '').trim();
@@ -577,6 +609,11 @@ export function stateBlock(state) {
   if (p.goals.length) lines.push(`【当前目标】${p.goals.join('；')}`);
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push(`【未完成】${p.unfinished.map((u) => u.text).join('；')}`);
+  const priceRows = Object.entries(state.prices || {}).slice(0, 12);
+  if (priceRows.length) {
+    lines.push('【物价表】（本存档自定，报价照这个来）');
+    for (const [n2, v] of priceRows) lines.push(`  · ${n2} ${priceEntryText(v)} 铜`);
+  }
   if (state.ledgerLog?.length) {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);

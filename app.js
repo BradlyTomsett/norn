@@ -51,14 +51,15 @@ const RUNTIME = `
    **不要输出【当前角色】块**（玩家在状态面板里能看）。也不要输出【玩家自由行动】这个小标题。
 2. 另起一行输出一个 json 代码块，只写“变化”。
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
-3b. **钱不要自己算，也不要自己定价。** 你只写"做了什么"，价格、到账、扣款全部由引擎结算：
-    "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}],"sell":[{"name":"狼皮","qty":1}]}
-    "bounty":{"label":"清掉林子边的狼","copper":2400000}  **接活**：委托报酬由你按物价水平报，报了就记进存档（不报则引擎按 tier 掷）
+3b. **钱由你记，价格照物价表（【物价表】里有就按它，没有你按常理给）。** 引擎只负责定时结算（月钱、产业月收益、吃住、债息、工钱），其余每一笔进出都要你写：
+    "money":{"change":[{"account":"cash","copper":-1200,"note":"买两张羊皮"}]}        花了钱：copper 写负数
+    "money":{"change":[{"account":"home","copper":500000,"note":"母亲托人捎来"}]}     进了钱：写正数
+    （价目表里没有的东西，用下面的 prices 给个价，引擎记进存档）
+    "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2,"copper":2}],"sell":[{"name":"狼皮","qty":1,"copper":3000}]}
+    "bounty":{"label":"清掉林子边的狼","copper":2400000}  **接活**：委托报酬按双方谈定的价，一件一价，记进存档
     "bounty":{"result":"完成"}                            **交活**：完成=全额，一半=半额，未完成=一分没有
-    "earn":{"label":"替粮行送信","copper":300}          非战斗进账：你按下面的参考价自己报一个铜数，第一次定下后存档记住，以后同类按这个
-    参考价（铜/次）：跑腿送信 300｜打杂帮工 150｜带路 600｜盯梢打听 500｜卖消息 800｜抄写代笔 400｜卖艺 200｜护送押运 8000｜商队长途 3 万｜赌 1000
-    "prices":[{"name":"刻纹银匕首","copper":1200}]       价目表里没有的东西：你按物价水平给个铜数，引擎记进存档并一直沿用
-                                                        送信/跑腿/护送这类**服务**也写这里，引擎会自动归到「活计收入」
+    "earn":{"label":"替粮行送信","copper":300}          零散进账；同类活计第一次定价后存档记住
+    "prices":[{"name":"刻纹银匕首","copper":1200}]       物价表补充：可以是固定价，也可以是范围 {"min":800,"max":1500}，任一端写 null 表示无下限/无上限
     "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
     "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.01}   借钱（默认月息 1%）
     "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
@@ -69,7 +70,7 @@ const RUNTIME = `
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
     "time":{"minutes":1440}                              这一回合过去了多久：几分钟=即时；一天=1440；一周=10080；一月=43200（引擎按这个推进日历，月钱/产业/生活开销都要它）
-    **只有 prices 和 earn 可以写金额**，其余一律不要写价钱、也不要写余额：买东西的价格由引擎算，只有价目表里没有的东西才用 prices 报价；活计收入用 earn 报价。
+    金额一律写成铜。委托、赏金按**一件一价**谈定，不进物价表；物价表只放物品与常设服务（送信、跑腿、护送这类）的单价。
     账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（产业，个人产业月收益进这里）。
     产业收益**不会**自动转到随身，要动用就写 transfer。家族月钱、债息、吃住开销由引擎自动结算，你不要重复记。
 3c. **技能数值不要写。** 技能等级只由引擎按练习时长与难度涨；你最多只能报一个新技能的名字："skills":["商谈"]。
@@ -918,6 +919,71 @@ function renderSheet(tab = app.tab) {
   for (const b of $('#cs-tabs').children) b.classList.toggle('active', b.dataset.tab === tab);
   $('#cs-body').innerHTML = VIEWS[tab](u);
 }
+
+/* ---------------- 物价表（状态页） ---------------- */
+
+function parsePriceInput(str) {
+  const s = String(str || '').trim().replace(/[,，]/g, '');
+  if (!s) return null;
+  if (/^\d+$/.test(s)) return Number(s) > 0 ? Number(s) : null;
+  const m = s.match(/^(\d*)\s*[-~～至到]\s*(\d*)$/);
+  if (m) {
+    const min = m[1] ? Number(m[1]) : null;
+    const max = m[2] ? Number(m[2]) : null;
+    if ((min == null || min > 0) && (max == null || max > 0) && (min != null || max != null)) return { min, max };
+    return null;
+  }
+  const v = Math.round(Number(s));
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+document.addEventListener('click', (e) => {
+  const save = e.target.closest('#px-save');
+  const add = e.target.closest('#px-add');
+  if (!save && !add) return;
+
+  const state = store.getSave(app.saveId);
+  if (!state) return;
+  state.prices ||= {};
+
+  if (save) {
+    let n = 0;
+    for (const el of document.querySelectorAll('#cs-body .px-input')) {
+      const name = el.dataset.name;
+      const v = parsePriceInput(el.value);
+      if (v == null) {
+        if (state.prices[name] !== undefined) {
+          delete state.prices[name];
+          n += 1;
+        }
+      } else if (JSON.stringify(state.prices[name]) !== JSON.stringify(v)) {
+        state.prices[name] = v;
+        n += 1;
+      }
+    }
+    store.putSave(state);
+    app.ui = uiState(state);
+    renderSheet('prices');
+    const m1 = document.querySelector('#px-msg');
+    if (m1) m1.textContent = `已保存 ${n} 处改动。`;
+    return;
+  }
+
+  const name = $('#px-name')?.value.trim();
+  const v = parsePriceInput($('#px-value')?.value);
+  const m2 = document.querySelector('#px-msg');
+  if (!name || v == null) {
+    if (m2) m2.textContent = '名字和价格都要填（价格可写 800-1500）。';
+    return;
+  }
+  state.prices[name] = v;
+  store.putSave(state);
+  app.ui = uiState(state);
+  renderSheet('prices');
+  const m3 = document.querySelector('#px-msg');
+  if (m3) m3.textContent = `已加入：${name}`;
+});
+
 
 $('#cs-tabs').addEventListener('click', (e) => {
   const b = e.target.closest('.tab');

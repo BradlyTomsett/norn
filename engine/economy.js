@@ -213,10 +213,10 @@ export function priceOf(state, name, opts = {}) {
   const grade = detectGrade(name) || (GRADES.includes(opts.grade) ? opts.grade : '');
   const priceIndex = Number(state?.world?.priceIndex) || 1;
 
-  // 存档里的自定价（AI 生成或玩家改过）优先，认名字
-  const custom = Math.round(Number(state?.prices?.[key]) || 0);
-  if (custom > 0) {
-    return { cat, unit: custom, total: custom * qty, grade, noBag: NO_BAG.has(cat), custom: true, source: 'saved' };
+  // 存档里的自定价（AI 生成或玩家改过）优先，认名字；可以是固定价也可以是范围
+  const saved = priceEntryValue(state?.prices?.[key]);
+  if (saved > 0) {
+    return { cat, unit: saved, total: saved * qty, grade, noBag: NO_BAG.has(cat), custom: true, source: 'saved' };
   }
 
   const named = namedPrice(name);
@@ -240,6 +240,44 @@ export function priceOf(state, name, opts = {}) {
 
 export const PRICE_MIN = 1;
 export const PRICE_MAX = 500000000;
+
+/** 价格条目：数字（固定价）或 {min,max}（范围，任一端可为 null 表示无下限/无上限）。 */
+export function parsePriceEntry(entry) {
+  if (entry == null) return null;
+  if (typeof entry === 'number') return Number.isFinite(entry) && entry > 0 ? Math.round(entry) : null;
+  if (typeof entry === 'string') {
+    const v = Number(entry);
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+  }
+  if (typeof entry === 'object') {
+    const min = entry.min == null || entry.min === '' ? null : Math.round(Number(entry.min));
+    const max = entry.max == null || entry.max === '' ? null : Math.round(Number(entry.max));
+    const lo = min != null && Number.isFinite(min) && min > 0 ? min : null;
+    const hi = max != null && Number.isFinite(max) && max > 0 ? max : null;
+    if (lo == null && hi == null) return null;
+    return { min: lo, max: hi };
+  }
+  return null;
+}
+
+/** 引擎兜底时用的单价：固定价直接取，范围取中间值。 */
+export function priceEntryValue(entry) {
+  const p = parsePriceEntry(entry);
+  if (p == null) return 0;
+  if (typeof p === 'number') return p;
+  if (p.min != null && p.max != null) return Math.round((p.min + p.max) / 2);
+  return p.min ?? p.max ?? 0;
+}
+
+/** 给界面/提示词看的写法：1200 / 800–1500 / 800 起 / 1500 以内 */
+export function priceEntryText(entry) {
+  const p = parsePriceEntry(entry);
+  if (p == null) return '';
+  if (typeof p === 'number') return String(p);
+  if (p.min != null && p.max != null) return `${p.min}–${p.max}`;
+  if (p.min != null) return `${p.min} 起`;
+  return `${p.max} 以内`;
+}
 
 /** 把一件东西的价格记进存档（已有就不覆盖，除非 force）。 */
 export function learnPrice(state, name, copper, { force = false } = {}) {

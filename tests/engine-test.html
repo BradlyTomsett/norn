@@ -5,7 +5,7 @@
 // 引擎自测：不依赖 node，用浏览器直接跑。
 // 打开后看页面里的 PASS / FAIL 列表。
 import { generateWorld } from '../engine/worldgen.js';
-import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice, earnRef } from '../engine/economy.js';
+import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice, earnRef, priceEntryText } from '../engine/economy.js';
 import { addCopper, ensureAccounts, totalCopper, copperText, transferCopper } from '../engine/money.js';
 import {
   accrueDebts,
@@ -314,6 +314,30 @@ try {
   s30.prices = { '雇人送信（到加隆城）': 568437 };
   ensurePriceTable(s30);
   ok('离谱的服务价被重置为参考价', s30.rates['雇人送信（到加隆城）'] === earnRef('雇人送信（到加隆城）'), String(s30.rates['雇人送信（到加隆城）']));
+  // --- 范围价与 AI 定价 ---
+  const s31 = fresh();
+  s31.prices = { 羊皮: { min: 800, max: 1500 }, 长弓: 20000, 稀有矿石: { min: 5000, max: null } };
+  eq('范围价取中间值', priceOf(s31, '羊皮').unit, 1150);
+  eq('固定价照用', priceOf(s31, '长弓').unit, 20000);
+  eq('只有下限也能算', priceOf(s31, '稀有矿石').unit, 5000);
+  eq('范围写法可读', priceEntryText({ min: 800, max: 1500 }), '800–1500');
+  eq('单边写法可读', priceEntryText({ min: 800, max: null }), '800 起');
+
+  // --- money.change：模型直接记一笔 ---
+  const s32 = fresh();
+  const cash32 = () => s32.player.accounts.find((a) => a.id === 'cash').copper;
+  const c32 = cash32();
+  applyDelta(s32, { money: { change: [{ account: 'cash', copper: -1200, note: '买两张羊皮' }] } }, makeRng(1), { judged: null });
+  eq('支出扣钱', cash32(), c32 - 1200);
+  applyDelta(s32, { money: { change: [{ account: 'cash', copper: 5000, note: '帮人带货' }] } }, makeRng(2), { judged: null });
+  eq('进账加钱', cash32(), c32 - 1200 + 5000);
+
+  // --- trade 可带 AI 谈定的价 ---
+  const s33 = fresh();
+  s33.player.bag = [{ name: '羊皮', qty: 2 }];
+  const c33 = s33.player.accounts.find((a) => a.id === 'cash').copper;
+  applyDelta(s33, { trade: { sell: [{ name: '羊皮', qty: 2, copper: 2400 }] } }, makeRng(3), { judged: null });
+  eq('卖价用模型给的数', s33.player.accounts.find((a) => a.id === 'cash').copper, c33 + 2400);
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';

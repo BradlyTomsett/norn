@@ -311,7 +311,46 @@ function viewClues(u) {
   return out.join('');
 }
 
-const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues };
+// 物价表：这份存档自定，AI 报价照它来。可改、可删、可加；价格可以是固定值或范围。
+function viewPrices(u) {
+  const prices = (u && u.prices) || {};
+  const rows = Object.entries(prices);
+  const text = (val) => {
+    if (typeof val === 'object' && val) {
+      const lo = val.min != null ? val.min : '';
+      const hi = val.max != null ? val.max : '';
+      if (lo !== '' && hi !== '') return `${lo}–${hi}`;
+      if (lo !== '') return `${lo} 起`;
+      return `${hi} 以内`;
+    }
+    return String(val ?? '');
+  };
+  const out = [
+    '<p class="hint">这份存档自己的价目。AI 报价以它为参考；固定价直接写数字，范围写 800-1500，只写下限写 800-，只写上限写 -1500。</p>',
+  ];
+  if (!rows.length) {
+    out.push('<p class="hint">还没有条目。表里没有的东西，AI 第一次报价时会自动记进来。</p>');
+  } else {
+    out.push('<div class="price-list">');
+    for (const [name, val] of rows) {
+      out.push(
+        `<div class="price-row"><span class="nm">${esc(name)}</span>` +
+          `<input class="px-input" data-name="${esc(name)}" type="text" inputmode="text" value="${esc(text(val))}" /></div>`,
+      );
+    }
+    out.push('</div>');
+    out.push('<div class="chips" style="margin-top:10px"><button id="px-save" class="chip">保存改动</button></div>');
+  }
+  out.push(`<h3 style="margin-top:18px">新增一条</h3>
+    <div class="price-row" style="margin-top:8px">
+      <input id="px-name" class="name-input" style="flex:1" placeholder="物品或服务名" />
+      <input id="px-value" class="name-input" style="flex:0 0 130px" placeholder="价格或范围" />
+    </div>
+    <div class="chips" style="margin-top:8px"><button id="px-add" class="chip">＋ 加进物价表</button></div>
+    <div class="hint" id="px-msg"></div>`);
+  return out.join('');
+}
+const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues, prices: viewPrices };
 
 
-export { VIEWS, viewOverview, viewItems, viewGear, viewPeople, viewClues };
+export { VIEWS, viewOverview, viewItems, viewGear, viewPeople, viewClues, viewPrices };
