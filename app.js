@@ -540,6 +540,55 @@ $('#btn-rate-save').onclick = () => {
   if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
 };
 
+/** 把看得懂的关键数据拼成一段文本，方便贴给作者排查。 */
+async function buildDiagnostics() {
+  const state = store.getSave(app.saveId);
+  if (!state) return '没有打开的存档。';
+  const p = state.player || {};
+  const money = (a) => `${Math.round(a.copper)}铜`;
+  const accs = (p.accounts || []).map((a) => `${a.name}=${money(a)}`).join('；');
+  const bills = (p.bills || []).map((b) => `${b.label} ${b.amount}/${b.every}`).join('；');
+  const debts = (p.debts || []).map((d) => `${d.to} ${d.remaining}`).join('；');
+  const last = store.getMessages(app.saveId).slice(-2).map((m) => `${m.role}: ${String(m.content).slice(-600)}`);
+  let ver = '';
+  try {
+    const keys = await caches.keys();
+    ver = keys.find((k) => k.startsWith('norn-')) || '';
+  } catch {
+    /* 忽略 */
+  }
+  return [
+    `版本 ${ver || '?'}｜存档 ${state.saveId}｜第 ${state.turn} 回合`,
+    `日期 ${state.clock?.year}年 doy${state.clock?.doy} ${String(state.clock?.hour).padStart(2, '0')}:${String(state.clock?.minute).padStart(2, '0')}`,
+    `物价指数 ${state.world?.priceIndex}`,
+    `账户 ${accs}`,
+    `职业 ${p.profession || '-'}（${p.professionState || '-'}）｜工钱 ${p.work?.daily ?? 0}/天`,
+    `手上的活 ${p.contract ? `${p.contract.label} ${p.contract.copper}铜` : '无'}`,
+    `固定收支 ${bills || '无'}`,
+    `债务 ${debts || '无'}`,
+    `自定价 ${Object.keys(state.prices || {}).length} 条｜活计价 ${Object.keys(state.rates || {}).length} 条`,
+    `最近账目：`,
+    ...(state.ledgerLog || []).slice(-10).map((l) => `  · ${l.text}`),
+    `最近对话：`,
+    ...last.map((l) => l),
+  ].join('\n');
+}
+
+$('#btn-diag').onclick = async () => {
+  const text = await buildDiagnostics();
+  const box = $('#diag-out');
+  if (box) {
+    box.textContent = text;
+    box.classList.remove('hidden');
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    if (box) box.insertAdjacentHTML('beforebegin', '<p class="hint">已复制到剪贴板，直接粘给作者即可。</p>');
+  } catch {
+    if (box) box.insertAdjacentHTML('beforebegin', '<p class="hint">复制失败，手动选中下面这段。</p>');
+  }
+};
+
 /** 显示当前缓存的版本号（sw 的 CACHE 名）。 */
 async function showBuildInfo() {
   const el = $('#build-info');
