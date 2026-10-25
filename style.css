@@ -383,3 +383,6 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
   flex: 0 0 110px; background: #100e0c; color: var(--ink); border: 1px solid var(--line);
   border-radius: 9px; padding: 6px 8px; font-family: var(--serif); font-size: 13px; text-align: right;
 }
+
+/* 回合末尾的物品回执 */
+.turn-items { margin-top: 8px; font-size: 12px; color: var(--ink-dim); letter-spacing: .02em; }

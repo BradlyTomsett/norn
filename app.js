@@ -10,6 +10,8 @@ import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 import { addItem, removeItem, gradeOfName, stripGrade, composeName, normalizeItems } from './engine/items.js';
+
+const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 import { ensureAssets } from './engine/assets.js';
 import { VIEWS } from './views.js';
 
@@ -61,6 +63,7 @@ const RUNTIME = `
     "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
     "items":[{"name":"狼皮","qty":2}]                    收进包里的东西（别人给的、偷到的、捡到的都算）
     "lose":[{"name":"羊皮","qty":1}]                     失去的东西（被偷、送人、掉了、上交）
+    **物品对账**：叙事里只要出现「给你/递给你/塞给你/你偷到/你捡到/他拿走/被偷了」，JSON 就必须有 items / lose / equipment 对应条目。没有写就等于背包没变。
     "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
@@ -764,7 +767,28 @@ async function send() {
     }
     app.ui = uiState(state);
 
+    // 物品易手的回执：让「AI 到底有没有写」一眼可见
+    const changes = [];
+    for (const it of listOf(modelDelta.items)) {
+      const nm = typeof it === 'string' ? it : it?.name;
+      if (nm) changes.push(`+${nm}${Number(it?.qty) > 1 ? `×${it.qty}` : ''}`);
+    }
+    for (const e of listOf(modelDelta.equipment)) {
+      const nm = typeof e === 'string' ? e : e?.name;
+      if (nm) changes.push(`+${nm}`);
+    }
+    for (const it of listOf(modelDelta.lose)) {
+      const nm = typeof it === 'string' ? it : it?.name;
+      if (nm) changes.push(`−${nm}`);
+    }
+
     bubble.innerHTML = format(cleanText);
+    if (changes.length) {
+      const foot = document.createElement('div');
+      foot.className = 'turn-items';
+      foot.textContent = '本回合物品：' + changes.slice(0, 6).join(' · ');
+      bubble.appendChild(foot);
+    }
     bubble.classList.remove('cursor');
     if (!delta) addMessage('error', '（这一回合没有可用的数值块，钱与关系未结算；已自动重试一次补数据。）');
     renderSheet();
