@@ -727,7 +727,7 @@ document.addEventListener('click', (e) => {
     app.ui = uiState(state);
     renderSheet('prices');
     const mm = document.querySelector('#px-msg');
-    if (mm) mm.textContent = 已删除：${nm};
+    if (mm) mm.textContent = '已删除：' + nm;
     return;
   }
 
