@@ -59,7 +59,8 @@ const RUNTIME = `
     "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
     "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.01}   借钱（默认月息 1%）
     "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
-    "items":[{"name":"狼皮","qty":2}]                    真正收进包里的东西（卖了要有）
+    "items":[{"name":"狼皮","qty":2}]                    收进包里的东西（别人给的、偷到的、捡到的都算）
+    "lose":[{"name":"羊皮","qty":1}]                     失去的东西（被偷、送人、掉了、上交）
     "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度

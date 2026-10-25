@@ -15,7 +15,7 @@ import { earnAmount, learnPrice, learnRate, priceOf, rateOf, rollBounty, sellOf 
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
-import { effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry } from './items.js';
+import { effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
 import { chronicleText } from './chronicle.js';
 
 export {
@@ -307,6 +307,22 @@ function settleUse(state, use, rejected) {
   }
 }
 
+/** 丢东西：被偷、送人、掉了、上交——从袋子/装备/存货/交通工具里扣。 */
+function settleLose(state, lose, rejected) {
+  for (const it of toList(lose).slice(0, 8)) {
+    const raw = typeof it === 'string' ? it : it?.name;
+    if (!raw) continue;
+    const name = String(raw).trim();
+    const qty = Math.max(1, Math.round(n(it?.qty) || 1));
+    const res = removeItem(state, name, qty);
+    if (!res.ok) {
+      rejected.push(`身上没有 ${name}`);
+      continue;
+    }
+    logLedger(state, `失去 ${name}×${res.count}`);
+  }
+}
+
 /** 把一次输出的增量（LLM 提议）安全地合入状态。返回被拒绝的条目。 */
 export function applyDelta(state, delta, rng, opts = {}) {
   const rejected = [];
@@ -362,6 +378,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
   if (delta?.profession) settleProfession(state, delta.profession);
   if (delta?.items) settleItems(state, delta.items);
   if (delta?.use) settleUse(state, delta.use, rejected);
+  if (delta?.lose) settleLose(state, delta.lose, rejected);
   if (delta?.gift) settleGift(state, delta.gift);
 
   // 身体 / 精神

@@ -281,6 +281,17 @@ try {
   ok('从「其他」转进来 = 多钱', transferCopper(s25, 'other', 'home', 50000) && home25() === baseH + 50000);
   ok('「其他」转「其他」无效', transferCopper(s25, 'other', 'other', 100) === false);
   ok('钱不够时只扣到 0', transferCopper(s25, 'cash', 'other', cash25() + 999999) && cash25() === 0);
+  // --- 物品增减 ---
+  const s26 = fresh();
+  s26.player.bag = [{ name: '羊皮', qty: 2 }];
+  applyDelta(s26, { items: [{ name: '羊皮', qty: 1 }] }, makeRng(1), { judged: null });
+  eq('items 能加东西', s26.player.bag.find((b) => b.name === '羊皮').qty, 3);
+  applyDelta(s26, { lose: [{ name: '羊皮', qty: 2 }] }, makeRng(2), { judged: null });
+  eq('lose 能减东西', s26.player.bag.find((b) => b.name === '羊皮').qty, 1);
+  applyDelta(s26, { lose: [{ name: '羊皮', qty: 1 }] }, makeRng(3), { judged: null });
+  ok('减到 0 就消失', !s26.player.bag.some((b) => b.name === '羊皮'));
+  const rej26 = applyDelta(s26, { lose: [{ name: '没有的东西', qty: 1 }] }, makeRng(4), { judged: null });
+  ok('丢没有的东西会被拒绝', rej26.rejected.length > 0, JSON.stringify(rej26.rejected));
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';
