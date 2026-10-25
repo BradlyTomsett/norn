@@ -5,7 +5,7 @@
 // 引擎自测：不依赖 node，用浏览器直接跑。
 // 打开后看页面里的 PASS / FAIL 列表。
 import { generateWorld } from '../engine/worldgen.js';
-import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice, earnRef, priceEntryText } from '../engine/economy.js';
+import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice, earnRef, priceEntryText, fixedPriceOf, learnPrice, DEFAULT_PRICES } from '../engine/economy.js';
 import { addCopper, ensureAccounts, totalCopper, copperText, transferCopper } from '../engine/money.js';
 import {
   accrueDebts,
@@ -316,8 +316,8 @@ try {
   ok('离谱的服务价被重置为参考价', s30.rates['雇人送信（到加隆城）'] === earnRef('雇人送信（到加隆城）'), String(s30.rates['雇人送信（到加隆城）']));
   // --- 范围价与 AI 定价 ---
   const s31 = fresh();
-  s31.prices = { 羊皮: { min: 800, max: 1500 }, 长弓: 20000, 稀有矿石: { min: 5000, max: null } };
-  eq('范围价取中间值', priceOf(s31, '羊皮').unit, 1150);
+  s31.prices = { 白面包: { min: 800, max: 1500 }, 长弓: 20000, 稀有矿石: { min: 5000, max: null } };
+  eq('范围价取中间值', priceOf(s31, '白面包').unit, 1150);
   eq('固定价照用', priceOf(s31, '长弓').unit, 20000);
   eq('只有下限也能算', priceOf(s31, '稀有矿石').unit, 5000);
   eq('范围写法可读', priceEntryText({ min: 800, max: 1500 }), '800–1500');
@@ -338,6 +338,15 @@ try {
   const c33 = s33.player.accounts.find((a) => a.id === 'cash').copper;
   applyDelta(s33, { trade: { sell: [{ name: '羊皮', qty: 2, copper: 2400 }] } }, makeRng(3), { judged: null });
   eq('卖价用模型给的数', s33.player.accounts.find((a) => a.id === 'cash').copper, c33 + 2400);
+  // --- economy.js 已钉死的价，不许再生成存档条目 ---
+  const s34 = fresh();
+  ok('牛皮在 economy.js 里有固定价', fixedPriceOf('牛皮（张）') > 0, String(fixedPriceOf('牛皮（张）')));
+  ok('固定价的不会写进存档表', learnPrice(s34, '牛皮（张）', 12) === false);
+  s34.prices = { '牛皮（张）': 12, '刻纹银匕首': 1200 };
+  ensurePriceTable(s34);
+  ok('打开存档时清掉固定价条目', s34.prices['牛皮（张）'] === undefined && s34.prices['刻纹银匕首'] === 1200);
+  eq('固定价以 economy.js 为准', priceOf(s34, '牛皮（张）').unit, 60);
+  ok('默认表里不再有固定价条目', !Object.keys(DEFAULT_PRICES).some((k) => fixedPriceOf(k) > 0), Object.keys(DEFAULT_PRICES).filter((k) => fixedPriceOf(k) > 0).join(','));
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';

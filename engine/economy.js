@@ -79,7 +79,6 @@ const NAMED = [
   // 马与大型牲口
   [/战马|军马/, 80000],
   [/骏马|良驹/, 25000],
-  [/驮马|挽马|运货马/, 6000],
   [/耕牛/, 15000],
   [/奶牛/, 15000],
   [/牛犊|小牛/, 4000],
@@ -194,6 +193,11 @@ function namedPrice(name) {
   return null;
 }
 
+/** 这件东西在 economy.js 里已经钉死了价（固定价），存档表里不该再出现。 */
+export function fixedPriceOf(name) {
+  return namedPrice(String(name || '')) || 0;
+}
+
 export function classify(name, hint) {
   const s = String(name || '');
   if (hint && CATS[hint]) return hint;
@@ -214,7 +218,7 @@ export function priceOf(state, name, opts = {}) {
   const priceIndex = Number(state?.world?.priceIndex) || 1;
 
   // 存档里的自定价（AI 生成或玩家改过）优先，认名字；可以是固定价也可以是范围
-  const saved = priceEntryValue(state?.prices?.[key]);
+  const saved = fixedPriceOf(key) ? 0 : priceEntryValue(state?.prices?.[key]);
   if (saved > 0) {
     return { cat, unit: saved, total: saved * qty, grade, noBag: NO_BAG.has(cat), custom: true, source: 'saved' };
   }
@@ -281,6 +285,7 @@ export function priceEntryText(entry) {
 
 /** 把一件东西的价格记进存档（已有就不覆盖，除非 force）。 */
 export function learnPrice(state, name, copper, { force = false } = {}) {
+  if (fixedPriceOf(name)) return false; // economy.js 已钉死的价，存档表不重复记
   const key = String(name || '').trim().slice(0, 40);
   const v = Math.round(Number(copper));
   if (!key || !Number.isFinite(v) || v < PRICE_MIN || v > PRICE_MAX) return false;
@@ -308,8 +313,6 @@ export const DEFAULT_PRICES = {
   咸肉: { min: 5, max: 15 },
   奶酪: { min: 3, max: 8 },
   '鸡蛋（十个）': { min: 2, max: 5 },
-  小麦: 40,
-  大米: 40,
   '面粉（一袋）': { min: 60, max: 90 },
   '盐（一斤）': { min: 8, max: 20 },
   '蜂蜜（一罐）': { min: 50, max: 200 },
@@ -346,10 +349,6 @@ export const DEFAULT_PRICES = {
   '皮甲（灰）': { min: 800, max: 2000 },
   '圆盾（灰）': { min: 500, max: 1200 },
   // 皮货与牲口
-  '牛皮（张）': { min: 8, max: 20 },
-  '羊皮（张）': { min: 3, max: 10 },
-  '狼皮（张）': { min: 30, max: 90 },
-  '驮马': { min: 15000, max: 40000 },
   '马车': { min: 8000, max: 20000 },
   '鸡（只）': { min: 2, max: 6 },
   '羊（只）': { min: 100, max: 300 },

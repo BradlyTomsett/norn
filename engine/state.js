@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { earnAmount, isService, learnPrice, learnRate, priceEntryText, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
+import { earnAmount, fixedPriceOf, isService, learnPrice, learnRate, priceEntryText, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -104,6 +104,10 @@ export function ensurePriceTable(state) {
   if (!state.prices || typeof state.prices !== 'object') return;
   if (!state.rates || typeof state.rates !== 'object') state.rates = {};
   for (const [name, v] of Object.entries(state.prices)) {
+    if (fixedPriceOf(name)) {
+      delete state.prices[name]; // economy.js 里已有的固定价，不重复存
+      continue;
+    }
     if (!isService(name)) continue;
     if (!state.rates[name]) {
       // 一件跑腿记成几十金显然是模型写错了，落回参考价
@@ -421,7 +425,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
     for (const pr of delta.prices.slice(0, 8)) {
       const nm = String(pr?.name || '').trim();
       const v = Math.round(Number(pr?.copper ?? pr?.price) || 0);
-      if (!nm || v <= 0) continue;
+      if (!nm || v <= 0 || fixedPriceOf(nm)) continue;
       // 送信、跑腿、护送这类是「活计」，记进 rates，不混进物品价表
       const ok = isService(nm) ? learnRate(state, nm, v) : learnPrice(state, nm, Math.min(v, 5000000));
       if (ok) logLedger(state, `记下价：${nm} ` + copperText(v));
