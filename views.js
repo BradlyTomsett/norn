@@ -348,7 +348,8 @@ function viewPrices(u) {
         .map(
           ([name, val]) =>
             `<div class="price-row"><span class="nm">${esc(name)}</span>` +
-            `<input class="px-input" data-kind="${kind}" data-name="${esc(name)}" type="text" inputmode="text" value="${esc(text(val))}" /></div>`,
+            `<input class="px-input" data-kind="${kind}" data-name="${esc(name)}" type="text" inputmode="text" value="${esc(text(val))}" />` +
+            `<button class="px-del" data-kind="${kind}" data-name="${esc(name)}" title="删除这一条">删</button></div>`,
         )
         .join('') +
       '</div>'
