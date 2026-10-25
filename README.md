@@ -21,9 +21,9 @@
 ### ① GitHub Pages（免费，推荐）
 
 1. 新建一个仓库（public 或 private 都行，Pages 免费版要求 public）
-2. 把本目录**所有文件**传到仓库根目录
-3. 仓库 → Settings → Pages → Source 选 `Deploy from a branch` → `main` / `/ (root)` → Save
-4. 等一两分钟，得到 `https://<你的用户名>.github.io/<仓库名>/`
+2. 把游戏代码推到仓库，保留 `.github/workflows/pages.yml`
+3. 仓库 → Settings → Pages → Source 选 `GitHub Actions`
+4. 推送 `main` 后等待自动检查与发布成功，得到 `https://<你的用户名>.github.io/<仓库名>/`；流程仅发布 `dist/` 中的游戏运行文件
 5. 手机浏览器打开这个网址
 
 ### ② Cloudflare Pages（免费，国内访问通常更稳）
