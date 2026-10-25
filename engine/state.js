@@ -11,12 +11,15 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { builtinReferenceText, earnAmount, fixedPriceOf, isService, learnPrice, learnRate, priceEntryText, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
+import { builtinReferenceText, fixedPriceOf, isService, learnPrice, learnRate, parsePriceEntry, priceEntryText, priceEntryValue, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
-import { effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
+import { addItem, effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
 import { chronicleText } from './chronicle.js';
+import { assignState, upgradeState, absoluteDay } from './schema.js';
+import { applyStoryDelta, ensureNpcState, relevantNpcs } from './npcs.js';
+import { selectRelevant } from './memory.js';
 
 export {
   accountOf,
@@ -79,7 +82,6 @@ export function bagAdd(state, name, qty) {
   const found = bag.find((x) => x.name === key);
   if (found) found.qty += qty;
   else bag.push({ name: key, qty });
-  if (bag.length > 80) bag.splice(0, bag.length - 80);
 }
 
 export function bagTake(state, name, qty) {
@@ -107,7 +109,7 @@ export function ensurePriceTable(state) {
     if (!isService(name)) continue;
     if (!state.rates[name]) {
       // 一件跑腿记成几十金显然是模型写错了，落回参考价
-      state.rates[name] = v > 50000 ? earnAmount(state, name, 0).copper : v;
+      state.rates[name] = v;
     }
     delete state.prices[name];
   }
@@ -115,7 +117,6 @@ export function ensurePriceTable(state) {
 export function logLedger(state, text) {
   state.ledgerLog ||= [];
   state.ledgerLog.push({ year: state.clock.year, doy: state.clock.doy, text: String(text).slice(0, 100) });
-  if (state.ledgerLog.length > 40) state.ledgerLog = state.ledgerLog.slice(-40);
 }
 
 const toList = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
@@ -133,7 +134,8 @@ function settleTrade(state, trade, rejected) {
     const name = String(it?.name || it?.item || '').trim();
     const qty = Math.max(1, Math.round(n(it?.qty) || 1));
     if (!name) continue;
-    if (!bagTake(state, name, qty)) {
+    const removed = removeItem(state, name, qty);
+    if (!removed.ok || removed.count !== qty) {
       rejected.push(`身上没有 ${name}`);
       continue;
     }
@@ -156,7 +158,7 @@ function settleTrade(state, trade, rejected) {
     if (!name) continue;
     const quoted = Math.round(n(it?.copper ?? it?.amount) || 0);
     let total = quoted;
-    let noBag = false;
+    let noBag = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade }).noBag || isService(name);
     if (total <= 0) {
       const p = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade });
       if (p.source === 'table') learnPrice(state, name, p.unit);
@@ -168,7 +170,7 @@ function settleTrade(state, trade, rejected) {
       continue;
     }
     addCopper(state, acc.id, -total);
-    if (!noBag) bagAdd(state, name, qty);
+    if (!noBag) addItem(state, name, qty);
     logLedger(state, `买了 ${name}×${qty}，花 ${copperText(total)}`);
   }
 }
@@ -183,17 +185,21 @@ const BOUNTY_RESULT = {
 
 function settleBounty(state, bounty, rng, judged, rejected) {
   const p = state.player;
-  for (const b of toList(bounty).slice(0, 1)) {
+  for (const b of toList(bounty)) {
     const result = String(b?.result || b?.status || '').trim();
 
     // 交活
     if (result) {
-      const c = p.contract;
+      const candidates = p.contracts.filter(c => c.status === 'active');
+      const c = b.id || b.contractId ? p.contracts.find(c => c.id === (b.id || b.contractId)) : candidates.length === 1 ? candidates[0] : null;
+      if (c?.status === 'paid' || c?.status === 'failed') { rejected.push('这份委托已经结算，不能再次领赏或分配'); continue; }
       if (!c) {
         rejected.push('手上没有接下的活');
         continue;
       }
-      const mul = BOUNTY_RESULT[result] ?? Number(b?.ratio) ?? 0;
+      const mul = BOUNTY_RESULT[result];
+      if (mul == null) { rejected.push('委托结果只能是完成、一半或未完成'); continue; }
+      if (!accountOf(state, b.account || 'cash')) { rejected.push('委托收款账户不存在'); continue; }
       const pay = Math.max(0, Math.round(c.copper * mul));
       if (pay > 0) {
         addCopper(state, b?.account || 'cash', pay);
@@ -201,18 +207,22 @@ function settleBounty(state, bounty, rng, judged, rejected) {
       } else {
         logLedger(state, `交活：${c.label}，${result}，一分钱没拿到`);
       }
-      p.contract = null;
+      c.status = pay > 0 ? 'paid' : 'failed';
+      c.paidCopper = pay;
+      p.contract = p.contracts.find(c => c.status === 'active') || null;
       continue;
     }
 
     // 接活：酬劳当场定死。委托生成时 AI 报的价优先，没报才按威胁等级掷
     const tier = Math.min(5, Math.max(1, Math.round(n(b?.tier) || 1)));
     const quoted = Math.round(n(b?.copper ?? b?.price) || 0);
-    const pay =
-      quoted > 0
-        ? Math.min(50000000, Math.max(100, quoted))
-        : rollBounty(state, tier, rng);
-    p.contract = { label: String(b?.label || '一桩活').slice(0, 30), copper: pay, tier };
+    if (b?.copper != null && (!Number.isSafeInteger(Number(b.copper)) || Number(b.copper) <= 0)) { rejected.push('委托报酬必须是正整数铜币'); continue; }
+    const pay = quoted > 0 ? quoted : rollBounty(state, tier, rng);
+    const id = String(b.id || `contract:${String(b.label || '一桩活').trim()}`);
+    const existing = p.contracts.find(c => c.id === id);
+    if (existing) { if (existing.label !== String(b.label || '一桩活').slice(0, 100) || existing.copper !== pay) rejected.push('委托编号已用于另一份约定'); continue; }
+    p.contract = { id, label: String(b?.label || '一桩活').slice(0, 100), copper: pay, tier, status: 'active' };
+    p.contracts.push(p.contract);
     logLedger(
       state,
       `接了活：${p.contract.label}，酬劳 ${copperText(pay)}——做完拿全款，做一半拿一半，没做完一分没有。`,
@@ -222,32 +232,33 @@ function settleBounty(state, bounty, rng, judged, rejected) {
 
 /* 非战斗的一次性收入：跑腿、送信、护送、卖消息。
    第一次按参考价 + 模型的报价定下来，之后同类活计都按存档里的价。 */
-function settleEarn(state, earn, rng) {
+function settleEarn(state, earn, rng, rejected) {
   for (const e of toList(earn).slice(0, 2)) {
-    const label = String(e?.label || '帮工').trim().slice(0, 24);
+    const label = String(e?.label || '帮工').trim().slice(0, 100);
     if (!label) continue;
+    if (/赏金|委托|任务报酬|公会结/.test(label)) { rejected.push('任务报酬请用 bounty 并关联委托 id'); continue; }
     const stored = rateOf(state, label);
     let pay;
     if (stored > 0) {
       pay = stored; // 以前定过，就按老价
     } else {
-      const priceIndex = Number(state?.world?.priceIndex) || 1;
-      const quoted = earnAmount(state, label, e?.copper ?? e?.amount).copper;
-      pay = Math.max(1, Math.round(quoted * priceIndex));
+      pay = Math.round(n(e?.copper ?? e?.amount));
+      if (pay <= 0) { rejected.push(`活计“${label}”需要谈定报酬`); continue; }
       learnRate(state, label, pay);
     }
-    addCopper(state, e?.account || 'cash', pay);
+    if (!addCopper(state, e?.account || 'cash', pay)) { rejected.push('活计收款账户不存在'); continue; }
     logLedger(state, `进账：${label}，${copperText(pay)}`);
   }
 }
 
 /** 人情：给钱的收益按"相当于对方几个月收入"折算，送穷人比送富人有用。 */
-function settleGift(state, gift) {
+function settleGift(state, gift, rejected) {
   for (const g of toList(gift).slice(0, 3)) {
     const amount = Math.round(n(g?.copper));
     if (amount <= 0) continue;
+    if (!state.npcs.some(npc => npc.id === g?.to)) { rejected.push('赠予需要已知人物'); continue; }
     const acc = accountOf(state, g?.account || 'cash');
-    if (!acc || acc.copper < amount) continue;
+    if (!acc || acc.copper < amount) { rejected.push('赠予金额超过可用余额'); continue; }
     addCopper(state, acc.id, -amount);
     const npc = state.npcs.find((x) => x.id === g?.to);
     const rel = state.player.relations.find((x) => x.npcId === g?.to);
@@ -284,6 +295,7 @@ function settleDebts(state, delta, rejected) {
   }
   if (delta?.borrow) {
     for (const b of toList(delta.borrow).slice(0, 1)) {
+      if (!accountOf(state, b?.account || 'cash')) { rejected.push('借款收款账户不存在'); continue; }
       const amount = Math.round(n(b?.copper));
       if (amount <= 0) continue;
       const d = addDebt(state, {
@@ -312,7 +324,7 @@ function settleItems(state, items) {
     const parsed = parseItemEntry(raw);
     if (!parsed) continue;
     const qty = Math.max(1, Math.round(n(it?.qty) || parsed.qty || 1));
-    bagAdd(state, parsed.label, qty);
+    addItem(state, parsed.label, qty);
   }
 }
 
@@ -331,9 +343,7 @@ function settleUse(state, use, rejected) {
       logLedger(state, `用了 ${name}×${qty}`);
       continue;
     }
-    if (eff.health) state.player.body.health = clamp(state.player.body.health + eff.health, 0, 100);
-    if (eff.fatigue) state.player.body.fatigue = clamp(state.player.body.fatigue + eff.fatigue, 0, 100);
-    if (eff.stress) state.player.mind.stress = clamp(state.player.mind.stress + eff.stress, 0, 100);
+    if (eff.health) state.player.body.health = clamp(state.player.body.health + eff.health * qty, 0, 100);
     logLedger(state, `${eff.text}（${name}×${qty}）`);
   }
 }
@@ -359,8 +369,10 @@ function settleMoneyChange(state, change, rejected) {
   for (const m of toList(change).slice(0, 8)) {
     const acc = accountOf(state, m?.account || 'cash');
     const want = Math.round(n(m?.copper ?? m?.amount));
-    if (!acc || !want) continue;
-    const delta = want > 0 ? want : -Math.min(acc.copper, -want);
+    if (!acc) { rejected.push('收支账户不存在'); continue; }
+    if (!want) continue;
+    if (want < 0 && acc.copper < -want) { rejected.push(`${acc.name}余额不足，需要 ${copperText(-want)}`); continue; }
+    const delta = want;
     if (!delta) {
       rejected.push(`${acc.name}不够`);
       continue;
@@ -372,7 +384,7 @@ function settleMoneyChange(state, change, rejected) {
 }
 
 /** 把一次输出的增量（LLM 提议）安全地合入状态。返回被拒绝的条目。 */
-export function applyDelta(state, delta, rng, opts = {}) {
+function applyUnsafe(state, delta, rng, opts = {}) {
   const rejected = [];
   if (!delta || typeof delta !== 'object') return { rejected };
 
@@ -390,11 +402,11 @@ export function applyDelta(state, delta, rng, opts = {}) {
     const m = delta.money;
     // 旧写法 gold/silver/copper 一律算「随身」
     const legacy = n(m.gold) * 10000 + n(m.silver) * 100 + n(m.copper);
-    if (legacy) addCopper(state, 'cash', legacy);
+    if (legacy && !addCopper(state, 'cash', legacy)) rejected.push('随身账户金额不足或无效');
 
     // 新写法：{ cash: -300, home: 1800000, workshop: 2500 }（单位：铜）
     for (const [k, v] of Object.entries(m)) {
-      if (['gold', 'silver', 'copper', 'transfer', 'note'].includes(k)) continue;
+      if (['gold', 'silver', 'copper', 'transfer', 'note', 'change'].includes(k)) continue;
       const amount =
         typeof v === 'number' ? v : n(v?.copper) + n(v?.silver) * 100 + n(v?.gold) * 10000;
       if (!amount) continue;
@@ -415,15 +427,17 @@ export function applyDelta(state, delta, rng, opts = {}) {
   // 以下都由引擎结算金额，模型只给意图
   if (delta?.trade) settleTrade(state, delta.trade, rejected);
   if (delta?.bounty) settleBounty(state, delta.bounty, rng, opts.judged, rejected);
-  if (delta?.earn) settleEarn(state, delta.earn, rng);
+  if (delta?.earn) settleEarn(state, delta.earn, rng, rejected);
   if (delta?.money?.change) settleMoneyChange(state, delta.money.change, rejected);
   if (Array.isArray(delta?.prices)) {
     for (const pr of delta.prices.slice(0, 8)) {
       const nm = String(pr?.name || '').trim();
-      const v = Math.round(Number(pr?.copper ?? pr?.price) || 0);
-      if (!nm || v <= 0 || fixedPriceOf(nm)) continue;
+      const entry = parsePriceEntry(pr?.copper ?? pr?.price);
+      const v = priceEntryValue(entry);
+      if (!nm || !entry || fixedPriceOf(nm)) continue;
       // 送信、跑腿、护送这类是「活计」，记进 rates，不混进物品价表
       const ok = isService(nm) ? learnRate(state, nm, v) : learnPrice(state, nm, Math.min(v, 5000000));
+      if (ok && typeof entry === 'object') (isService(nm) ? state.rates : state.prices)[nm] = entry;
       if (ok) logLedger(state, `记下价：${nm} ` + copperText(v));
     }
   }
@@ -432,33 +446,17 @@ export function applyDelta(state, delta, rng, opts = {}) {
   if (delta?.items) settleItems(state, delta.items);
   if (delta?.use) settleUse(state, delta.use, rejected);
   if (delta?.lose) settleLose(state, delta.lose, rejected);
-  if (delta?.gift) settleGift(state, delta.gift);
+  if (delta?.gift) settleGift(state, delta.gift, rejected);
 
   // 身体 / 精神
-  for (const key of ['health', 'fatigue', 'hunger']) {
+  for (const key of ['health']) {
     const d = n(delta?.body?.[key]);
     if (d) state.player.body[key] = clamp(state.player.body[key] + d, 0, 100);
-  }
-  for (const key of ['stress', 'morale']) {
-    const d = n(delta?.mind?.[key]);
-    if (d) state.player.mind[key] = clamp(state.player.mind[key] + d, 0, 100);
   }
   if (typeof delta?.mind?.mood === 'string' && delta.mind.mood.trim()) {
     state.player.mind.mood = delta.mind.mood.trim().slice(0, 24);
   }
 
-  // 伤
-  if (Array.isArray(delta?.body?.injuries)) {
-    for (const inj of delta.body.injuries.slice(0, 3)) {
-      if (!inj || typeof inj.part !== 'string') continue;
-      state.player.body.injuries.push({
-        part: String(inj.part).slice(0, 12),
-        severity: ['graze', 'light', 'heavy', 'critical', 'maimed'].includes(inj.severity) ? inj.severity : 'light',
-        healDay: state.clock.doy + Math.max(1, n(inj.days) || 3),
-        note: String(inj.note || '').slice(0, 40),
-      });
-    }
-  }
 
   // 技能：数值只由引擎涨（见 progress.js）。模型最多只能开一个新技能的名字。
   if (Array.isArray(delta?.skills)) {
@@ -491,6 +489,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
       rel.closeness = clamp(rel.closeness + dClose, -100, 100);
       rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
       if (obsOk) rel.observable = obs.slice(0, 60);
+      if (obsOk) npc.memories.push({ cause: opts.eventId || `turn:${state.turn}`, text: obs.slice(0, 160), day: absoluteDay(state.clock) });
     }
   }
 
@@ -508,7 +507,6 @@ export function applyDelta(state, delta, rng, opts = {}) {
         added++;
       }
     }
-    if (state.player.equipment.length > 60) state.player.equipment = state.player.equipment.slice(-60);
   }
 
   // 知识与未完成
@@ -524,7 +522,6 @@ export function applyDelta(state, delta, rng, opts = {}) {
         day: state.clock.doy,
       });
     }
-    if (state.knowledge.length > 60) state.knowledge = state.knowledge.slice(-60);
   };
   pushKnowledge(delta?.knowledge);
   pushKnowledge(delta?.newInfo);
@@ -532,26 +529,120 @@ export function applyDelta(state, delta, rng, opts = {}) {
   if (Array.isArray(delta?.unfinished)) {
     for (const u of delta.unfinished.slice(0, 3)) {
       const text = typeof u === 'string' ? u : u?.text;
-      if (text) state.player.unfinished.push({ text: String(text).slice(0, 60), openedDay: state.clock.doy });
+      if (text && !state.player.unfinished.some(x => x.text === text)) state.player.unfinished.push({ text: String(text).slice(0, 160), openedDay: absoluteDay(state.clock) });
     }
-    if (state.player.unfinished.length > 12) state.player.unfinished = state.player.unfinished.slice(-12);
   }
 
   if (Array.isArray(delta?.goals)) {
     const g = delta.goals.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.slice(0, 60));
-    if (g.length) state.player.goals = g.slice(0, 3);
+    state.player.goals = g.slice(0, 10);
   }
   if (Array.isArray(delta?.problems)) {
     const p = delta.problems.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.slice(0, 60));
-    if (p.length) state.player.problems = p.slice(0, 3);
+    state.player.problems = p.slice(0, 10);
   }
 
   state.turn = (state.turn || 0) + (opts.bump === false ? 0 : 1);
   return { rejected };
 }
 
+const DELTA_FIELDS = new Set(['time', 'money', 'trade', 'bounty', 'earn', 'prices', 'payDebt', 'borrow', 'profession', 'items', 'use', 'lose', 'gift', 'body', 'mind', 'skills', 'relations', 'equipment', 'knowledge', 'newInfo', 'unfinished', 'goals', 'problems', 'location', 'npcs', 'npcUpdates', 'consequences', 'reputation', 'tasks', 'transactions', 'eventId']);
+function validateTree(value, path = '') {
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error(`无效数值：${path}`);
+  if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('数据包含保留字段');
+    validateTree(child, `${path}.${key}`);
+  }
+}
+function inventory(state) {
+  const out = {};
+  for (const key of ['bag', 'stock', 'vehicles']) for (const row of state.player[key] || []) out[row.name] = (out[row.name] || 0) + row.qty;
+  for (const name of state.player.equipment || []) out[name] = (out[name] || 0) + 1;
+  return out;
+}
+
+/** Validate on a copy, then commit the complete event exactly once. */
+export function applyDelta(state, delta, rng, opts = {}) {
+  upgradeState(state);
+  const rejected = [];
+  if (!delta || typeof delta !== 'object' || Array.isArray(delta)) return { applied: false, rejected: ['回合需要一个 JSON 对象'] };
+  try { validateTree(delta); } catch (e) { return { applied: false, rejected: [e.message] }; }
+  for (const key of Object.keys(delta)) if (!DELTA_FIELDS.has(key)) rejected.push(`不支持的变化字段：${key}`);
+  const id = opts.eventId || delta.eventId;
+  const fingerprint = JSON.stringify(delta);
+  if (id && Object.hasOwn(state.processedEvents, id)) {
+    const old = state.processedEvents[id];
+    return old.fingerprint === fingerprint ? { applied: true, duplicate: true, rejected: [], receipt: old.receipt }
+      : { applied: false, rejected: ['同一回合编号对应了不同内容，请恢复原回合或创建分支'] };
+  }
+  if (id && !/^[a-zA-Z0-9_.:-]{1,160}$/.test(id)) rejected.push('回合编号无效');
+  const legacyFinance = ['trade', 'bounty', 'earn', 'gift', 'payDebt', 'borrow'].some(k => delta[k]);
+  if (delta.money?.change && legacyFinance) rejected.push('money.change 与交易、赏金等不能重复记账；请统一使用 transactions');
+  if (delta.transactions && (legacyFinance || delta.money)) rejected.push('transactions 不能再附加旧格式记账');
+  if (rejected.length) return { applied: false, rejected };
+  const draft = structuredClone(state), beforeItems = inventory(state);
+  ensureAccounts(draft);
+  const before = Object.fromEntries(draft.player.accounts.map(a => [a.id, a.copper]));
+  const changes = { ...delta }; delete changes.transactions; delete changes.eventId;
+  applyStoryDelta(draft, changes, rejected, id || `turn:${state.turn}`);
+  const txs = Array.isArray(delta.transactions) ? delta.transactions : [];
+  if (delta.transactions && !Array.isArray(delta.transactions)) rejected.push('transactions 必须是数组');
+  for (let index = 0; index < txs.length; index++) {
+    const tx = txs[index], txId = tx?.id || (id ? `${id}:tx:${index}` : null);
+    if (!txId || !/^[a-zA-Z0-9_.:-]{1,160}$/.test(txId)) { rejected.push('每笔交易需要固定 id'); continue; }
+    const signature = JSON.stringify(tx);
+    if (Object.hasOwn(draft.processedEvents, txId)) {
+      if (draft.processedEvents[txId].fingerprint !== signature) rejected.push('交易编号已用于不同内容');
+      continue;
+    }
+    const amount = Math.round(Number(tx.copper) || 0);
+    if (tx.kind !== 'reward' && (!Number.isSafeInteger(amount) || amount <= 0)) { rejected.push('交易金额必须是正整数铜币'); continue; }
+    let part;
+    const account = tx.account || 'cash';
+    if (['purchase', 'sale'].includes(tx.kind)) {
+      if (typeof tx.name !== 'string' || !tx.name.trim() || (tx.qty != null && (!Number.isSafeInteger(tx.qty) || tx.qty <= 0))) { rejected.push('买卖需要物品名称与正整数数量'); continue; }
+      const repeated = [...toList(delta.items), ...toList(delta.lose), ...toList(delta.equipment)].some(row => (typeof row === 'string' ? row : row?.name) === tx.name);
+      if (repeated) { rejected.push('交易已经移动物品，不能再次发放或移除同一物品'); continue; }
+      part = { trade: { account, [tx.kind === 'purchase' ? 'buy' : 'sell']: [{ name: tx.name, qty: tx.qty || 1, copper: amount }] } };
+    }
+    else if (tx.kind === 'reward') {
+      if (!tx.contractId) { rejected.push('赏金必须关联委托 id'); continue; }
+      part = { bounty: { id: tx.contractId, result: tx.result || '完成', account } };
+    } else if (tx.kind === 'gift') {
+      if (!draft.npcs.some(npc => npc.id === tx.to)) { rejected.push('赠予需要已知人物'); continue; }
+      part = { gift: { to: tx.to, copper: amount, account } };
+    } else if (tx.kind === 'transfer') part = { money: { transfer: [{ from: tx.from, to: tx.to, copper: amount }] } };
+    else if (tx.kind === 'repay') part = { payDebt: { id: tx.debtId, to: tx.to, copper: amount, account } };
+    else if (tx.kind === 'borrow') {
+      if (!tx.from) { rejected.push('借款需要债权人名称'); continue; }
+      part = { borrow: { from: tx.from, copper: amount, months: tx.months, rate: tx.rate, account } };
+    }
+    else if (tx.kind === 'income' || tx.kind === 'payment') {
+      if (tx.kind === 'income' && /赏金|委托|任务报酬/.test(tx.note || '')) { rejected.push('任务收入需要使用 reward 并关联委托'); continue; }
+      part = { money: { change: [{ account, copper: tx.kind === 'income' ? amount : -amount, note: tx.note }] } };
+    }
+    else { rejected.push(`未知交易类型：${tx.kind}`); continue; }
+    rejected.push(...applyUnsafe(draft, part, rng, { ...opts, bump: false }).rejected);
+    draft.processedEvents[txId] = { fingerprint: signature };
+  }
+  rejected.push(...applyUnsafe(draft, changes, rng, opts).rejected);
+  if (draft.player.accounts.some(a => !Number.isSafeInteger(a.copper) || a.copper < 0)) rejected.push('账户金额无效');
+  if (rejected.length) return { applied: false, rejected };
+  upgradeState(draft);
+  const afterItems = inventory(draft);
+  const receipt = {
+    accounts: draft.player.accounts.map(a => ({ id: a.id, name: a.name, before: before[a.id] || 0, change: a.copper - (before[a.id] || 0), after: a.copper })).filter(a => a.change),
+    items: [...new Set([...Object.keys(beforeItems), ...Object.keys(afterItems)])].map(name => ({ name, change: (afterItems[name] || 0) - (beforeItems[name] || 0) })).filter(i => i.change),
+  };
+  if (id) draft.processedEvents[id] = { fingerprint, receipt };
+  assignState(state, draft);
+  return { applied: true, rejected: [], receipt };
+}
+
 /** 给模型的紧凑状态块（也是 UI 的数据源之一）。 */
-export function stateBlock(state) {
+export function stateBlock(state, query = '') {
+  upgradeState(state);
+  ensureNpcState(state);
   ensureAssets(state);
   ensurePriceTable(state);
   const p = state.player;
@@ -562,11 +653,8 @@ export function stateBlock(state) {
     `【角色】${p.name}｜${p.age} 岁｜${RACE_CN[p.race] || p.race}｜${p.profession}（${p.professionState}）`,
   );
   lines.push(`【四维】体质 ${p.stats.body} 敏捷 ${p.stats.agility} 智慧 ${p.stats.wisdom} 精神 ${p.stats.spirit}`);
-  const inj = p.body.injuries.length
-    ? '｜' + p.body.injuries.map((i) => `${i.part}${i.note ? '(' + i.note + ')' : ''}`).join('、')
-    : '';
-  lines.push(`【身体】健康 ${p.body.health} 疲劳 ${p.body.fatigue} 饥饿 ${p.body.hunger}${inj}`);
-  lines.push(`【精神】${p.mind.mood}｜压力 ${p.mind.stress}｜士气 ${p.mind.morale}`);
+  lines.push(`【身体】健康 ${p.body.health}`);
+  lines.push(`【心情】${p.mind.mood}`);
   if (p.talent) {
     const t = p.talent;
     lines.push(`【天赋】${t.name}（${t.grade}）：${t.effect}${t.secret ? '｜**必须严格保密**' : ''}`);
@@ -576,7 +664,7 @@ export function stateBlock(state) {
   if (work.type === 'wage' && work.daily) {
     lines.push(`【收入】${work.label}：日薪 ${copperText(work.daily)}（约 ${copperText(work.daily * 30)}/月，由引擎发放）`);
   } else if (work.type === 'bounty') {
-    lines.push('【收入】没有固定收入，全靠赏金；赏金数额由引擎按威胁等级开，你只写事情办没办成。');
+    lines.push('【收入】靠赏金，无固定收入；接委托时谈定金额，完成后按委托 id 付款。');
   } else {
     lines.push('【收入】现在没有固定收入。');
   }
@@ -587,11 +675,7 @@ export function stateBlock(state) {
   }
   const debts = openDebts(state);
   if (debts.length) lines.push(`【债务】${debts.map((d) => debtText(state, d)).join('；')}`);
-  if (p.contract?.label) {
-    lines.push(
-      `【手上的活】${p.contract.label}，酬劳 ${copperText(p.contract.copper)}（做完全额，做一半给一半，没做完没有）`,
-    );
-  }
+  for (const c of p.contracts) lines.push(`【委托 ${c.id}】${c.label}｜${c.status}｜${copperText(c.copper)}${c.paidCopper != null ? `｜已付 ${copperText(c.paidCopper)}` : ''}`);
   const bagAll = bagText(state);
   if (bagAll) lines.push(`【随身货物】${bagAll}`);
   const assetsAll = assetsText(state);
@@ -601,7 +685,7 @@ export function stateBlock(state) {
   lines.push(`【身份】${p.socialClass}｜声誉：${repText(p.reputation)}`);
   if (p.relations.length) {
     lines.push('【关系】');
-    for (const r of p.relations) {
+    for (const r of p.relations.filter(r => relevantNpcs(state, query).some(n => n.id === r.npcId))) {
       const npc = state.npcs.find((x) => x.id === r.npcId);
       lines.push(`  · ${npc?.name || r.npcId}（${npc?.profession || ''}）：${r.observable || '点头之交'}`);
     }
@@ -610,30 +694,35 @@ export function stateBlock(state) {
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push(`【未完成】${p.unfinished.map((u) => u.text).join('；')}`);
   lines.push(builtinReferenceText());
-  const priceRows = Object.entries(state.prices || {}).slice(0, 12);
+  const priceRows = selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]);
   if (priceRows.length) {
     lines.push('【物价表】（本存档自定，报价照这个来）');
     for (const [n2, v] of priceRows) lines.push(`  · ${n2} ${priceEntryText(v)} 铜`);
   }
+  const rates = selectRelevant(Object.entries(state.rates || {}), query, 12, x => x[0]);
+  if (rates.length) lines.push('【活计报酬参考】', ...rates.map(([name, v]) => `  · ${name} ${priceEntryText(v)} 铜`));
   if (state.ledgerLog?.length) {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
   }
-  const chron = chronicleText(state, 6);
+  const chron = selectRelevant(state.chronicle, query, 12).join('\n');
   if (chron) {
     lines.push('【编年】（更早发生的事，回忆优先按这个来）');
     for (const l of chron.split('\n')) lines.push(`  · ${l}`);
   }
   if (state.knowledge.length) {
     lines.push('【玩家已知】（只能用这些）');
-    for (const k of state.knowledge.slice(-12)) lines.push(`  · ${k.text}（${k.source}）`);
+    for (const k of selectRelevant(state.knowledge, query, 18)) lines.push(`  · ${k.text}（${k.source}）`);
   }
+  if (state.storyLog.length) lines.push('【已经发生的后果】', ...selectRelevant(state.storyLog, query, 6).map(e => `  · ${e.text}${e.cause ? `（起因：${e.cause}）` : ''}`));
+  for (const e of state.consequences.filter(e => e.status === 'pending' && e.visible)) lines.push(`【待发生 ${e.id}】${e.text}；起因：${e.cause}`);
   return lines.join('\n');
 }
 
 /** 给模型的 NPC 卡（含 id，方便它写 relations）。 */
-export function npcCards(state) {
-  return state.npcs
+export function npcCards(state, query = '') {
+  ensureNpcState(state);
+  return relevantNpcs(state, query)
     .map((npc) => {
       const v = npc.voice || {};
       return [
@@ -641,6 +730,8 @@ export function npcCards(state) {
         `  说话：词汇 ${v.vocabulary || 2}/5，${v.sentence || 'short'} 句，礼貌 ${v.politeness ?? 1}/3，口癖「${(v.tics || []).join('、') || '无'}」，比喻取自${v.metaphor || '日常'}`,
         `  在意：${npc.obsession || '无'}｜性格：${(npc.traits || []).join('、') || '普通'}`,
         npc.loadout?.length ? `  惯用：${npc.loadout.join('、')}` : null,
+        `  目标：${npc.goals.filter(g => g.visible !== false).map(g => `[${g.id}] ${g.text}（${g.status}，进展 ${g.progress}%）`).join('；') || '尚未得知'}`,
+        `  记得：${selectRelevant(npc.memories, query, 3).map(m => m.text).join('；') || '初次相识'}`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -649,6 +740,8 @@ export function npcCards(state) {
 }
 
 export function uiState(state) {
+  upgradeState(state);
+  ensureNpcState(state);
   ensureAccounts(state); // 老存档读的时候就把 wallet 迁成 cash
   ensureAssets(state);
   ensurePriceTable(state);
@@ -694,6 +787,7 @@ export function uiState(state) {
       })),
       bag: bagOf(state),
       contract: p.contract || null,
+      contracts: p.contracts,
       prices: state.prices || {},
       rates: state.rates || {},
       work: (() => {
@@ -739,12 +833,15 @@ export function uiState(state) {
           observable: r.observable,
           trust: r.trust,
           closeness: r.closeness,
+          goals: (npc?.goals || []).filter(g => g.visible !== false),
+          memories: (npc?.memories || []).slice(-3),
         };
       }),
     },
     knowledge: state.knowledge.slice(-10),
     ledgerLog: (state.ledgerLog || []).slice(-6),
     worldLog: (state.worldLog || []).slice(-8),
+    storyLog: state.storyLog.slice(-10),
     priceIndex: state.world.priceIndex || 1,
   };
 }

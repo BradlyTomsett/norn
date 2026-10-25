@@ -15,7 +15,7 @@ export function skillCap(state) {
 /** 这次行动用到哪个技能，由判定给出；没有技能名就用动作标签。 */
 export function skillNameFor(judged) {
   if (!judged) return '';
-  if (judged.kind === 'rest') return ''; // 歇着不长技能
+  if (judged.kind === 'rest' || judged.kind === 'meta') return '';
   const s = judged.skill && judged.skill !== '—' ? judged.skill : judged.label;
   return String(s || '').slice(0, 12);
 }

@@ -445,7 +445,7 @@ export const SERVICE_RE = /送信|跑腿|打杂|帮工|带路|向导|盯梢|打�
 export const isService = (name) => SERVICE_RE.test(String(name || ''));
 
 export function rateOf(state, label) {
-  return Math.round(Number(state?.rates?.[String(label || '').trim()]) || 0);
+  return priceEntryValue(state?.rates?.[String(label || '').trim()]);
 }
 
 export function priceText(state, name) {

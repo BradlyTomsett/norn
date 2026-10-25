@@ -2,158 +2,28 @@ import * as store from './store.js';
 import * as llm from './llm.js';
 import * as sync from './sync.js';
 import { REGIONS, generateWorld, openingText } from './engine/worldgen.js';
-import { judge, judgeBrief } from './engine/resolve.js';
-import { advanceWorld, engineDelta } from './engine/tick.js';
-import { stateBlock, npcCards, uiState, applyDelta, transferCopper, copperText } from './engine/state.js';
-import { trainSkill } from './engine/progress.js';
-import { makeRng } from './engine/rng.js';
+import { stateBlock, npcCards, uiState, transferCopper, copperText } from './engine/state.js';
+import { isCorrection } from './engine/resolve.js';
+import { prepareTurn, finishTurn } from './engine/turn.js';
+import { buildPrompt } from './engine/protocol.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 import { addItem, removeItem, gradeOfName, stripGrade, composeName, normalizeItems } from './engine/items.js';
 import { DEFAULT_PRICES, DEFAULT_RATES } from './engine/economy.js';
-
-const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 import { ensureAssets } from './engine/assets.js';
 import { VIEWS } from './views.js';
-
-const BUILD = '2026-10-23 · r5';
-
-const $ = (s) => document.querySelector(s);
-
-const logEl = $('#log');
-const inputEl = $('#input');
-const sendEl = $('#send');
-const composerEl = $('#composer');
-const dateEl = $('#date');
-
-const app = {
-  saveId: null,
-  ui: null,
-  messages: [],
-  regions: REGIONS,
-  picked: { regionId: null, family: null, gender: 'male' },
-  streaming: false,
-  tab: 'overview',
-  rules: '',
-  worldbook: '',
-};
-
-/* ---------------- 提示词 ---------------- */
-
-const RUNTIME = `
-【本回合的机器协议】
-1. 用中文写。**输出章节以本条为准，覆盖前面规则里的模板**：
-   九段结算（【本次行动】【生活变化】【财务变化】【人物关系】【职业与技能】【当地变化】【世界动态】【新信息】【未完成事项】）
-   + 【世界动态】四层摘要
-   + 【你现在可以做什么】6–8 条
-   + 一句「你不需要从以上选项中选择」。
-   **没有变化的段落整段省略**——不要写「无。」「无变化。」来占位。
-   【世界动态】只在真有新消息时才写；没有就整段不写，也不要复述【当地动态】里已经说过的事。
-   **不要输出【当前角色】块**（玩家在状态面板里能看）。也不要输出【玩家自由行动】这个小标题。
-2. 另起一行输出一个 json 代码块，只写“变化”。
-3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
-3b. **钱由你记，价格照物价表（【物价表】里有就按它，没有你按常理给）。** 引擎只负责定时结算（月钱、产业月收益、吃住、债息、工钱），其余每一笔进出都要你写：
-    "money":{"change":[{"account":"cash","copper":-1200,"note":"买两张羊皮"}]}        花了钱：copper 写负数
-    "money":{"change":[{"account":"home","copper":500000,"note":"母亲托人捎来"}]}     进了钱：写正数
-    （价目表里没有的东西，用下面的 prices 给个价，引擎记进存档）
-    "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2,"copper":2}],"sell":[{"name":"狼皮","qty":1,"copper":3000}]}
-    "bounty":{"label":"清掉林子边的狼","copper":2400000}  **接活**：委托报酬按双方谈定的价，一件一价，记进存档
-    "bounty":{"result":"完成"}                            **交活**：完成=全额，一半=半额，未完成=一分没有
-    "earn":{"label":"替粮行送信","copper":300}          零散进账；同类活计第一次定价后存档记住
-    "prices":[{"name":"刻纹银匕首","copper":1200}]       物价表补充：可以是固定价，也可以是范围 {"min":800,"max":1500}，任一端写 null 表示无下限/无上限
-    "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
-    "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.01}   借钱（默认月息 1%）
-    "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
-    "items":[{"name":"狼皮","qty":2}]                    收进包里的东西（别人给的、偷到的、捡到的都算）
-    "lose":[{"name":"羊皮","qty":1}]                     失去的东西（被偷、送人、掉了、上交）
-    **物品对账**：叙事里只要出现「给你/递给你/塞给你/你偷到/你捡到/他拿走/被偷了」，JSON 就必须有 items / lose / equipment 对应条目。没有写就等于背包没变。
-    "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
-    "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
-    "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
-    "time":{"minutes":1440}                              这一回合过去了多久：几分钟=即时；一天=1440；一周=10080；一月=43200（引擎按这个推进日历，月钱/产业/生活开销都要它）
-    金额一律写成铜。委托、赏金按**一件一价**谈定，不进物价表；物价表只放物品与常设服务（送信、跑腿、护送这类）的单价。
-    账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（产业，个人产业月收益进这里）。
-    产业收益**不会**自动转到随身，要动用就写 transfer。家族月钱、债息、吃住开销由引擎自动结算，你不要重复记。
-3c. **技能数值不要写。** 技能等级只由引擎按练习时长与难度涨；你最多只能报一个新技能的名字："skills":["商谈"]。
-4. relations 只能用下面列出的 npcId，禁止编造。
-5. 叙事里不出现数值、等级、经验值。
-6. 不替玩家说话或做决定。对话场景中，NPC 说完就停。**也不要在正文里写“修正：”“更正：”这类关于自己格式的说明**。
-7. **装备**：玩家真把东西收进包里时写 "equipment":["长剑（灰）"]，一次最多 3 件，一条只写一种品阶。
-8. **稀有度**：品阶只用于武器与护甲；药剂、工具、材料不分级。默认普通；稀少约十件一件；**珍奇是事件不是掉落**；**史诗不随机**；**传说永不自动生成**。
-9. **数值上限**：其他任何人的四维上限是 100；玩家是唯一例外。
-10. **用词必须西幻**：不写「掌柜的、这位爷、客官、客栈、衙门、银票、江湖、门派」这类中式词；
-    改写：店主 / 先生 / 旅店 / 镇公所 / 治安官 / 汇票 / 行会。人名哪国风格都行（拉丁、日耳曼、斯拉夫、北欧、凯尔特、中东、中、日、韩、印度、非洲），但要 2–4 个音节、念得出来，不堆生僻字；名字换了，用词也得是西幻。
-`.trim();
-
-const FALLBACK_RULES = `你是「西幻人生模拟器」的运行时。你运行一个已经存在的世界，叙述一个真实的人在其中生活。
-世界先于玩家存在，玩家不是中心；世界不为玩家暂停；不替玩家做决定或说话；只用玩家可知的信息；
-重大事件必须有原因；失败与死亡必须合理；时间只前进；已发生的事必须记住；展示不告知；对话像人说话；
-场景首次详写、重复只写变化；叙事里不出现数值与系统语。
-每回合输出：九段结算 + 【世界动态】+【你现在可以做什么】+ 末尾 json 增量块。`.trim();
-
+import { BUILD } from './build.js';
+const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
+const $ = s => document.querySelector(s);
+const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl = $('#composer'), dateEl = $('#date');
+const app = { saveId: null, ui: null, messages: [], regions: REGIONS,
+  picked: { regionId: null, family: null, gender: 'male' }, streaming: false, tab: 'overview', rules: '', worldbook: '', controller: null };
 async function loadPrompts() {
-  try {
-    app.rules = await (await fetch('prompt/rules.md')).text();
-  } catch {
-    app.rules = '';
-  }
-  try {
-    app.worldbook = await (await fetch('prompt/worldbook.md')).text();
-  } catch {
-    app.worldbook = '';
-  }
-  if (!app.rules) app.rules = FALLBACK_RULES;
+  const read = async path => { try { const res = await fetch(path); return res.ok ? await res.text() : ''; } catch { return ''; } };
+  [app.rules, app.worldbook] = await Promise.all([read('prompt/rules.md'), read('prompt/worldbook.md')]);
 }
-
-function turnBrief(judged, events, state, opts = {}) {
-  const injuryLine = judged.injury
-    ? `- 引擎判定本回合受伤：${judged.injury.part}，约 ${judged.injury.days} 天。叙事里要写出来。`
-    : '- 本回合**没有**受伤。叙事里不要出现流血、骨折、伤口这类需要记录的伤；疼、淤青、擦破皮可以写。';
-  const lines = [
-    '【本回合判定（引擎计算，不得更改）】',
-    judgeBrief(judged),
-    '',
-    '【本回合世界事件（引擎生成，择要写进叙事与【当地动态】）】',
-    events.length ? events.map((e) => `· ${e.text}`).join('\n') : '· 无',
-    '',
-    '【写作要求】',
-    `- 这一回合的结果是「${judged.outcomeCn}」，叙事必须体现它。`,
-    '- 时间、体力、饥饿、伤已由引擎结算，你**不要**在 json 里写 time 或 body。',
-    injuryLine,
-    `- 角色姓名固定为「${state.player.name}」，不得改名、不得加称谓。`,
-    '- **不要输出【当前角色】块**。九段之后直接接【世界动态】和【你现在可以做什么】。',
-  ];
-  if (state.flags?.pendingAwakening) {
-    lines.push('', '【本回合必须处理】角色刚满十六岁。叙事里必须有人提起觉醒塔（五枚金币，约三成失败），并问玩家去不去、钱从哪来。不要替玩家回答。');
-  }
-  if (judged.outcome === 'crush') {
-    lines.push('', '【碾压局】实力远超眼前这件事。直接写成干净利落办成，不要硬造失败。张力放在旁人怎么看他、这件事牵出什么。');
-  }
-  if (opts.chronicleDue) {
-    lines.push(
-      '',
-      '【本回合要做编年】在【你现在可以做什么】之前，单独输出一段：',
-      '【编年 · 截至 复兴历 X 年 Y 季】',
-      '下面列 8–15 条，每条一行，以「· 」开头，只写会影响未来的事（去向、职业、关系变化、欠债、伤病、大事），',
-      '不写日常琐碎，不写没发生的计划。这段会被存进存档长期保留。',
-    );
-  }
-  lines.push(
-    '',
-    '━━━━━━━━━━',
-    '【最后一步，必须做】在【你现在可以做什么】之后，再输出一个 json 代码块，只写增量：',
-    '```json',
-    '{"trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}]},"items":[{"name":"狼皮","qty":1}],"relations":[{"npcId":"npc_mother","trust":1,"observable":"她把水接了过去"}],"knowledge":[{"text":"……","source":"听说"}],"mind":{"mood":"有点泄气"},"goals":[],"problems":[]}',
-    '```',
-    '**没有这个代码块，本回合的钱与关系变化就不会被记录。**',
-  );
-  return lines.join('\n');
-}
-
-const buildSystem = (state, judged, events, opts = {}) =>
-  [app.rules, '', app.worldbook, '', ...(state.customSetting ? ['【玩家自定义的世界补充（以此为准，不得推翻）】', state.customSetting, ''] : []), RUNTIME, '', '【当前状态】', stateBlock(state), '', '【在场/相关人物】', npcCards(state), '', turnBrief(judged, events, state, opts)].join('\n');
-
-/* ---------------- 文本处理 ---------------- */
+const buildSystem = (state, judged, events, opts = {}) => buildPrompt(state, judged, events,
+  { rules: app.rules, worldbook: app.worldbook, ...opts });
 
 /* ---------------- 渲染 ---------------- */
 
@@ -367,7 +237,20 @@ function loadGame(id) {
   composerEl.classList.remove('hidden');
   logEl.innerHTML = '';
   let last = null;
-  for (const m of app.messages) {
+  const firstVisible = Math.max(0, app.messages.length - 60);
+  if (firstVisible > 0) {
+    let start = firstVisible;
+    const older = document.createElement('button'); older.className = 'ghost'; older.textContent = '显示更早记录';
+    older.onclick = () => {
+      const next = Math.max(0, start - 60), fragment = document.createDocumentFragment();
+      for (const m of app.messages.slice(next, start)) {
+        const el = document.createElement('div'); el.className = 'msg ' + (m.role === 'user' ? 'me' : ''); el.innerHTML = format(m.content); fragment.append(el);
+      }
+      older.after(fragment); start = next; if (!start) older.remove(); renderToc();
+    };
+    logEl.append(older);
+  }
+  for (const m of app.messages.slice(firstVisible)) {
     if (!String(m.content || '').trim()) continue; // 空的回复不渲染
     last = addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
   }
@@ -377,6 +260,8 @@ function loadGame(id) {
   }
   renderSheet();
   renderToc();
+  showPending();
+  if (last && store.getLastTurn(id)) turnButtons(last);
   if (last) scrollToElement(last);
   else scrollToEnd();
 }
@@ -447,6 +332,7 @@ $('#import-file').onchange = async (e) => {
 
 function openSettings() {
   $('#set-key').value = llm.getKey();
+  $('#set-session-only').checked = llm.sessionOnly();
   $('#set-model').value = llm.getModel();
   for (const b of $('#set-effort').children) b.classList.toggle('selected', b.dataset.effort === llm.getEffort());
   const gh = sync.ghConfig();
@@ -481,6 +367,8 @@ function renderContract() {
       const v = Math.round(Number($('#contract-pay')?.value) || 0);
       if (v <= 0) return;
       st.player.contract.copper = v;
+      const contract = st.player.contracts.find(c => c.id === st.player.contract.id);
+      if (contract) contract.copper = v;
       store.putSave(st);
       app.ui = uiState(st);
       renderContract();
@@ -559,19 +447,16 @@ async function showBuildInfo() {
 
 $('#btn-check-update').onclick = async () => {
   const el = $('#build-info');
+  if (app.streaming) { if (el) el.textContent = '正在生成，本回合结束后再更新。'; return; }
   if (el) el.textContent = '检查中…';
   try {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration();
-      if (reg) await reg.update();
+      if (reg) { await reg.update(); offerUpdate(reg); }
     }
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-    }
-    location.reload();
+    if (el) el.textContent = `${BUILD} · 已检查更新`;
   } catch {
-    location.reload();
+    if (el) el.textContent = '暂时无法检查更新，现有进度仍保存在本机。';
   }
 };
 
@@ -643,6 +528,7 @@ $('#set-effort').addEventListener('click', (e) => {
   b.classList.add('selected');
 });
 $('#set-save').onclick = () => {
+  llm.setSessionOnly($('#set-session-only').checked);
   llm.setKey($('#set-key').value);
   llm.setModel($('#set-model').value);
   const sel = $('#set-effort').querySelector('.selected');
@@ -656,165 +542,133 @@ $('#set-close').onclick = () => $('#settings').classList.add('hidden');
 
 /* ---------------- 一回合 ---------------- */
 
-/** 模型漏了数值块时，单独再要一次 JSON（便宜、短）。 */
-async function recoverDelta(raw) {
-  try {
-    const system =
-      '你是数据抽取器。只输出一个 JSON 代码块，内容是本回合的状态增量（money / trade / relations / knowledge / mind / goals / problems / items / use 等），不要解释、不要叙事、不要省略。';
-    const messages = [
-      { role: 'user', content: '从下面这段本回合输出里，补出 JSON 增量：\n\n' + String(raw).slice(-6000) },
-    ];
-    let out = '';
-    for await (const chunk of llm.streamChat({ system, messages, maxTokens: 1500, temperature: 0.2 })) out += chunk;
-    return splitDelta(out).delta;
-  } catch {
-    return null;
-  }
+/* ---------------- 一回合：草稿 → 验证 → 原子提交 ---------------- */
+function turnStatus(text = '') {
+  const el = $('#turn-status');
+  el.textContent = text; el.classList.toggle('hidden', !text);
 }
-
-async function send() {
-  const text = inputEl.value.trim();
-  if (!text || app.streaming) return;
-  inputEl.value = '';
-  inputEl.style.height = 'auto';
-
-  app.streaming = true;
-  sendEl.disabled = true;
-  addMessage('user', text);
-
-  const state = store.getSave(app.saveId);
-  if (!state) {
-    app.streaming = false;
-    sendEl.disabled = false;
-    return;
+function receiptText(receipt) {
+  const rows = [
+    ...(receipt.accounts || []).map(a => `${a.name} ${a.change >= 0 ? '+' : '−'}${copperText(Math.abs(a.change))}；余额 ${copperText(a.after)}`),
+    ...(receipt.items || []).map(i => `${i.name} ${i.change >= 0 ? '+' : '−'}${Math.abs(i.change)}`),
+  ];
+  return rows.join('\n') || '本回合没有账户或物品变化。';
+}
+function showPending() {
+  const pending = store.getPending(app.saveId);
+  if (!pending) { turnStatus(); return; }
+  const el = $('#turn-status'); el.classList.remove('hidden'); el.textContent = '有一回合尚未提交，进度保持原样。 ';
+  const retry = document.createElement('button'); retry.textContent = '重试本回合'; retry.onclick = () => send({ retry: true }); el.append(retry);
+}
+function turnButtons(bubble) {
+  const actions = document.createElement('div'); actions.className = 'turn-actions';
+  for (const [label, action] of [['纠正上一回合', () => { inputEl.value = '/纠错 '; inputEl.focus(); }],
+    ['从这里另开分支', () => { const s = store.getSave(app.saveId); const oldId = s.saveId; s.snapshotOf = oldId; s.lineageId ||= oldId; s.saveId = store.newId(); s.revision = 0; s.label = '剧情分支'; store.putSave(s, store.getMessages(oldId)); loadGame(s.saveId); }]]) {
+    const button = document.createElement('button'); button.textContent = label; button.onclick = action; actions.append(button);
   }
-  store.appendMessage(app.saveId, 'user', text);
-
-  const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
-  const judged = judge(state, text, rng);
-  const events = advanceWorld(state, judged.minutes, rng, judged);
-  const wantChronicle = chronicleDue(state, text);
-
-  const bubble = addMessage('assistant', '');
-  bubble.classList.add('cursor');
-  scrollToElement(bubble);
-
-  let raw = '';
-  let cleanText = '';
-  let assistantSaved = false;
-  const saveAssistant = (text) => {
-    if (assistantSaved || !text) return;
-    assistantSaved = true;
-    try {
-      store.appendMessage(app.saveId, 'assistant', text);
-    } catch {
-      /* 存不下也别把这一回合整个搞崩 */
-    }
-  };
-  let frame = null;
-  const paint = () => {
-    bubble.innerHTML = format(raw) || '<p>&nbsp;</p>';
-  };
-
+  bubble.append(actions);
+}
+async function recoverDelta(raw, plan, error = '') {
+  const system = buildSystem(plan.state, plan.judged, plan.events, { query: plan.text }) +
+    '\n你现在只修复变化数据，只输出一个 json 代码块。依据玩家原行动、当前状态与已写出的叙事，不能增加交易或重写剧情。没有证据的金额不能猜。\n验证问题：' + error;
+  let out = '';
+  for await (const chunk of llm.streamChat({ system, messages: [{ role: 'user', content: `原行动：${plan.text}\n待修复的本回合输出：\n${raw}` }],
+    maxTokens: 3000, temperature: 0.2, signal: app.controller.signal })) out += chunk;
+  const delta = splitDelta(out).delta;
+  if (!delta) throw new Error('回复缺少有效变化块，请重试本回合');
+  return delta;
+}
+async function send(options = {}) {
+  if (app.streaming || !app.saveId) return;
+  const current = store.getSave(app.saveId);
+  const pending = store.getPending(app.saveId);
+  const typed = inputEl.value.trim();
+  if (!options.retry && !typed) return;
+  if (!options.retry && /^\/状态\s*$/.test(typed)) { inputEl.value = ''; openSheet('overview'); return; }
+  if (!options.retry && /^\/时间\s*$/.test(typed)) { inputEl.value = ''; addMessage('assistant', `${app.ui.date}\n${current.player.location.siteName}`); return; }
+  if (!options.retry && /^\/存档\s*$/.test(typed)) { inputEl.value = ''; store.putSave(current); addMessage('assistant', '已保存当前进度。'); return; }
+  if (pending && /^\/重试\s*$/.test(typed)) return send({ retry: true });
+  if (pending && !options.retry && !/^\/取消重试\s*$/.test(typed)) { showPending(); addMessage('error', '请先重试未提交的回合，或输入 /取消重试 放弃草稿。'); return; }
+  if (/^\/取消重试\s*$/.test(typed)) { store.putPending(app.saveId, null); inputEl.value = ''; turnStatus(); return; }
+  if (/^\/撤回\s*$/.test(typed)) {
+    const previous = store.getLastTurn(app.saveId);
+    if (!previous) { addMessage('error', '还没有可撤回的回合。'); return; }
+    const restored = structuredClone(previous.base); restored.saveId = app.saveId;
+    store.putSave(restored, previous.messages, { expectedRevision: current.revision, lastTurn: null, pending: null });
+    inputEl.value = ''; loadGame(app.saveId); addMessage('assistant', '已撤回上一回合，回到结算前。'); return;
+  }
+  if (!llm.hasKey()) { openSettings(); return; }
+  let draft;
+  if (options.retry) {
+    if (!pending) return;
+    if (pending.baseRevision !== current.revision) { addMessage('error', '草稿之后存档已变化，请取消草稿后重新行动。'); return; }
+    draft = pending;
+  } else if (isCorrection(typed)) {
+    const previous = store.getLastTurn(app.saveId);
+    if (!previous) { addMessage('error', '这份旧存档还没有可回退的回合记录。请先核对状态；新回合完成后即可用此功能纠正。'); return; }
+    if (/^\/(纠错|纠正)\s*$/.test(typed)) { addMessage('error', '在 /纠错 后写清要纠正的内容，原回合会从结算前重新处理。'); return; }
+    draft = { id: previous.id, text: previous.input, correction: typed, baseState: previous.base,
+      history: previous.messages, baseRevision: current.revision, createdAt: new Date().toISOString() };
+  } else {
+    draft = { id: `turn:${store.newId().slice(3)}`, text: typed, baseRevision: current.revision, createdAt: new Date().toISOString() };
+  }
+  const source = draft.baseState || current;
+  const history = draft.history || store.getMessages(app.saveId);
+  const plan = prepareTurn(source, draft.text, draft.id);
+  try { store.putPending(app.saveId, { ...draft, raw: '' }); }
+  catch { addMessage('error', '本机空间不足，无法保存待处理回合。请先导出存档或清理旧分支。'); return; }
+  inputEl.value = ''; inputEl.style.height = 'auto';
+  app.streaming = true; app.controller = new AbortController(); sendEl.disabled = true;
+  $('#cancel-turn').classList.remove('hidden');
+  addMessage('user', draft.correction || draft.text);
+  const bubble = addMessage('assistant', ''); bubble.classList.add('cursor'); scrollToElement(bubble);
+  turnStatus('正在生成，完成验证后保存…');
+  let raw = '', timer = null, lastDraftAt = Date.now();
   try {
-    const history = store.getMessages(app.saveId).slice(-14).map((m) => ({ role: m.role, content: m.content }));
-    for await (const chunk of llm.streamChat({ system: buildSystem(state, judged, events, { chronicleDue: wantChronicle }), messages: history })) {
+    const system = buildSystem(plan.state, plan.judged, plan.events,
+      { query: draft.text, chronicleDue: chronicleDue(plan.state, draft.text) }) +
+      (draft.correction ? `\n【纠正原回合】${draft.correction}\n这是原回合的替换，已经回到原结算前；只完成原行动，不额外耗时。` : '');
+    for await (const chunk of llm.streamChat({ system, messages: [...history.slice(-14).map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: draft.text }], signal: app.controller.signal })) {
       raw += chunk;
-      if (!frame) {
-        frame = requestAnimationFrame(() => {
-          frame = null;
-          paint();
-        });
-      }
+      if (!timer) timer = setTimeout(() => { timer = null; bubble.innerHTML = format(raw); }, 100);
+      if (Date.now() - lastDraftAt > 2000) { store.putPending(app.saveId, { ...draft, raw }); lastDraftAt = Date.now(); }
     }
-
-    const parsed = splitDelta(raw);
-    let rawText = parsed.text;
-    let delta = parsed.delta;
-    // 没有增量块时补「只输出 JSON」的短请求；一次不行再试一次
-    for (let attempt = 0; !delta && attempt < 2; attempt += 1) {
-      delta = await recoverDelta(raw);
-      if (delta) rawText = splitDelta(raw).text;
-    }
-    // 模型说了这一段过去了多久，就按它推时间（引擎原本只按动作估半小时，
-    // 导致月钱、产业、生活开销几个月都不结算）
-    const modelMinutes = Math.round(Number(delta?.time?.minutes) || 0);
-    if (modelMinutes > (judged.minutes || 0)) {
-      const extra = Math.min(60 * 24 * 45, modelMinutes) - (judged.minutes || 0);
-      if (extra > 0) advanceWorld(state, extra, rng, judged);
-    }
-
-    const cleanText2 =
-      pruneEmpty(stripSheet(rawText)) || '（这一回合只见动作，没有留下文字。）';
-    cleanText = cleanText2;
-
-    // 编年：模型这回合写了就存进状态，否则几回合后会被挤出上下文
-    mergeChronicle(state, parseChronicle(cleanText));
-
-    applyDelta(state, engineDelta(judged, state), rng, { bump: false, judged });
-    const modelDelta = { ...(delta || {}) };
-    delete modelDelta.time;
-    delete modelDelta.body;
-    applyDelta(state, modelDelta, rng, { bump: true, judged });
-    trainSkill(state, judged);
-    if (state.flags?.pendingAwakening) {
-      state.flags.pendingAwakening = false;
-      state.flags.awakeningAsked = true;
-    }
-
-    store.putSave(state);
-    saveAssistant(cleanText);
+    clearTimeout(timer); timer = null;
+    let delta = splitDelta(raw).delta;
+    if (!delta) delta = await recoverDelta(raw, plan);
+    const result = finishTurn(plan, delta);
+    const clean = pruneEmpty(stripSheet(splitDelta(raw).text)) || '这一回合的行动已经记下。';
+    mergeChronicle(result.state, parseChronicle(clean));
+    const content = `${clean}\n\n【实际结算】\n${receiptText(result.receipt)}`;
+    const messages = [...history, { role: 'user', content: draft.text + (draft.correction ? `\n（本回合纠正：${draft.correction}）` : '') }, { role: 'assistant', content, turnId: draft.id }];
+    result.state.saveId = app.saveId;
+    store.putSave(result.state, messages, { expectedRevision: draft.baseRevision, pending: null,
+      lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt } });
+    loadGame(app.saveId);
+    turnStatus('已在本机保存。');
     if (sync.ghReady()) {
-      sync.backupSave(state, store.getMessages(app.saveId)).then(() => updateGhStatus()).catch((e) => {
-        const el = $('#gh-status');
-        if (el) el.textContent = '自动备份失败：' + e.message;
+      turnStatus('已在本机保存，正在备份到云端…');
+      sync.backupSave(result.state, messages).then(() => { updateGhStatus(); turnStatus('本机与云端均已保存。'); }).catch(e => {
+        updateGhStatus(); turnStatus('本机已保存；云备份未完成：' + e.message);
       });
     }
-    app.ui = uiState(state);
-
-    // 物品易手的回执：让「AI 到底有没有写」一眼可见
-    const changes = [];
-    for (const it of listOf(modelDelta.items)) {
-      const nm = typeof it === 'string' ? it : it?.name;
-      if (nm) changes.push(`+${nm}${Number(it?.qty) > 1 ? `×${it.qty}` : ''}`);
-    }
-    for (const e of listOf(modelDelta.equipment)) {
-      const nm = typeof e === 'string' ? e : e?.name;
-      if (nm) changes.push(`+${nm}`);
-    }
-    for (const it of listOf(modelDelta.lose)) {
-      const nm = typeof it === 'string' ? it : it?.name;
-      if (nm) changes.push(`−${nm}`);
-    }
-
-    bubble.innerHTML = format(cleanText);
-    if (changes.length) {
-      const foot = document.createElement('div');
-      foot.className = 'turn-items';
-      foot.textContent = '本回合物品：' + changes.slice(0, 6).join(' · ');
-      bubble.appendChild(foot);
-    }
+  } catch (error) {
+    clearTimeout(timer);
+    try { store.putPending(app.saveId, { ...draft, raw }); } catch { /* The original committed save is still intact. */ }
+    bubble.innerHTML = format(raw ? pruneEmpty(stripSheet(splitDelta(raw).text)) : '');
     bubble.classList.remove('cursor');
-    if (!delta) addMessage('error', '（这一回合没有可用的数值块，钱与关系未结算；已自动重试一次补数据。）');
-    renderSheet();
-    scrollToElement(bubble);
-  } catch (err) {
-    bubble.classList.remove('cursor');
-    // 断线也把已经写出来的部分存下，避免「我记得说过、回复却没了」
-    const partial = raw ? pruneEmpty(stripSheet(splitDelta(raw).text)) : '';
-    if (partial) {
-      cleanText = cleanText || partial;
-      saveAssistant(`${partial}\n\n（这条回复中途断了，可以再说一次。）`);
-    }
-    if (cleanText) bubble.innerHTML = format(cleanText);
-    addMessage('error', '这一回合失败了：' + err.message);
+    addMessage('error', '本回合尚未提交：' + (app.controller.signal.aborted ? '生成已停止' : error.message));
+    showPending();
   } finally {
-    app.streaming = false;
-    sendEl.disabled = false;
-    inputEl.focus();
-    renderToc();
+    clearTimeout(timer); bubble.classList.remove('cursor');
+    app.streaming = false; sendEl.disabled = false; $('#cancel-turn').classList.add('hidden');
+    app.controller = null; inputEl.focus(); renderToc();
+    if (app.updateWaiting) offerUpdate(app.updateWaiting);
+    if (app.reloadAfterTurn) location.reload();
   }
 }
+$('#cancel-turn').onclick = () => app.controller?.abort();
 
 sendEl.onclick = send;
 // 输入框里回车只换行，不发送；发送只认「说」按钮。
@@ -1087,7 +941,7 @@ function updateGhStatus() {
     return;
   }
   const c = sync.ghConfig();
-  const last = localStorage.getItem('norn.gh.last');
+  const last = localStorage.getItem(`norn.gh.last.${app.saveId}`);
   el.textContent = `已连接 ${c.owner}/${c.repo}（${c.branch}）` + (last ? ` · 上次备份 ${new Date(last).toLocaleString()}` : ' · 还没备份过');
 }
 
@@ -1146,7 +1000,10 @@ $('#btn-gh-restore').onclick = async () => {
             try {
               const carried = Array.isArray(state.messages) ? state.messages : [];
               delete state.messages;
+              state.snapshotOf = state.saveId;
+              state.lineageId ||= state.saveId;
               state.saveId = store.newId();
+              state.revision = 0;
               state.createdAt = new Date().toISOString();
               state.label = '来自 GitHub';
               store.putSave(state, carried);
@@ -1191,7 +1048,7 @@ $('#btn-restore-close').onclick = () => $('#restore').classList.add('hidden');
 async function boot() {
   await loadPrompts();
 
-  if (!llm.hasKey()) {
+  if (!llm.hasKey() && !store.listSaves().length) {
     $('#gate').classList.remove('hidden');
     $('#gate-go').onclick = () => {
       llm.setKey($('#gate-key').value);
@@ -1312,17 +1169,29 @@ boot();
 
 // 注册 service worker（离线打开用）。
 // 新版本接管时自动刷新一次，免得手机上一直看到旧文件。
+function offerUpdate(reg) {
+  if (!reg?.waiting) return;
+  if (app.streaming) { app.updateWaiting = reg; return; }
+  app.updateWaiting = null;
+  reg.waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
+}
 if ('serviceWorker' in navigator) {
   const hadController = Boolean(navigator.serviceWorker.controller);
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController || reloaded) return;
+    if (app.streaming) { app.reloadAfterTurn = true; return; }
     reloaded = true;
     location.reload();
   });
   window.addEventListener('load', async () => {
     try {
-      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      const reg = await navigator.serviceWorker.register('sw.js', { type: 'module', updateViaCache: 'none' });
+      offerUpdate(reg);
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        worker?.addEventListener('statechange', () => { if (worker.state === 'installed') offerUpdate(reg); });
+      });
       reg.update().catch(() => {});
     } catch {
       /* 不支持就算了，不影响玩 */

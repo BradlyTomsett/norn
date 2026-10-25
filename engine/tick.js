@@ -6,6 +6,8 @@ import { addCopper, copperText, logLedger } from './state.js';
 import { accrueDebts, ensureDebts, ensureWork, runBills, runLiving, runWages } from './ledger.js';
 import { ensureAssets, runIndustries } from './assets.js';
 import { decayRelations, decayReputation } from './progress.js';
+import { upgradeState, absoluteDay } from './schema.js';
+import { advanceNpcs, ensureNpcState } from './npcs.js';
 
 const DAY_EVENTS = [
   '路上过了一队收羊毛的商人，价压得很低',
@@ -29,7 +31,7 @@ const MONTH_EVENTS = [
 
 const NPC_EVENTS = [
   { type: 'ill', text: (n) => `${n}病了一场，躺了十来天，人瘦了一圈` },
-  { type: 'marry', text: (n) => `${n}嫁了人，男方是邻镇的手艺人` },
+  { type: 'marry', text: (n) => `${n}与邻镇的一位手艺人成了婚` },
   { type: 'move', text: (n) => `${n}搬走了，说是去郡城投亲戚` },
   { type: 'promote', text: (n) => `${n}升了，管的事情比从前多` },
   { type: 'die', text: (n) => `${n}死了，丧事办得很简单` },
@@ -49,6 +51,9 @@ export function recentWorld(state, n = 4) {
  * 推进世界。返回本回合发生的事件（给叙事用）。
  */
 export function advanceWorld(state, minutes, rng, judged) {
+  upgradeState(state);
+  ensureNpcState(state);
+  const beforeDay = absoluteDay(state.clock);
   const { clock, crossed } = advanceClock(state.clock, minutes || 0, rng);
   state.clock = clock;
   const events = [];
@@ -57,10 +62,7 @@ export function advanceWorld(state, minutes, rng, judged) {
 
   const days = Math.max(0, crossed.days || 0);
   // 月数：长跨度按整月算，短跨度只跨了一次月界也要算一个月
-  const months = Math.max(
-    days >= 30 ? Math.floor(days / 30) : 0,
-    crossed.newMonth || crossed.years > 0 ? 1 : 0,
-  );
+  const months = crossed.months;
 
   // 日 tick
   if (days > 0) {
@@ -118,12 +120,12 @@ export function advanceWorld(state, minutes, rng, judged) {
   }
 
   ensureAssets(state);
+  addLedger(runBills(state, { months, days, weeks: Math.floor(absoluteDay(state.clock) / 7) - Math.floor(beforeDay / 7), years: crossed.years || 0 }, rng));
   if (months > 0) {
     addLedger(runIndustries(state, months));
-    addLedger(runBills(state, { months, days, years: crossed.years || 0 }, rng));
     addLedger(accrueDebts(state, months, rng));
     decayReputation(state, months);
-    if (months >= 2) addLedger(decayRelations(state, months));
+    addLedger(decayRelations(state, months));
   }
 
   // 「汽水工坊」现在是一个正常账户：产业月收益直接进它，不再每月自动转随身。
@@ -142,8 +144,10 @@ export function advanceWorld(state, minutes, rng, judged) {
     for (let y = 0; y < crossed.years; y++) {
       for (const npc of state.npcs) {
         npc.age += 1;
+        if (npc.dead) continue;
         const age = npc.age;
-        if (age > 62 && chance(rng, 0.06)) {
+        const lifespan = { human: 90, elf: 800, halfelf: 350, orc: 90, dwarf: 150, dragonkin: 400, underdark: 150, highland: 150 }[npc.race] || 90;
+        if (age > lifespan && chance(rng, 0.06)) {
           const t = NPC_EVENTS[4].text(npc.name);
           logEvent(state, t);
           events.push({ level: 'local', text: t });
@@ -151,15 +155,18 @@ export function advanceWorld(state, minutes, rng, judged) {
           continue;
         }
         if (npc.dead) continue;
-        if (age >= 18 && age <= 32 && chance(rng, 0.05)) {
+        if (!npc.married && age >= 18 && age <= 32 && chance(rng, 0.05)) {
           const t = NPC_EVENTS[1].text(npc.name);
           logEvent(state, t);
           events.push({ level: 'local', text: t });
+          npc.married = true;
         } else if (chance(rng, 0.05)) {
-          const e = pick(rng, [NPC_EVENTS[0], NPC_EVENTS[2], NPC_EVENTS[3]]);
+          const e = pick(rng, [NPC_EVENTS[2], NPC_EVENTS[3]]);
           const t = e.text(npc.name);
           logEvent(state, t);
           events.push({ level: 'local', text: t });
+          if (e.type === 'move') npc.location = { siteId: 'county', siteName: '郡城' };
+          if (e.type === 'promote') npc.rank = (Number(npc.rank) || 0) + 1;
         }
       }
       const open = state.player.debts.filter((d) => d.status !== 'settled' && d.remaining > 0);
@@ -170,34 +177,17 @@ export function advanceWorld(state, minutes, rng, judged) {
         events.push({ level: 'local', text: t });
       }
     }
-    state.npcs = state.npcs.filter((n) => !n.dead || n.id === 'npc_mother');
   }
 
-  // 伤病恢复
-  if (days > 0) {
-    state.player.body.injuries = state.player.body.injuries.filter((inj) => {
-      if (!inj.healDay) return true;
-      return inj.healDay > state.clock.doy;
-    });
-  }
+  for (const e of advanceNpcs(state)) { logEvent(state, e.text, e.level); events.push(e); }
 
   return events;
 }
 
-/** 引擎独占的数值变化：体力、饥饿、伤。时间已由 advanceWorld 推进过，这里不再动。 */
+/** The engine owns combat health changes; time has already advanced exactly once. */
 export function engineDelta(judgeResult, state) {
-  const delta = {
-    body: {
-      fatigue: judgeResult.fatigue,
-      hunger: Math.round((judgeResult.minutes / 60) * 2.5),
-      health: 0,
-    },
-  };
-  if (judgeResult.injury) {
-    delta.body.injuries = [
-      { part: judgeResult.injury.part, severity: 'light', days: judgeResult.injury.days, note: '新伤' },
-    ];
-    delta.body.health = -6;
-  }
-  return delta;
+  const immune = /免疫.*(物理|攻击)/.test(state.player.talent?.effect || '');
+  const damage = judgeResult.kind === 'combat' && ['fail', 'disaster'].includes(judgeResult.outcome) && !immune ? -6 : 0;
+  const recovery = judgeResult.kind === 'rest' && judgeResult.minutes >= 360 ? 10 : 0;
+  return { body: { health: damage + recovery } };
 }

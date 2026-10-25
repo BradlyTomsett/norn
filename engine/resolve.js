@@ -1,172 +1,93 @@
-// 判定：由代码算，模型只负责把这个结果写成文字。
-import { int, pick } from './rng.js';
+import { int } from './rng.js';
 
 const RULES = [
-  { kind: 'rest', re: /坐下|坐着|坐|躺|睡|歇|发呆|蹲|喘|什么也不做|等一会儿/ },
-  { kind: 'labor', re: /打水|打饭|打酒|打柴|打扫|打盹|劈柴|挑水|喂/ },
-  { kind: 'combat', re: /攻击|砍|刺|揍|搏斗|动手|打他|打人|打死|打起来|拔刀|拔剑|杀/ },
-  { kind: 'stealth', re: /悄悄|偷偷|溜|躲|潜行|摸过去|不让人看见/ },
-  { kind: 'trade', re: /买|卖|换|讲价|讨价|付钱|赊/ },
-  { kind: 'study', re: /学|读|练|背|请教|研究|琢磨/ },
-  { kind: 'social', re: /说|问|求|谈|劝|骂|告诉|请求|商量|打招呼/ },
-  { kind: 'observe', re: /看|听|找|查|观察|留意|打听|四周|盯|窥|监视|数一数/ },
-  { kind: 'labor', re: /干|搬|挖|劈|挑|帮工|收拾|扫|修|种/ },
-  { kind: 'travel', re: /去|走|出发|赶路|前往|上路|回/ },
+  ['labor', /打水|打饭|打酒|打柴|打扫|劈柴|挑水|喂|搬|挖|帮工|收拾|修屋|种田/],
+  ['combat', /攻击|砍|刺杀|刺向|刺一|刺深|揍|搏斗|动手|打他|打人|打死|打起来|拔刀|拔剑|杀/],
+  ['stealth', /悄悄|偷偷|溜|躲|潜行|摸过去|不让人看见/],
+  ['trade', /买|卖|交易|换钱|讲价|讨价|付钱|赊/],
+  ['study', /学|读|练|背书|请教|研究|琢磨/],
+  ['social', /说|问|求|谈|劝|骂|告诉|请求|商量|打招呼/],
+  ['observe', /看|听|找|查|观察|留意|打听|四周|盯|窥|监视|数一数/],
+  ['travel', /去|走|出发|赶路|前往|上路|回城|回家|返回/],
+  ['rest', /坐|躺|睡|歇|发呆|蹲|喘|什么也不做|等一会|吃|喝|休息/],
 ];
-
 const PROFILE = {
-  rest: { label: '歇着', stat: 'spirit', skill: '', diff: 6, minutes: [15, 45], fatigue: [-8, -3] },
-  labor: { label: '体力活', stat: 'body', skill: '干杂活', diff: 22, minutes: [30, 90], fatigue: [6, 12] },
-  combat: { label: '动手', stat: 'body', skill: '武技', diff: 40, minutes: [5, 20], fatigue: [10, 18] },
-  stealth: { label: '暗中行事', stat: 'agility', skill: '潜行', diff: 32, minutes: [10, 30], fatigue: [4, 8] },
-  trade: { label: '交易', stat: 'wisdom', skill: '交涉', diff: 26, minutes: [10, 30], fatigue: [1, 3] },
-  social: { label: '说话', stat: 'wisdom', skill: '交涉', diff: 28, minutes: [10, 30], fatigue: [1, 4] },
-  study: { label: '学习', stat: 'wisdom', skill: '识字', diff: 28, minutes: [60, 180], fatigue: [4, 8] },
-  observe: { label: '观察', stat: 'wisdom', skill: '察觉', diff: 24, minutes: [10, 20], fatigue: [2, 5] },
-  travel: { label: '赶路', stat: 'body', skill: '识路', diff: 24, minutes: [120, 480], fatigue: [10, 20] },
+  rest: { label: '休息与生活', stat: 'spirit', skill: '', diff: 0, minutes: [15, 45] },
+  labor: { label: '体力活', stat: 'body', skill: '干杂活', diff: 22, minutes: [30, 90] },
+  combat: { label: '动手', stat: 'body', skill: '武技', diff: 40, minutes: [5, 20] },
+  stealth: { label: '暗中行事', stat: 'agility', skill: '潜行', diff: 32, minutes: [10, 30] },
+  trade: { label: '交易', stat: 'wisdom', skill: '交涉', diff: 26, minutes: [10, 30] },
+  social: { label: '说话', stat: 'wisdom', skill: '交涉', diff: 28, minutes: [10, 30] },
+  study: { label: '学习', stat: 'wisdom', skill: '识字', diff: 28, minutes: [60, 180] },
+  observe: { label: '观察', stat: 'wisdom', skill: '察觉', diff: 24, minutes: [10, 20] },
+  travel: { label: '赶路', stat: 'body', skill: '识路', diff: 24, minutes: [120, 480] },
+  meta: { label: '查看与纠错', stat: 'wisdom', skill: '', diff: 0, minutes: [0, 0] },
 };
-
 const OUTCOMES = [
-  { key: 'crush', cn: '实力碾压', min: 15 },
-  { key: 'critical', cn: '大成功', min: 7 },
-  { key: 'success', cn: '成功', min: 0 },
-  { key: 'partial', cn: '部分成功', min: -10 },
-  { key: 'fail', cn: '失败', min: -20 },
-  { key: 'disaster', cn: '灾难', min: -Infinity },
+  { key: 'crush', cn: '实力碾压', min: 15 }, { key: 'critical', cn: '大成功', min: 7 },
+  { key: 'success', cn: '成功', min: 0 }, { key: 'partial', cn: '部分成功', min: -10 },
+  { key: 'fail', cn: '失败', min: -20 }, { key: 'disaster', cn: '灾难', min: -Infinity },
 ];
-
+export function isCorrection(text) {
+  return /^\/(纠错|纠正|重试|撤回)/.test(text) || /账.*(不对|错|乱)|钱数.*(不对|没.*增加)|没有.*(入账|新增)|光支出|重复(扣|结算)|不仅没增加|给我.*(重新|按照.*收入).*结算/.test(text);
+}
 export function classify(text) {
-  const t = String(text || '');
-  for (const r of RULES) if (r.re.test(t)) return r.kind;
-  return 'labor';
+  const raw = String(text || '');
+  if (isCorrection(raw) || /^\/(状态|时间|存档|整理记忆|编年)/.test(raw)) return 'meta';
+  const t = raw.replace(/不(?:要|想|打算|会)?(?:杀|砍|攻击|买|卖|交易)[^，。；,!！]*[，。；,!！]?/g, '');
+  return RULES.find(([, re]) => re.test(t))?.[0] || 'observe';
 }
-
-function skillLevel(state, name, statValue = 10) {
-  const v = state.player.skills.find((s) => s.name === name);
-  if (v) return v.level;
-  // 技能表简化后可能没有这一项：按主属性折算，避免"传奇人物不会赶路"
-  return Math.max(0, (statValue - 10) * 0.4);
+function numeral(s) {
+  if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s);
+  if (s === '半') return 0.5;
+  const digits = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  let total = 0, current = 0;
+  for (const ch of s) {
+    if (ch === '百' || ch === '十') { total += (current || 1) * (ch === '百' ? 100 : 10); current = 0; }
+    else if (ch in digits) current = digits[ch];
+  }
+  return total + current;
 }
-
-/** 返回本回合的判定结果；时间与体力由引擎写死，模型不得更改。 */
+export function actionMinutes(text, kind, fallback) {
+  if (kind === 'meta') return 0;
+  const m = String(text).match(/(\d+(?:\.\d+)?|[一二两三四五六七八九十百半]+)(?:整|个)?(分钟|小时|天|日|周|星期|个月|月|年)/);
+  if (m) return Math.max(1, Math.min(3650 * 1440, Math.round(numeral(m[1]) * ({ 分钟: 1, 小时: 60, 天: 1440, 日: 1440, 周: 10080, 星期: 10080, 个月: 43200, 月: 43200, 年: 525600 }[m[2]]))));
+  if (/睡.*(觉|夜)|睡到天亮/.test(text)) return 480;
+  if (/一整天|整日/.test(text)) return 1440;
+  return fallback;
+}
+function difficultyFor(state, text, kind, fallback) {
+  if (kind !== 'combat') return fallback;
+  if (/巫妖皇|区域灾难|上位深渊|传说神异/.test(text)) return 270;
+  if (/深渊领主|地狱公爵|T5/.test(text)) return 190;
+  if (/炎魔|亡灵骑士|T4/.test(text)) return 130;
+  if (/尸巫|大恶魔|地狱伯爵|T3/.test(text)) return 95;
+  if (/角魔|双头犬|幽灵|T2/.test(text)) return 65;
+  if (/鸡|小鼠|稻草人/.test(text)) return 10;
+  const target = state.npcs.find(n => text.includes(n.name) && n.stats);
+  return target ? Math.max(10, (target.stats.body || 10) * 0.8 + (target.combatSkill || 0) * 1.5) : fallback;
+}
 export function judge(state, text, rng) {
-  const kind = classify(text);
-  const prof = PROFILE[kind];
-  const p = state.player;
-
-  // 歇着不算挑战：一定成功，只回体力
-  if (kind === 'rest') {
-    const minutes = int(rng, prof.minutes[0], prof.minutes[1]);
-    return {
-      kind,
-      label: prof.label,
-      skill: prof.skill || '—',
-      statName: '精神',
-      stat: p.stats.spirit,
-      skillLevel: 0,
-      ability: 0,
-      difficulty: prof.diff,
-      score: 0,
-      outcome: 'success',
-      outcomeCn: '成功',
-      modifiers: [],
-      minutes,
-      fatigue: int(rng, prof.fatigue[0], prof.fatigue[1]),
-      injury: null,
-    };
-  }
-
+  const kind = classify(text), prof = PROFILE[kind], p = state.player;
+  const minutes = actionMinutes(text, kind, int(rng, ...prof.minutes));
   const stat = p.stats[prof.stat] || 10;
-  const skill = skillLevel(state, prof.skill, stat);
-  let ability = 15 + stat * 0.8 + skill * 1.5;
-
+  const skill = p.skills.find(s => s.name === prof.skill)?.level ?? Math.max(0, (stat - 10) * 0.4);
   const mods = [];
-  if (p.body.fatigue > 55) {
-    ability -= 6;
-    mods.push('疲乏');
-  }
-  if (p.body.hunger > 60) {
-    ability -= 5;
-    mods.push('饥饿');
-  }
-  if (p.body.health < 60) {
-    ability -= 8;
-    mods.push('带伤');
-  }
-  if (p.body.injuries?.length) {
-    ability -= Math.min(12, p.body.injuries.length * 5);
-    mods.push('旧伤');
-  }
-  const hour = state.clock.hour;
-  const night = hour < 6 || hour > 20;
-  if (night) {
-    ability -= kind === 'observe' || kind === 'stealth' ? 8 : 3;
-    mods.push('天黑夜');
-  }
-  if (state.clock.weather === 'storm' || state.clock.weather === 'snow') {
-    ability -= 5;
-    mods.push('天候恶劣');
-  } else if (state.clock.weather === 'rain') {
-    ability -= 2;
-    mods.push('下雨');
-  }
-  // 年龄：12 岁的孩子做什么都吃亏
-  if (p.age < 15) {
-    ability -= 4;
-    mods.push('年纪小');
-  }
-
-  // 难度是世界的固有难度，不随角色变强而上浮。
-  // 强者碾压普通事，是应该的；要给他压力，得靠世界里真有更强的东西，不能偷偷调高难度。
-  const noise = (rng() - 0.5) * 20;
-  const difficulty = prof.diff;
-  const baseMargin = ability - difficulty;
-  const score = baseMargin + noise;
-  let outcome = OUTCOMES.find((o) => score >= o.min);
-  // 碾压必须"底子就强"，不能靠一次好运摇出来
-  if (outcome.key === 'crush' && baseMargin < 12) outcome = OUTCOMES[1];
-
-  const minutes = int(rng, prof.minutes[0], prof.minutes[1]);
-  const fatigue = int(rng, prof.fatigue[0], prof.fatigue[1]);
-
-  const detail = {
-    kind,
-    label: prof.label,
-    skill: prof.skill,
-    statName: prof.stat,
-    stat,
-    skillLevel: Number(skill.toFixed(1)),
-    ability: Math.round(ability),
-    difficulty: Math.round(difficulty),
-    margin: Math.round(baseMargin),
-    score: Math.round(score),
-    outcome: outcome.key,
-    outcomeCn: outcome.cn,
-    modifiers: mods,
-    minutes,
-    fatigue,
-    injury: null,
-  };
-
-  // 动手失败、或任何"灾难"，都会留下需要记录的伤
-  if (kind === 'combat' && (outcome.key === 'fail' || outcome.key === 'disaster')) {
-    detail.injury = { part: pick(rng, ['左臂', '右肩', '肋下', '额头', '左腿']), days: int(rng, 4, 14) };
-  } else if (outcome.key === 'disaster') {
-    detail.injury = { part: pick(rng, ['左脚踝', '膝盖', '手腕', '额头']), days: int(rng, 3, 10) };
-  }
-
-  return detail;
+  let ability = 15 + stat * 0.8 + skill * 1.5;
+  if (p.body.health < 60) { ability -= 8; mods.push('健康欠佳'); }
+  if (state.clock.hour < 6 || state.clock.hour > 20) { ability -= ['observe', 'stealth'].includes(kind) ? 8 : 3; mods.push('天黑'); }
+  if (['storm', 'snow'].includes(state.clock.weather)) { ability -= 5; mods.push('天气恶劣'); }
+  if (p.age < 15) { ability -= 4; mods.push('年纪小'); }
+  if (/提前准备|备好|侦察过|事先查清|设好埋伏/.test(text)) { ability += 5; mods.push('准备充分'); }
+  const difficulty = difficultyFor(state, text, kind, prof.diff);
+  const margin = ability - difficulty, score = margin + (rng() - 0.5) * 20;
+  let outcome = OUTCOMES.find(o => score >= o.min);
+  if (outcome.key === 'crush' && margin < 12) outcome = OUTCOMES[1];
+  if (kind === 'rest' || kind === 'meta') outcome = OUTCOMES[2];
+  return { kind, label: prof.label, skill: prof.skill, statName: prof.stat, stat, skillLevel: Number(skill.toFixed(1)),
+    ability: Math.round(ability), difficulty: Math.round(difficulty), margin, score: Math.round(score),
+    outcome: outcome.key, outcomeCn: outcome.cn, modifiers: mods, minutes };
 }
-
-/** 把判定写成人话，塞进提示词。 */
 export function judgeBrief(d) {
-  const mod = d.modifiers.length ? `（受${d.modifiers.join('、')}影响）` : '';
-  return [
-    `判定：${d.label}｜${d.outcomeCn}${mod}`,
-    `依据：${d.statName} ${d.stat} + ${d.skill} ${d.skillLevel}，难度 ${d.difficulty}`,
-    `本回合耗时：${d.minutes} 分钟；体力消耗：约 ${d.fatigue}`,
-    d.injury ? `受伤：${d.injury.part}，约 ${d.injury.days} 天` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  return `判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n本回合耗时：${d.minutes} 分钟（由引擎统一推进）`;
 }

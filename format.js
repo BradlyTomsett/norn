@@ -1,7 +1,7 @@
 // 叙事文本 → HTML。手机上每一行空行都是一屏的浪费，所以空行直接丢掉，
 // 段落之间靠 CSS 的 margin 撑开；章节标题与分隔线单独成段。
 
-export const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 export const EMPTY_LINE =
   /^(【[^】]{1,14}】\s*)?(无|没有|暂无|暂无新消息|暂无变化|暂无动态|无事|无变化|无进出|无明显变化|无异常|无新增|无新消息|没有变化|没有新消息|没有新动态|一切如常|一如往常|如常|照旧|依旧|平静|风平浪静|（无）|\(无\))[。.！!～~]?$/;

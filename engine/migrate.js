@@ -40,7 +40,7 @@ function migrateEquipment(state, report) {
       keep.push(parsed.label);
     }
   }
-  p.equipment = Array.from(new Set(keep)).slice(0, 80);
+  p.equipment = keep;
 }
 
 export function migrateSave(state) {

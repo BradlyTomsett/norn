@@ -28,7 +28,7 @@ export function ensureChronicle(state) {
   return state.chronicle;
 }
 
-/** 合并进状态：去重、封顶 60 条。返回新增条数。 */
+/** Preserve the full chronology; only the prompt is budgeted. */
 export function mergeChronicle(state, entries) {
   const list = ensureChronicle(state);
   let added = 0;
@@ -39,7 +39,6 @@ export function mergeChronicle(state, entries) {
     list.push(text);
     added += 1;
   }
-  if (list.length > 60) state.chronicle = list.slice(-60);
   return added;
 }
 

@@ -62,8 +62,8 @@ export function advanceClock(clock, minutes, rng) {
   const days = Math.floor((Math.max(0, Math.round(minutes || 0)) + clock.hour * 60 + clock.minute) / 1440);
   const crossed = { days: 0, months: 0, years: 0, newMonth: false, newYear: false };
 
-  const monthBefore = monthOf(next.doy);
   for (let i = 0; i < days; i++) {
+    const monthBefore = monthOf(next.doy);
     next.doy += 1;
     crossed.days += 1;
     if (next.doy > 365) {
@@ -73,12 +73,9 @@ export function advanceClock(clock, minutes, rng) {
       crossed.newYear = true;
     }
     next.weather = rollWeather(rng, next.doy);
+    if (monthOf(next.doy) !== monthBefore) crossed.months += 1;
   }
-  const monthAfter = monthOf(next.doy);
-  if (monthAfter !== monthBefore) {
-    crossed.months = 1;
-    crossed.newMonth = true;
-  }
+  crossed.newMonth = crossed.months > 0;
   return { clock: next, crossed };
 }
 

@@ -257,11 +257,11 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
         spirit: 20,
         trainingCap: race === 'dwarf' ? 80 : 100,
       },
-      body: { health: 96, fatigue: 10, hunger: 15, injuries: [] },
-      mind: { mood: '有点茫然', stress: 12, morale: 55 },
+      body: { health: 96 },
+      mind: { mood: '有点茫然' },
       wallet: { gold: 0, silver: 0, copper: fam.money },
       bag: [],
-      bills: defaultBills(),
+      bills: [],
       work: { ...workOf('孩子', 'none'), profession: '孩子', state: 'none' },
       debts,
       assets: isOrphan ? ['一件旧外套'] : ['一间土屋的居住权'],
@@ -290,6 +290,7 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
     flags: { awakeningAsked: false, pendingAwakening: false },
   };
 
+  for (const npc of state.npcs) npc.location = { ...state.player.location };
   return { state, family: fam, region };
 }
 

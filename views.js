@@ -64,10 +64,6 @@ function viewOverview(u) {
     out.push('<h3>技能</h3>');
     for (const s of p.skills) out.push(bar(s.name, s.level));
   }
-  if (p.body.injuries?.length) {
-    out.push('<h3>伤</h3>');
-    for (const i of p.body.injuries) out.push(`<div class="item">${esc(i.part)}</div>`);
-  }
   out.push('<h3>状态</h3>');
   out.push(bar('健康', p.body.health, p.body.health < 50 ? 'warn' : 'good'));
   out.push('<h3>处境</h3><div class="rows">');
@@ -281,6 +277,18 @@ function viewGear(u) {
   return out.join('');
 }
 
+export function relationColor(value) {
+  const v = Math.max(-100, Math.min(100, Number(value) || 0));
+  const fade = Math.round(255 * (1 - Math.abs(v) / 100));
+  return v < 0 ? `rgb(255, ${fade}, ${fade})` : `rgb(${fade}, 255, ${fade})`;
+}
+function relationMeter(label, raw) {
+  const value = Math.max(-100, Math.min(100, Number(raw) || 0));
+  return `<div class="relation-stat" role="meter" aria-label="${label}" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="${value}">
+    <div class="relation-label"><span>${label}</span><strong style="color:${relationColor(value)}">${value > 0 ? '+' : ''}${value}</strong></div>
+    <div class="relation-track"><i style="left:${(value + 100) / 2}%;background:${relationColor(value)}"></i></div>
+    <div class="relation-scale"><span>−100</span><span>0</span><span>100</span></div></div>`;
+}
 function viewPeople(u) {
   const list = [...(u.player.relations || [])].sort((a, b) => (b.closeness ?? 0) - (a.closeness ?? 0));
   if (!list.length) return '<p class="hint">还没有记下来的人。</p>';
@@ -290,6 +298,8 @@ function viewPeople(u) {
     out.push(
       `<div class="person"><div class="nm">${esc(r.name)}<span>${esc(who)}</span></div>` +
         (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
+        relationMeter('信任', r.trust) + relationMeter('亲近', r.closeness) +
+        ((r.goals || []).some(g => g.status === 'active') ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active').map(g => `${g.text}（进展 ${Number(g.progress) || 0}%）`).join('；'))}</div>` : '') +
         `<div class="ob">${esc(r.observable || '')}</div></div>`,
     );
   }
@@ -299,6 +309,10 @@ function viewPeople(u) {
 
 function viewClues(u) {
   const out = [];
+  if (u.storyLog?.length) {
+    out.push('<h3>选择留下的后果</h3>');
+    for (const e of [...u.storyLog].reverse()) out.push(`<div class="item">${esc(e.text)}${e.cause ? `<span class="hint"> — 起因：${esc(e.cause)}</span>` : ''}</div>`);
+  }
   if (u.knowledge?.length) {
     out.push('<h3>已知</h3>');
     for (const k of [...u.knowledge].reverse()) out.push(`<div class="item">${esc(k.text)}<span class="hint"> — ${esc(k.source || '')}</span></div>`);

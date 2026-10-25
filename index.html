@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
 <meta name="theme-color" content="#141210" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.deepseek.com https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="诺恩" />
@@ -29,7 +30,9 @@
 <div id="composer" class="composer hidden">
   <textarea id="input" rows="2" placeholder="你要做什么？（直接说人话）"></textarea>
   <button id="send" class="send">说</button>
+  <button id="cancel-turn" class="ghost hidden" type="button">停止</button>
 </div>
+<div id="turn-status" class="hidden" role="status" aria-live="polite"></div>
 
 <!-- 首次使用：填 Key -->
 <div id="gate" class="sheet hidden">
@@ -157,6 +160,7 @@
     <h1>设置</h1>
     <h2>API Key</h2>
     <input id="set-key" class="name-input secret" type="password" placeholder="sk-..." autocomplete="new-password" spellcheck="false" />
+    <label class="hint"><input id="set-session-only" type="checkbox" /> 仅本次会话保存 API Key 与 GitHub 令牌</label>
     <h2>模型</h2>
     <input id="set-model" class="name-input" placeholder="deepseek-flash" />
     <h2>推理强度</h2>

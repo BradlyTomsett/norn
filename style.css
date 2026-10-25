@@ -397,3 +397,18 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 /* 物价表新增行：左对齐输入 */
 #px-name, #px-value { text-align: left; }
 .cs-tabs .tab { padding: 8px 10px; }
+
+/* Bipolar relationship meters: literal red → white → green, with numeric labels. */
+.relation-stat { margin: 12px 0 8px; }
+.relation-label { display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--ink-dim); }
+.relation-label strong { font-variant-numeric:tabular-nums; font-size:14px; }
+.relation-track { position:relative; height:5px; margin:8px 5px 4px; border-radius:5px; background:linear-gradient(90deg,#f00 0%,#fff 50%,#0f0 100%); }
+.relation-track::after { content:''; position:absolute; left:50%; top:-3px; width:1px; height:11px; background:#fff; opacity:.7; }
+.relation-track i { position:absolute; z-index:1; top:-4px; width:11px; height:11px; border:2px solid #181512; border-radius:50%; transform:translateX(-50%); box-shadow:0 0 0 1px currentColor; }
+.relation-scale { display:flex; justify-content:space-between; font-size:10px; color:var(--ink-dim); }
+.npc-goal { border-top:1px dashed var(--line); margin-top:10px; padding-top:8px; }
+.turn-receipt { margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; color:var(--ink-dim); font-size:12px; }
+.turn-receipt summary { cursor:pointer; color:var(--ink); }
+.turn-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.turn-actions button { border:1px solid var(--line); border-radius:8px; padding:5px 9px; background:var(--bg2); color:var(--ink); font:inherit; }
+#turn-status { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(112px + env(safe-area-inset-bottom)); z-index:20; max-width:90vw; padding:8px 12px; background:var(--bg2); border:1px solid var(--line); border-radius:10px; font-size:12px; }

@@ -1,0 +1,10 @@
+{
+  "name": "norn",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node tools/test.mjs && node --test tests/simulation.test.mjs",
+    "build": "node tools/build.mjs"
+  }
+}

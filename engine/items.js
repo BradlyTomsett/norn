@@ -66,10 +66,10 @@ export const CONSUMABLES = {
   金疮药: { health: 8, text: '敷上金疮药，血止住了' },
   回血药水: { health: 25, text: '灌下回血药水，脸色回来了些' },
   回血: { health: 25, text: '灌下回血药水，脸色回来了些' },
-  清醒药: { stress: -15, text: '清醒药的苦味从舌根压下去，脑子清亮了' },
-  气力: { fatigue: -20, text: '气力药下肚，胳膊又有了劲' },
-  浮水: { fatigue: -5, text: '浮水药让身上的沉重轻了一点' },
-  夜眼: { fatigue: -5, text: '夜眼药下去，暗处的轮廓清楚了些' },
+  清醒药: { text: '清醒药的苦味从舌根压下去，脑子清亮了' },
+  气力: { text: '气力药下肚，胳膊又有了劲' },
+  浮水: { text: '浮水药生效，可以在水面漂浮' },
+  夜眼: { text: '夜眼药下去，暗处的轮廓清楚了些' },
 };
 
 export function effectOf(name) {
