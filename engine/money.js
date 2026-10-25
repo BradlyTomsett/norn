@@ -60,6 +60,7 @@ export function addCopper(state, key, deltaCopper) {
   const a = accountOf(state, key);
   if (!a) return false;
   const d = Math.round(deltaCopper);
+  if (!Number.isSafeInteger(d) || !Number.isSafeInteger(a.copper + d) || a.copper + d < 0) return false;
   a.copper = Math.max(0, a.copper + d);
   if (a.id === 'cash') state.player.wallet = fromCopper(a.copper);
   return true;
@@ -76,12 +77,12 @@ function syncWallet(state) {
 /** 账户之间调钱：立刻完成，没有运输与手续费。 */
 export function transferCopper(state, from, to, amount) {
   const want = Math.round(Number(amount) || 0);
-  if (want <= 0 || from === to) return false;
+  if (!Number.isSafeInteger(want) || want <= 0 || from === to) return false;
 
   // 从「其他」进来：直接加钱
   if (from === EXTERNAL.id) {
     const b = accountOf(state, to);
-    if (!b) return false;
+    if (!b || !Number.isSafeInteger(b.copper + want)) return false;
     b.copper += want;
     syncWallet(state);
     return true;
@@ -91,7 +92,8 @@ export function transferCopper(state, from, to, amount) {
   if (to === EXTERNAL.id) {
     const a = accountOf(state, from);
     if (!a) return false;
-    const amt = Math.min(a.copper, want);
+    if (a.copper < want) return false;
+    const amt = want;
     if (amt <= 0) return false;
     a.copper -= amt;
     syncWallet(state);
@@ -100,8 +102,9 @@ export function transferCopper(state, from, to, amount) {
 
   const a = accountOf(state, from);
   const b = accountOf(state, to);
-  if (!a || !b || a === b) return false;
-  const amt = Math.min(a.copper, want);
+  if (!a || !b || a === b || !Number.isSafeInteger(b.copper + want)) return false;
+  if (a.copper < want) return false;
+  const amt = want;
   if (amt <= 0) return false;
   a.copper -= amt;
   b.copper += amt;

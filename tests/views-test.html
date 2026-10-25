@@ -47,7 +47,7 @@ const gear = VIEWS.gear(u);
 ok('概览用小的天赋卡', ov.includes('talent mini'));
 ok('概览用小的四维格', ov.includes('stat-grid mini'));
 ok('概览里有技能', ov.includes('武技') && ov.includes('交涉'));
-ok('概览里有伤', ov.includes('左臂'));
+ok('旧存档的伤病不再显示', !ov.includes('左臂'));
 ok('概览不再列牲畜行', !ov.includes('>牲畜<'));
 ok('概览不再列存货行', !ov.includes('>存货<'));
 ok('概览保留产业行', ov.includes('汽水工坊'));

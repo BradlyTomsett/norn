@@ -7,9 +7,7 @@ import { addCopper, copperText, ensureAccounts } from './money.js';
 
 /** 默认账单：只在开局用一次。之后就是普通数据，玩家/剧情可以增删。 */
 export function defaultBills() {
-  return [
-    { id: 'family_allowance', label: '家族月钱', every: 'month', amount: 180 * 10000, to: 'home' },
-  ];
+  return [];
 }
 
 export function ensureBills(state) {
@@ -32,7 +30,7 @@ export function runBills(state, crossed, rng) {
 
   for (const b of bills) {
     const times =
-      b.every === 'day' ? days : b.every === 'year' ? years : b.every === 'week' ? Math.floor(days / 7) : months;
+      b.every === 'day' ? days : b.every === 'year' ? years : b.every === 'week' ? crossed.weeks ?? Math.floor(days / 7) : months;
     if (times <= 0) continue;
     const amount = Math.round(Number(b.amount) || 0) * times;
     if (!amount) continue;
@@ -158,9 +156,8 @@ export function payDebt(state, payments) {
   ensureDebts(state);
   for (const pay of list) {
     if (!pay || typeof pay !== 'object') continue;
-    const d =
-      openDebts(state).find((x) => x.to === pay.to || x.id === pay.id) ||
-      openDebts(state)[0];
+    const open = openDebts(state);
+    const d = pay.to || pay.id ? open.find(x => (pay.to && x.to === pay.to) || (pay.id && x.id === pay.id)) : open.length === 1 ? open[0] : null;
     if (!d) {
       out.push({ ok: false, text: '没有这笔债。' });
       continue;
@@ -168,6 +165,10 @@ export function payDebt(state, payments) {
     const account = pay.account || 'cash';
     const acc = state.player.accounts.find((a) => a.id === account || a.name === account);
     const want = Math.round(Number(pay.copper) || d.remaining);
+    if (!acc || acc.copper < Math.min(want, d.remaining)) {
+      out.push({ ok: false, text: `账上不够支付这笔还款，尚未扣款。` });
+      continue;
+    }
     const amt = Math.min(want, d.remaining, acc ? acc.copper : 0);
     if (amt <= 0) {
       out.push({ ok: false, text: `账上没钱还${d.to}。` });
@@ -194,7 +195,7 @@ const WORK_RULES = [
   [/冒险|佣兵|赏金|游侠|猎人|盗贼|刺客|探险|旅团/, { type: 'bounty', base: 0 }],
   [/铁匠|锻|铸|矿/, { type: 'wage', base: 220 }],
   [/磨坊|木匠|石匠|皮匠|裁缝|面包|屠|陶/, { type: 'wage', base: 180 }],
-  [/商|货|账房|掌柜|贩|钱庄/, { type: 'wage', base: 260 }],
+  [/商|货|账房|店主|老板|中介|金匠|典押|放贷|掌柜|贩|钱庄/, { type: 'wage', base: 260 }],
   [/兵|卫|巡逻|骑士|守/, { type: 'wage', base: 200 }],
   [/书|学|教|抄|医|药/, { type: 'wage', base: 200 }],
   [/船|码头|渔/, { type: 'wage', base: 150 }],
@@ -263,8 +264,7 @@ export function runLiving(state, days) {
   if (paid >= cost) {
     out.push({ level: 'local', text: `${days} 天吃住花掉 ${copperText(cost)}。` });
   } else {
-    state.player.body.hunger = Math.min(100, state.player.body.hunger + Math.min(30, days * 2));
-    out.push({ level: 'local', text: `钱不够，这几天吃得将就，肚子一直空着。` });
+    out.push({ level: 'local', text: `生活费还差 ${copperText(cost - paid)}，本次只支付了账上可用的部分。` });
   }
   return out;
 }

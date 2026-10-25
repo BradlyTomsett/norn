@@ -146,7 +146,7 @@ const tc = splitDelta(trailingComma);
 ok('尾逗号能救回来', tc.delta && tc.delta.mind.mood === '有点累', JSON.stringify(tc.delta));
 ok('正文不含 JSON', !tc.text.includes('有点累'), tc.text);
 
-const truncated = '正文。\n\n```json\n{"money":{"cash":-300},"relations":[{"npcId":"npc_mother","trust":1';
+const truncated = '正文。\n\n```json\n{"money":{"cash":-300},"relations":[{"npcId":"npc_mother","closeness":1';
 const tr = splitDelta(truncated);
 ok('截断的 JSON 能补齐', tr.delta && tr.delta.money.cash === -300, JSON.stringify(tr.delta));
 
@@ -176,7 +176,7 @@ const md = splitDelta(middle);
 ok('夹在中间也能剥掉', !md.text.includes('"mind"') && md.text.includes('【你现在可以做什么】'), md.text);
 ok('夹在中间也能解析', md.delta && md.delta.mind.mood === '平静');
 // 展示层兜底：无论解析成不成功，JSON 都不该出现在气泡里
-const leak = '正文一段。' + NL + '{"relations":[{"npcId":"npc_sera","trust":1}],"mind":{"mood":"盯车"}}';
+const leak = '正文一段。' + NL + '{"relations":[{"npcId":"npc_sera","closeness":1}],"mind":{"mood":"盯车"}}';
 ok('format 兜底删掉裸 JSON', !format(leak).includes('npc_sera'), format(leak));
 ok('format 保留正文', format(leak).includes('正文一段'));
 ok('stripDataBlocks 删围栏块', !stripDataBlocks('前' + NL + BT + 'json' + NL + '{"a":1}' + NL + BT + NL + '后').includes('"a"'));

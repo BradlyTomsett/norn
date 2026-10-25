@@ -257,19 +257,18 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
         spirit: 20,
         trainingCap: race === 'dwarf' ? 80 : 100,
       },
-      body: { health: 96, fatigue: 10, hunger: 15, injuries: [] },
-      mind: { mood: '有点茫然', stress: 12, morale: 55 },
+      body: { health: 96 },
+      mind: { mood: '有点茫然' },
       wallet: { gold: 0, silver: 0, copper: fam.money },
       bag: [],
-      bills: defaultBills(),
+      bills: [],
       work: { ...workOf('孩子', 'none'), profession: '孩子', state: 'none' },
       debts,
       assets: isOrphan ? ['一件旧外套'] : ['一间土屋的居住权'],
       skills: [{ name: '干杂活', level: 3 }, { name: '认路', level: 4 }],
       relations: npcs.map((n) => ({
         npcId: n.id,
-        trust: n.id === 'npc_mother' ? 78 : n.id === 'npc_father' ? 55 : n.id === 'npc_sibling' ? 60 : 5,
-        closeness: n.id === 'npc_mother' ? 85 : n.id === 'npc_father' ? 50 : n.id === 'npc_sibling' ? 70 : 10,
+        closeness: n.id === 'npc_mother' ? 81.5 : n.id === 'npc_father' ? 52.5 : n.id === 'npc_sibling' ? 65 : 7.5,
         observable: n.attitude,
       })),
       socialClass: isOrphan ? 'commoner' : 'commoner',
@@ -290,6 +289,7 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
     flags: { awakeningAsked: false, pendingAwakening: false },
   };
 
+  for (const npc of state.npcs) npc.location = { ...state.player.location };
   return { state, family: fam, region };
 }
 

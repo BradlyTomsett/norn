@@ -142,6 +142,8 @@ try {
 
   // --- 账单 ---
   const s2 = fresh();
+  eq('普通出身没有贵族月钱', s2.player.bills.length, 0);
+  s2.player.bills.push({id:'custom_allowance',label:'自定义家族月钱',every:'month',amount:1800000,to:'home'});
   addCopper(s2, 'home', 0);
   const homeBefore = s2.player.accounts.find((a) => a.id === 'home').copper;
   runBills(s2, { months: 1, days: 30, years: 0 }, rng);
@@ -204,16 +206,16 @@ try {
   const s7 = fresh();
   const rel = s7.player.relations.find((r) => r.npcId === 'npc_mother');
   rel.lastTouch = -1000;
-  const trustBefore = rel.trust;
+  const closenessBefore = rel.closeness;
   decayRelations(s7, 3);
-  ok('久不联系会回落', rel.trust < trustBefore, `${trustBefore} → ${rel.trust}`);
+  ok('久不联系会回落', rel.closeness < closenessBefore, `${closenessBefore} → ${rel.closeness}`);
 
   // 「（无变化）」不该覆盖上一句观察，也不该算一次互动
   const s7b = fresh();
   const relB = s7b.player.relations.find((r) => r.npcId === 'npc_mother');
   const obsBefore = relB.observable;
   relB.lastTouch = -1000;
-  applyDelta(s7b, { relations: [{ npcId: 'npc_mother', trust: 0, observable: '（无变化）' }] }, rng, {});
+  applyDelta(s7b, { relations: [{ npcId: 'npc_mother', closeness: 0, observable: '（无变化）' }] }, rng, {});
   ok('无变化的观察不覆盖原文', relB.observable === obsBefore, String(relB.observable));
   ok('无变化的条目不算互动', relB.lastTouch === -1000, String(relB.lastTouch));
 
@@ -248,7 +250,8 @@ try {
   const unknown = '刻纹银匕首';
   eq('没定价时先按类目估', priceOf(s22, unknown).source, 'table');
   applyDelta(s22, { trade: { buy: [{ name: unknown, qty: 1 }] } }, makeRng(3), { judged: null });
-  ok('买过就记进存档', typeof s22.prices?.[unknown] === 'number', JSON.stringify(s22.prices));
+  ok('一次成交不会自动变成存档参考价', !s22.prices?.[unknown]);
+  applyDelta(s22, { prices: [{ name: unknown, copper: 2100 }] }, makeRng(3), { judged: null });
   const frozen = s22.prices[unknown];
   eq('以后都按这个价', priceOf(s22, unknown).unit, frozen);
   setPrice(s22, unknown, frozen * 2);
@@ -260,12 +263,13 @@ try {
   const c23 = s23.player.accounts.find((a) => a.id === 'cash').copper;
   applyDelta(s23, { earn: { label: '替粮行送信', copper: 300 } }, makeRng(9), { judged: null });
   eq('earn 按报价进账', s23.player.accounts.find((a) => a.id === 'cash').copper - c23, 300);
-  eq('同类活计的价记进存档', s23.rates['替粮行送信'], 300);
+  ok('一次活计不自动固化为参考价', !s23.rates?.['替粮行送信']);
   const c23b = s23.player.accounts.find((a) => a.id === 'cash').copper;
   applyDelta(s23, { earn: { label: '替粮行送信', copper: 9999 } }, makeRng(10), { judged: null });
-  eq('第二次仍按存档价', s23.player.accounts.find((a) => a.id === 'cash').copper - c23b, 300);
+  eq('实际报酬使用本次谈定金额', s23.player.accounts.find((a) => a.id === 'cash').copper - c23b, 9999);
+  const beforeLongJob = s23.player.accounts.find(a => a.id === 'cash').copper;
   applyDelta(s23, { earn: { label: '护送商队到临河', copper: 999999 } }, makeRng(11), { judged: null });
-  ok('离谱报价会被夹住', s23.rates['护送商队到临河'] <= 90000, String(s23.rates['护送商队到临河']));
+  eq('新活计按谈定金额，不套用未知零工上限', s23.player.accounts.find(a => a.id === 'cash').copper - beforeLongJob, 999999);
 
   // --- 借钱默认月息 1% ---
   const s24 = fresh();
@@ -280,7 +284,8 @@ try {
   const baseH = home25();
   ok('从「其他」转进来 = 多钱', transferCopper(s25, 'other', 'home', 50000) && home25() === baseH + 50000);
   ok('「其他」转「其他」无效', transferCopper(s25, 'other', 'other', 100) === false);
-  ok('钱不够时只扣到 0', transferCopper(s25, 'cash', 'other', cash25() + 999999) && cash25() === 0);
+  const beforeTooMuch = cash25();
+  ok('钱不够整笔拒绝', !transferCopper(s25, 'cash', 'other', beforeTooMuch + 999999) && cash25() === beforeTooMuch);
   // --- 物品增减 ---
   const s26 = fresh();
   s26.player.bag = [{ name: '羊皮', qty: 2 }];
@@ -301,23 +306,23 @@ try {
   eq('完成拿全款', s27.player.accounts.find((a) => a.id === 'cash').copper, 100000 + 24000000);
 
   const s28 = fresh();
-  applyDelta(s28, { prices: [{ name: '雇人送信（到加隆城）', copper: 568437 }] }, makeRng(3), { judged: null });
-  ok('服务报价进活计表', s28.rates['雇人送信（到加隆城）'] === 568437, JSON.stringify(s28.rates));
+  applyDelta(s28, { prices: [{ name: '雇人送信（到加隆城）', copper: 900 }] }, makeRng(3), { judged: null });
+  ok('额外服务参考进活计表', s28.rates['雇人送信（到加隆城）'] === 900, JSON.stringify(s28.rates));
   ok('不混进物品价表', !s28.prices || s28.prices['雇人送信（到加隆城）'] === undefined);
 
   const s29 = fresh();
   s29.prices = { 送信: 300, 刻纹银匕首: 1200 };
   ensurePriceTable(s29);
-  ok('旧数据里的服务价被搬走', s29.prices['送信'] === undefined && s29.rates['送信'] === 300, JSON.stringify(s29.prices));
+  ok('游戏已有送信参考，不重复留在存档', s29.prices['送信'] === undefined && s29.rates['送信'] === undefined);
   ok('物品价不受影响', s29.prices['刻纹银匕首'] === 1200);
   const s30 = fresh();
   s30.prices = { '雇人送信（到加隆城）': 568437 };
   ensurePriceTable(s30);
-  ok('离谱的服务价被重置为参考价', s30.rates['雇人送信（到加隆城）'] === earnRef('雇人送信（到加隆城）'), String(s30.rates['雇人送信（到加隆城）']));
+  ok('已撤销错误邮资不会恢复', !s30.rates['雇人送信（到加隆城）'] && !s30.prices['雇人送信（到加隆城）']);
   // --- 范围价与 AI 定价 ---
   const s31 = fresh();
-  s31.prices = { 白面包: { min: 800, max: 1500 }, 长弓: 20000, 稀有矿石: { min: 5000, max: null } };
-  eq('范围价取中间值', priceOf(s31, '白面包').unit, 1150);
+  s31.prices = { 本地烘饼: { min: 800, max: 1500 }, 长弓: 20000, 稀有矿石: { min: 5000, max: null } };
+  eq('没有成交报价时参考范围中间值兜底', priceOf(s31, '本地烘饼').unit, 1150);
   eq('固定价照用', priceOf(s31, '长弓').unit, 20000);
   eq('只有下限也能算', priceOf(s31, '稀有矿石').unit, 5000);
   eq('范围写法可读', priceEntryText({ min: 800, max: 1500 }), '800–1500');
@@ -343,12 +348,12 @@ try {
   ok('牛皮在 economy.js 里有固定价', fixedPriceOf('牛皮（张）') > 0, String(fixedPriceOf('牛皮（张）')));
   ok('AI 不能自动生成固定价条目', learnPrice(s34, '牛皮（张）', 12) === false);
   eq('没被覆盖时用自带价', priceOf(s34, '牛皮（张）').unit, 60);
-  ok('玩家手动改可以覆盖', setPrice(s34, '牛皮（张）', 12) === true && priceOf(s34, '牛皮（张）').unit === 12);
+  ok('游戏已有的物件不重复写入存档', setPrice(s34, '牛皮（张）', 12) === false && priceOf(s34, '牛皮（张）').unit === 60);
   ok('默认表里不含固定价条目', !Object.keys(DEFAULT_PRICES).some((k) => fixedPriceOf(k) > 0), Object.keys(DEFAULT_PRICES).filter((k) => fixedPriceOf(k) > 0).join(','));
   // --- 提示词里带上自带价参考 ---
   const s35 = fresh();
   const blk = stateBlock(s35);
-  ok('状态块含自带固定价', blk.includes('自带固定价') && blk.includes('金疮药 5'), blk.slice(0, 120));
+  ok('状态块直接引用游戏物价', blk.includes('【游戏物价】') && blk.includes('金疮药 5'));
   ok('状态块含类目基准', blk.includes('类目基准'));
 
   // --- 零碎时间也能攒出一天 ---

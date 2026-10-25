@@ -42,8 +42,8 @@ ok('状态块里有具体条目', block.includes('铁匠铺'));
 
 // 封顶
 for (let i = 0; i < 80; i++) mergeChronicle(state, [`第 ${i} 条占位事件`]);
-ok('编年封顶 60 条', state.chronicle.length === 60, String(state.chronicle.length));
-ok('保留的是最近的', state.chronicle[59].includes('79'));
+ok('完整保留编年而不删除旧事', state.chronicle.length === 82, String(state.chronicle.length));
+ok('新旧事件均保留', state.chronicle[0].includes('铁匠铺') && state.chronicle.at(-1).includes('79'));
 
 // 触发
 ok('第 12 回合要整理', chronicleDue({ turn: 11 }, '随便走走') === true);

@@ -15,7 +15,7 @@ export function skillCap(state) {
 /** 这次行动用到哪个技能，由判定给出；没有技能名就用动作标签。 */
 export function skillNameFor(judged) {
   if (!judged) return '';
-  if (judged.kind === 'rest') return ''; // 歇着不长技能
+  if (judged.kind === 'rest' || judged.kind === 'meta') return '';
   const s = judged.skill && judged.skill !== '—' ? judged.skill : judged.label;
   return String(s || '').slice(0, 12);
 }
@@ -62,7 +62,7 @@ export function trainSkill(state, judged) {
 }
 
 /**
- * 关系衰减：一个月没打过交道的，亲近与信任各回落一点。
+ * 关系衰减：一个月没打过交道的，亲近回落一点。
  * months 是这段跨度里过去的月数。
  */
 export function decayRelations(state, months) {
@@ -79,10 +79,9 @@ export function decayRelations(state, months) {
     }
     if (now - last < 30) continue;
     const steps = Math.min(6, months);
-    const before = r.trust;
-    r.trust = clamp(r.trust - steps * 0.5, -100, 100);
-    r.closeness = clamp(r.closeness - steps * 0.8, -100, 100);
-    if (Math.round(before) !== Math.round(r.trust)) {
+    const before = r.closeness;
+    r.closeness = clamp(r.closeness - steps * 0.65, -100, 100);
+    if (Math.round(before) !== Math.round(r.closeness)) {
       const npc = state.npcs.find((x) => x.id === r.npcId);
       out.push({ level: 'local', text: `${npc?.name || r.npcId}那边，来往少了些。` });
     }
