@@ -452,54 +452,9 @@ function openSettings() {
   $('#set-gh-token').value = gh.token || '';
   $('#set-gh-msg').textContent = sync.ghReady() ? '已配置。' : '';
   showBuildInfo();
-  renderPrices();
-  renderRates();
   renderContract();
   $('#settings').classList.remove('hidden');
 }
-
-/** 设置里的物价表：列出存档内自定价，可直接改。 */
-function renderPrices() {
-  const box = $('#price-list');
-  if (!box) return;
-  const state = store.getSave(app.saveId);
-  const prices = state?.prices && typeof state.prices === 'object' ? state.prices : {};
-  const rows = Object.entries(prices).sort((a, b) => a[0].localeCompare(b[0], 'zh'));
-  if (!rows.length) {
-    box.innerHTML = '<p class="hint">还没有自定价。表里没有的东西第一次买卖时会自动记一个价。</p>';
-    return;
-  }
-  box.innerHTML = rows
-    .map(
-      ([name, copper]) =>
-        `<div class="price-row"><span class="nm">${esc(name)}</span>` +
-        `<input class="price-input" data-name="${esc(name)}" type="number" min="1" step="1" inputmode="numeric" value="${Number(copper) || 0}" /></div>`,
-    )
-    .join('');
-}
-
-$('#btn-price-save').onclick = () => {
-  const state = store.getSave(app.saveId);
-  if (!state) return;
-  if (!state.prices) state.prices = {};
-  let changed = 0;
-  for (const el of document.querySelectorAll('#price-list .price-input')) {
-    const name = el.dataset.name;
-    const v = Math.round(Number(el.value));
-    if (!Number.isFinite(v) || v <= 0) {
-      delete state.prices[name];
-      changed += 1;
-    } else if (state.prices[name] !== v) {
-      state.prices[name] = v;
-      changed += 1;
-    }
-  }
-  store.putSave(state);
-  app.ui = uiState(state);
-  renderPrices();
-  const tip = $('#price-list');
-  if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
-};
 
 /** 当前委托：显示名字与酬劳，可直接改。 */
 function renderContract() {
@@ -528,48 +483,6 @@ function renderContract() {
       renderContract();
     };
   }
-}
-/** 活计收入表，结构与物价表一样。 */
-function renderRates() {
-  const box = $('#rate-list');
-  if (!box) return;
-  const state = store.getSave(app.saveId);
-  const rates = state?.rates && typeof state.rates === 'object' ? state.rates : {};
-  const rows = Object.entries(rates).sort((a, b) => a[0].localeCompare(b[0], 'zh'));
-  if (!rows.length) {
-    box.innerHTML = '<p class="hint">还没有记录。第一次遇到跑腿、护送这类活时会自动定一个数。</p>';
-    return;
-  }
-  box.innerHTML = rows
-    .map(
-      ([name, copper]) =>
-        `<div class="price-row"><span class="nm">${esc(name)}</span>` +
-        `<input class="rate-input" data-name="${esc(name)}" type="number" min="1" step="1" inputmode="numeric" value="${Number(copper) || 0}" /></div>`,
-    )
-    .join('');
-}
-
-$('#btn-rate-save').onclick = () => {
-  const state = store.getSave(app.saveId);
-  if (!state) return;
-  if (!state.rates) state.rates = {};
-  let changed = 0;
-  for (const el of document.querySelectorAll('#rate-list .rate-input')) {
-    const name = el.dataset.name;
-    const v = Math.round(Number(el.value));
-    if (!Number.isFinite(v) || v <= 0) {
-      delete state.rates[name];
-      changed += 1;
-    } else if (state.rates[name] !== v) {
-      state.rates[name] = v;
-      changed += 1;
-    }
-  }
-  store.putSave(state);
-  app.ui = uiState(state);
-  renderRates();
-  const tip = $('#rate-list');
-  if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
 };
 
 /** 把看得懂的关键数据拼成一段文本，方便贴给作者排查。 */
@@ -945,19 +858,21 @@ document.addEventListener('click', (e) => {
   const state = store.getSave(app.saveId);
   if (!state) return;
   state.prices ||= {};
+  state.rates ||= {};
 
   if (save) {
     let n = 0;
     for (const el of document.querySelectorAll('#cs-body .px-input')) {
       const name = el.dataset.name;
+      const target = el.dataset.kind === 'rates' ? state.rates : state.prices;
       const v = parsePriceInput(el.value);
       if (v == null) {
-        if (state.prices[name] !== undefined) {
-          delete state.prices[name];
+        if (target[name] !== undefined) {
+          delete target[name];
           n += 1;
         }
-      } else if (JSON.stringify(state.prices[name]) !== JSON.stringify(v)) {
-        state.prices[name] = v;
+      } else if (JSON.stringify(target[name]) !== JSON.stringify(v)) {
+        target[name] = v;
         n += 1;
       }
     }
@@ -976,12 +891,14 @@ document.addEventListener('click', (e) => {
     if (m2) m2.textContent = '名字和价格都要填（价格可写 800-1500）。';
     return;
   }
-  state.prices[name] = v;
+  const kind = $('#px-kind')?.value === 'rates' ? 'rates' : 'prices';
+  const target = kind === 'rates' ? state.rates : state.prices;
+  target[name] = v;
   store.putSave(state);
   app.ui = uiState(state);
   renderSheet('prices');
   const m3 = document.querySelector('#px-msg');
-  if (m3) m3.textContent = `已加入：${name}`;
+  if (m3) m3.textContent = `已加入${kind === 'rates' ? '活计' : '物价'}：${name}`;
 });
 
 

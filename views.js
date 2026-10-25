@@ -314,7 +314,7 @@ function viewClues(u) {
 // 物价表：这份存档自定，AI 报价照它来。可改、可删、可加；价格可以是固定值或范围。
 function viewPrices(u) {
   const prices = (u && u.prices) || {};
-  const rows = Object.entries(prices);
+  const rates = (u && u.rates) || {};
   const text = (val) => {
     if (typeof val === 'object' && val) {
       const lo = val.min != null ? val.min : '';
@@ -325,29 +325,42 @@ function viewPrices(u) {
     }
     return String(val ?? '');
   };
+  const list = (map, kind) => {
+    const rows = Object.entries(map);
+    if (!rows.length) return '<p class="hint">还没有条目。</p>';
+    return (
+      '<div class="price-list">' +
+      rows
+        .map(
+          ([name, val]) =>
+            `<div class="price-row"><span class="nm">${esc(name)}</span>` +
+            `<input class="px-input" data-kind="${kind}" data-name="${esc(name)}" type="text" inputmode="text" value="${esc(text(val))}" /></div>`,
+        )
+        .join('') +
+      '</div>'
+    );
+  };
   const out = [
-    '<p class="hint">这份存档自己的价目。AI 报价以它为参考；固定价直接写数字，范围写 800-1500，只写下限写 800-，只写上限写 -1500。</p>',
-  ];
-  if (!rows.length) {
-    out.push('<p class="hint">还没有条目。表里没有的东西，AI 第一次报价时会自动记进来。</p>');
-  } else {
-    out.push('<div class="price-list">');
-    for (const [name, val] of rows) {
-      out.push(
-        `<div class="price-row"><span class="nm">${esc(name)}</span>` +
-          `<input class="px-input" data-name="${esc(name)}" type="text" inputmode="text" value="${esc(text(val))}" /></div>`,
-      );
-    }
-    out.push('</div>');
-    out.push('<div class="chips" style="margin-top:10px"><button id="px-save" class="chip">保存改动</button></div>');
-  }
-  out.push(`<h3 style="margin-top:18px">新增一条</h3>
+    '<p class="hint">这份存档自己的价目，AI 报价以它为参考。固定价写数字，范围写 800-1500，只写下限写 800-，只写上限写 -1500；清空一行即删除。</p>',
+    '<h3>物品与服务</h3>',
+    list(prices, 'prices'),
+    '<h3 style="margin-top:18px">活计收入（跑腿 / 护送 / 卖消息）</h3>',
+    list(rates, 'rates'),
+    '<div class="chips" style="margin-top:10px"><button id="px-save" class="chip">保存改动</button></div>',
+    `<h3 style="margin-top:18px">新增一条</h3>
     <div class="price-row" style="margin-top:8px">
       <input id="px-name" class="name-input" style="flex:1" placeholder="物品或服务名" />
-      <input id="px-value" class="name-input" style="flex:0 0 130px" placeholder="价格或范围" />
+      <input id="px-value" class="name-input" style="flex:0 0 120px" placeholder="价格或范围" />
     </div>
-    <div class="chips" style="margin-top:8px"><button id="px-add" class="chip">＋ 加进物价表</button></div>
-    <div class="hint" id="px-msg"></div>`);
+    <div class="chips" style="margin-top:8px">
+      <select id="px-kind" class="it-grade" style="flex:0 0 110px">
+        <option value="prices">物品/服务</option>
+        <option value="rates">活计</option>
+      </select>
+      <button id="px-add" class="chip">＋ 加进物价表</button>
+    </div>
+    <div class="hint" id="px-msg"></div>`,
+  ];
   return out.join('');
 }
 const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues, prices: viewPrices };
