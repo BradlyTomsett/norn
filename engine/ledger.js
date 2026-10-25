@@ -56,7 +56,7 @@ export function runBills(state, crossed, rng) {
 
 /* ---------------- 债务 ---------------- */
 
-const DEFAULT_RATE = 0.03; // 月息 3%
+const DEFAULT_RATE = 0.01; // 月息 1%
 
 function legacyCopper(amount) {
   if (!amount || typeof amount !== 'object') return 0;

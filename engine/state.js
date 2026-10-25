@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { priceOf, rollBounty, sellOf } from './economy.js';
+import { learnPrice, priceOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -125,6 +125,7 @@ function settleTrade(state, trade, rejected) {
       continue;
     }
     const p = sellOf(state, name, { qty });
+    if (p.source === 'table') learnPrice(state, name, p.unit);
     addCopper(state, acc.id, p.total);
     logLedger(state, `卖了 ${name}×${qty}，得 ${copperText(p.total)}`);
   }
@@ -134,6 +135,7 @@ function settleTrade(state, trade, rejected) {
     const qty = Math.max(1, Math.round(n(it?.qty) || 1));
     if (!name) continue;
     const p = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade });
+    if (p.source === 'table') learnPrice(state, name, p.unit);
     if (acc.copper < p.total) {
       rejected.push(`钱不够：${name}×${qty} 要 ${copperText(p.total)}`);
       continue;
@@ -145,17 +147,60 @@ function settleTrade(state, trade, rejected) {
 }
 
 /** 赏金：金额按威胁等级由引擎开，结算档位影响实收。 */
+/* 接活时定死酬劳，交活时按 100% / 50% / 0% 结算。 */
+const BOUNTY_RESULT = {
+  完成: 1, 做完: 1, 全: 1, full: 1, done: 1, complete: 1, completed: 1,
+  一半: 0.5, 半: 0.5, half: 0.5, partial: 0.5,
+  未完成: 0, 没完成: 0, 失败: 0, fail: 0, failed: 0, none: 0,
+};
+
 function settleBounty(state, bounty, rng, judged, rejected) {
-  const mul =
-    judged?.outcome === 'crush' ? 1.2 : judged?.outcome === 'fail' ? 0.4 : judged?.outcome === 'disaster' ? 0 : 1;
+  const p = state.player;
   for (const b of toList(bounty).slice(0, 1)) {
-    const pay = Math.round(rollBounty(state, b?.tier, rng) * mul);
-    if (pay <= 0) {
-      rejected.push('这趟活一分钱没拿到');
+    const result = String(b?.result || b?.status || '').trim();
+
+    // 交活
+    if (result) {
+      const c = p.contract;
+      if (!c) {
+        rejected.push('手上没有接下的活');
+        continue;
+      }
+      const mul = BOUNTY_RESULT[result] ?? Number(b?.ratio) ?? 0;
+      const pay = Math.max(0, Math.round(c.copper * mul));
+      if (pay > 0) {
+        addCopper(state, b?.account || 'cash', pay);
+        logLedger(state, `交活：${c.label}，${result}，得 ${copperText(pay)}`);
+      } else {
+        logLedger(state, `交活：${c.label}，${result}，一分钱没拿到`);
+      }
+      p.contract = null;
       continue;
     }
-    addCopper(state, b?.account || 'cash', pay);
-    logLedger(state, `赏金：${b?.label ? b.label + '，' : ''}${copperText(pay)}`);
+
+    // 接活：酬劳当场定死，之后不再改
+    const tier = Math.min(5, Math.max(1, Math.round(n(b?.tier) || 1)));
+    const pay = rollBounty(state, tier, rng);
+    p.contract = { label: String(b?.label || '一桩活').slice(0, 30), copper: pay, tier };
+    logLedger(
+      state,
+      `接了活：${p.contract.label}，酬劳 ${copperText(pay)}——做完拿全款，做一半拿一半，没做完一分没有。`,
+    );
+  }
+}
+
+/* 非战斗的一次性收入：跑腿、送信、护送、卖消息。金额由引擎按当地工钱折算。 */
+const EARN_DAYS = { tip: 1, job: 10, contract: 40, windfall: 150 };
+const EARN_BASE = 150; // 铜/天，按一个熟练工算
+
+function settleEarn(state, earn, rng) {
+  for (const e of toList(earn).slice(0, 2)) {
+    const scale = String(e?.scale || 'job').trim();
+    const days = EARN_DAYS[scale] ?? EARN_DAYS.job;
+    const priceIndex = Number(state?.world?.priceIndex) || 1;
+    const pay = Math.max(1, Math.round(EARN_BASE * days * priceIndex * (0.85 + rng() * 0.3)));
+    addCopper(state, e?.account || 'cash', pay);
+    logLedger(state, `进账：${String(e?.label || '帮工').slice(0, 24)}，${copperText(pay)}`);
   }
 }
 
@@ -208,7 +253,7 @@ function settleDebts(state, delta, rejected) {
         to: b?.from || b?.to,
         copper: amount,
         months: n(b?.months) || 12,
-        rate: n(b?.rate) || 0.03,
+        rate: n(b?.rate) || 0.01,
         note: b?.note,
       });
       if (d) {
@@ -300,6 +345,13 @@ export function applyDelta(state, delta, rng, opts = {}) {
   // 以下都由引擎结算金额，模型只给意图
   if (delta?.trade) settleTrade(state, delta.trade, rejected);
   if (delta?.bounty) settleBounty(state, delta.bounty, rng, opts.judged, rejected);
+  if (delta?.earn) settleEarn(state, delta.earn, rng);
+  if (Array.isArray(delta?.prices)) {
+    for (const pr of delta.prices.slice(0, 8)) {
+      const nm = String(pr?.name || '').trim();
+      if (nm && learnPrice(state, nm, pr?.copper ?? pr?.price)) logLedger(state, `记下价：${nm} ` + copperText(Number(pr?.copper ?? pr?.price) || 0));
+    }
+  }
   if (delta?.payDebt || delta?.borrow) settleDebts(state, delta, rejected);
   if (delta?.profession) settleProfession(state, delta.profession);
   if (delta?.items) settleItems(state, delta.items);
@@ -458,6 +510,11 @@ export function stateBlock(state) {
   }
   const debts = openDebts(state);
   if (debts.length) lines.push(`【债务】${debts.map((d) => debtText(state, d)).join('；')}`);
+  if (p.contract?.label) {
+    lines.push(
+      `【手上的活】${p.contract.label}，酬劳 ${copperText(p.contract.copper)}（做完全额，做一半给一半，没做完没有）`,
+    );
+  }
   const bagAll = bagText(state);
   if (bagAll) lines.push(`【随身货物】${bagAll}`);
   const assetsAll = assetsText(state);
@@ -552,6 +609,8 @@ export function uiState(state) {
         overdueMonths: d.overdueMonths,
       })),
       bag: bagOf(state),
+      contract: p.contract || null,
+      prices: state.prices || {},
       work: (() => {
         const w = ensureWork(state);
         const text =

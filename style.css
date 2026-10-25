@@ -374,3 +374,12 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .g-uncommon { color: #6f9f6a; }
 .g-common { color: #8d8478; }
 .it-pick.g-legend, .it-pick.g-epic, .it-pick.g-rare, .it-pick.g-uncommon, .it-pick.g-common { border-color: currentColor; }
+
+/* 设置里的物价表 */
+.price-list { display: grid; gap: 6px; margin-top: 8px; }
+.price-row { display: flex; gap: 8px; align-items: center; }
+.price-row .nm { flex: 1; min-width: 0; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.price-row input {
+  flex: 0 0 110px; background: #100e0c; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 9px; padding: 6px 8px; font-family: var(--serif); font-size: 13px; text-align: right;
+}

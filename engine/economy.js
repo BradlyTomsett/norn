@@ -207,16 +207,23 @@ export function classify(name, hint) {
  */
 export function priceOf(state, name, opts = {}) {
   const qty = Math.max(1, Math.round(Number(opts.qty) || 1));
+  const key = String(name || '').trim();
   const cat = classify(name, opts.cat);
   const info = CATS[cat] || CATS.misc;
   const grade = detectGrade(name) || (GRADES.includes(opts.grade) ? opts.grade : '');
   const priceIndex = Number(state?.world?.priceIndex) || 1;
 
+  // 存档里的自定价（AI 生成或玩家改过）优先，认名字
+  const custom = Math.round(Number(state?.prices?.[key]) || 0);
+  if (custom > 0) {
+    return { cat, unit: custom, total: custom * qty, grade, noBag: NO_BAG.has(cat), custom: true, source: 'saved' };
+  }
+
   const named = namedPrice(name);
   if (named) {
     // NAMED 是作者钉死的绝对价（金疮药 5 铜就是 5 铜），不随物价指数浮动
     const unit = Math.max(1, Math.round(named));
-    return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat) || NAMED_NO_BAG.has(cat) };
+    return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat) || NAMED_NO_BAG.has(cat), source: 'named' };
   }
 
   // 品阶只用于武器与护甲（见 rules.md 第八条）；工具、首饰、奢侈品只按材质定价
@@ -226,24 +233,46 @@ export function priceOf(state, name, opts = {}) {
     : 1;
   const specialMul = mulOf(SPECIAL_MUL, name);
   const unit = Math.max(1, Math.round(info.base * gradeMul * matMul * specialMul * priceIndex));
-  return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat) };
+  return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat), source: 'table' };
+}
+
+/* ---------------- 存档内的自定价表 ---------------- */
+
+export const PRICE_MIN = 1;
+export const PRICE_MAX = 500000000;
+
+/** 把一件东西的价格记进存档（已有就不覆盖，除非 force）。 */
+export function learnPrice(state, name, copper, { force = false } = {}) {
+  const key = String(name || '').trim().slice(0, 40);
+  const v = Math.round(Number(copper));
+  if (!key || !Number.isFinite(v) || v < PRICE_MIN || v > PRICE_MAX) return false;
+  if (!state.prices || typeof state.prices !== 'object') state.prices = {};
+  if (state.prices[key] && !force) return false;
+  state.prices[key] = v;
+  return true;
+}
+
+/** 玩家手动改价。 */
+export function setPrice(state, name, copper) {
+  return learnPrice(state, name, copper, { force: true });
+}
+
+export function priceText(state, name) {
+  const p = priceOf(state, name);
+  return { ...p, saved: Boolean(state?.prices?.[String(name || '').trim()]) };
 }
 
 /**
- * 卖出价：商人要赚差价，所以不是原价。
- * 用人物能力里的「交涉」；没有这个技能时按智慧折算，跟判定那边的兜底一致。
+ * 卖出价：按作者要求，卖战利品与正常价目表同价，不折价。
+ * 交涉技能仍保留在人物里，留给以后做"讨价还价"用。
  */
-export function sellRatio(state) {
-  const skills = state?.player?.skills || [];
-  const skill = skills.find((s) => s.name === '交涉');
-  const wisdom = Number(state?.player?.stats?.wisdom) || 10;
-  const lv = skill ? Number(skill.level) || 0 : Math.max(0, (wisdom - 10) * 0.4);
-  return Math.min(0.65, 0.45 + lv * 0.002);
+export function sellRatio() {
+  return 1;
 }
 
 export function sellOf(state, name, opts = {}) {
   const p = priceOf(state, name, opts);
-  return { ...p, total: Math.max(1, Math.round(p.total * sellRatio(state))) };
+  return { ...p, total: Math.max(1, Math.round(p.total)) };
 }
 
 /** 赏金：冒险者没有固定收入，报酬按威胁等级由引擎开。 */

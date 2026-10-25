@@ -51,15 +51,18 @@ const RUNTIME = `
 3. 数值都是**增量**；钱换算成铜（1 银 = 100 铜，1 金 = 10000 铜）。
 3b. **钱不要自己算，也不要自己定价。** 你只写"做了什么"，价格、到账、扣款全部由引擎结算：
     "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}],"sell":[{"name":"狼皮","qty":1}]}
-    "bounty":{"label":"清掉林子边的狼","tier":2}          冒险者的赏金，金额由引擎按威胁等级开
+    "bounty":{"label":"清掉林子边的狼","tier":2}          **接活**：酬劳此刻定死，引擎按威胁等级开
+    "bounty":{"result":"完成"}                            **交活**：完成=全额，一半=半额，未完成=一分没有
+    "earn":{"label":"替粮行送信","scale":"job"}           非战斗的进账（跑腿/护送/卖消息）；scale：tip(1天工钱)/job(10天)/contract(40天)/windfall(150天)
+    "prices":[{"name":"刻纹银匕首","copper":1200}]       价目表里没有的东西：你按物价水平给个铜数，引擎记进存档并一直沿用
     "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
-    "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.05}   借钱
+    "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.01}   借钱（默认月息 1%）
     "gift":{"to":"npc_mother","copper":500}              送钱送东西做人情
     "items":[{"name":"狼皮","qty":2}]                    真正收进包里的东西（卖了要有）
     "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
-    **禁止写价钱、禁止写余额**。写了具体金额会被引擎忽略或拒绝。
+    **除了 prices 之外，不要写价钱，也不要写余额**。金额一律由引擎算；只有价目表里没有的东西才用 prices 报一个价。
     账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（产业，个人产业月收益进这里）。
     产业收益**不会**自动转到随身，要动用就写 transfer。家族月钱、债息、吃住开销由引擎自动结算，你不要重复记。
 3c. **技能数值不要写。** 技能等级只由引擎按练习时长与难度涨；你最多只能报一个新技能的名字："skills":["商谈"]。
@@ -441,8 +444,52 @@ function openSettings() {
   $('#set-gh-token').value = gh.token || '';
   $('#set-gh-msg').textContent = sync.ghReady() ? '已配置。' : '';
   showBuildInfo();
+  renderPrices();
   $('#settings').classList.remove('hidden');
 }
+
+/** 设置里的物价表：列出存档内自定价，可直接改。 */
+function renderPrices() {
+  const box = $('#price-list');
+  if (!box) return;
+  const state = store.getSave(app.saveId);
+  const prices = state?.prices && typeof state.prices === 'object' ? state.prices : {};
+  const rows = Object.entries(prices).sort((a, b) => a[0].localeCompare(b[0], 'zh'));
+  if (!rows.length) {
+    box.innerHTML = '<p class="hint">还没有自定价。表里没有的东西第一次买卖时会自动记一个价。</p>';
+    return;
+  }
+  box.innerHTML = rows
+    .map(
+      ([name, copper]) =>
+        `<div class="price-row"><span class="nm">${esc(name)}</span>` +
+        `<input class="price-input" data-name="${esc(name)}" type="number" min="1" step="1" inputmode="numeric" value="${Number(copper) || 0}" /></div>`,
+    )
+    .join('');
+}
+
+$('#btn-price-save').onclick = () => {
+  const state = store.getSave(app.saveId);
+  if (!state) return;
+  if (!state.prices) state.prices = {};
+  let changed = 0;
+  for (const el of document.querySelectorAll('#price-list .price-input')) {
+    const name = el.dataset.name;
+    const v = Math.round(Number(el.value));
+    if (!Number.isFinite(v) || v <= 0) {
+      delete state.prices[name];
+      changed += 1;
+    } else if (state.prices[name] !== v) {
+      state.prices[name] = v;
+      changed += 1;
+    }
+  }
+  store.putSave(state);
+  app.ui = uiState(state);
+  renderPrices();
+  const tip = $('#price-list');
+  if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
+};
 
 /** 显示当前缓存的版本号（sw 的 CACHE 名）。 */
 async function showBuildInfo() {
