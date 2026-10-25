@@ -10,6 +10,7 @@ import { makeRng } from './engine/rng.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 import { addItem, removeItem, gradeOfName, stripGrade, composeName, normalizeItems } from './engine/items.js';
+import { DEFAULT_PRICES, DEFAULT_RATES } from './engine/economy.js';
 
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 import { ensureAssets } from './engine/assets.js';
@@ -308,6 +309,8 @@ $('#start').onclick = () => {
   });
   state.saveId = store.newId();
   state.updatedAt = new Date().toISOString();
+  state.prices = { ...DEFAULT_PRICES };
+  state.rates = { ...DEFAULT_RATES };
   const opening = openingText(state, family, region);
   store.putSave(state, [{ role: 'assistant', content: opening }]);
 
@@ -1283,6 +1286,8 @@ $('#cu-start').onclick = () => {
   if (origin) state.player.profession = origin;
   state.saveId = store.newId();
   state.updatedAt = new Date().toISOString();
+  if (!state.prices || !Object.keys(state.prices).length) state.prices = { ...DEFAULT_PRICES };
+  if (!state.rates || !Object.keys(state.rates).length) state.rates = { ...DEFAULT_RATES };
 
   const opening = [
     `你十二岁。家在${place}。`,
