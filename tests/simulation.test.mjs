@@ -107,6 +107,8 @@ test('多份委托并存，领取一份不丢另一份', () => {
   apply(s, { bounty: { id: 'q1', label: '第一份', copper: 10000 } }, 'accept:1');
   apply(s, { bounty: { id: 'q2', label: '第二份', copper: 20000 } }, 'accept:2');
   assert.equal(s.player.contracts.filter(c => c.status === 'active').length, 2);
+  const overview = VIEWS.overview(uiState(s));
+  assert.match(overview, /第一份/); assert.match(overview, /第二份/);
   apply(s, { transactions: [{ id: 'q1:reward', kind: 'reward', contractId: 'q1' }] }, 'pay:1');
   assert.equal(s.player.contract.id, 'q2'); assert.equal(s.player.contracts.find(c => c.id === 'q1').status, 'paid');
 });
@@ -153,6 +155,8 @@ test('NPC目标跨回合和存档持续推进，玩家选择在指定日期产�
   assert.equal(s.player.relations[0].trust, before + 5);
   assert.equal(s.storyLog.filter(e => e.id === 'help-coal').length, 1);
   assert.match(VIEWS.clues(uiState(s)), /玩家答应帮忙/);
+  apply(s, { npcUpdates: [{ npcId: npc.id, goals: [{ id: 'coal', status: 'completed' }] }] }, 'goal:completed');
+  assert.equal(s.npcs[0].goals.find(g => g.id === 'coal').progress, 100);
 });
 
 test('相关记忆和价格可从完整历史检索，不受插入位置限制', () => {

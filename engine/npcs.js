@@ -74,6 +74,7 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
       const goal = old || { id, progress: 0, status: 'active', intervalDays: 7, nextDay: absoluteDay(state.clock) + 7, visible: true };
       for (const field of ['text', 'action', 'completion']) if (raw[field]) goal[field] = cleanText(raw[field]);
       if (['active', 'completed', 'failed', 'cancelled'].includes(raw.status)) goal.status = raw.status;
+      if (goal.status === 'completed') goal.progress = 100;
       if (raw.visible === false) goal.visible = false;
       if (raw.days != null) { goal.intervalDays = bounded(raw.days, 1, 365); goal.nextDay = absoluteDay(state.clock) + goal.intervalDays; }
       if (!old) npc.goals.push(goal);
