@@ -17,7 +17,7 @@ state.rates = { '配钥匙（每把）': { min: 15, max: 80 } };
 state.npcs = state.npcs.slice(0, 3);
 for (const [i, name] of ['老杜', '薇拉', '瑟拉'].entries()) {
   state.npcs[i].name = name; state.npcs[i].profession = '冒险者';
-  state.player.relations[i].trust = [-100, 0, 100][i]; state.player.relations[i].closeness = [100, 0, -100][i];
+  state.player.relations[i].closeness = [-100, 0, 100][i];
 }
 state.player.relations = state.player.relations.slice(0, 3);
 state.player.contracts = [{ id: 'nightcart', label: '柳洼夜车调查', copper: 1200000, status: 'active', tier: 3 }];

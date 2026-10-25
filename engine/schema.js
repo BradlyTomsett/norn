@@ -1,12 +1,22 @@
 import { removeRetiredPostalData } from './retired-prices.js';
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
 export const absoluteMinute = (clock) => absoluteDay(clock) * 1440 + clock.hour * 60 + clock.minute;
 export const cleanText = (v, max = 160) => String(v ?? '').trim().slice(0, max);
 export const list = (v) => v == null ? [] : Array.isArray(v) ? v : [v];
 
-/** Idempotent, lossless compatibility upgrade. Removed mechanics never influence new turns. */
+/** Merge legacy relationship fields once; new records contain closeness only. */
+export function closenessOf(row) {
+  const values = ['trust', 'closeness'].filter(key => row?.[key] != null).map(key => bounded(row[key], -100, 100));
+  return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length * 10) / 10 : 0;
+}
+function upgradeRelation(row) {
+  row.closeness = closenessOf(row);
+  delete row.trust;
+}
+
+/** Idempotent compatibility upgrade. Removed mechanics never influence new turns. */
 export function upgradeState(state) {
   if (!state?.player || !state.clock) throw new Error('存档缺少人物或日历');
   const p = state.player;
@@ -26,10 +36,7 @@ export function upgradeState(state) {
   p.location ||= { siteId: state.world?.id || 'unknown', siteName: state.world?.name || '无名之地' };
   state.locations ||= {};
   if (state.world?.id && !state.locations[state.world.id]) state.locations[state.world.id] = { ...state.world };
-  for (const r of p.relations) {
-    r.trust = Math.round(bounded(r.trust, -100, 100) * 10) / 10;
-    r.closeness = Math.round(bounded(r.closeness, -100, 100) * 10) / 10;
-  }
+  for (const r of p.relations) upgradeRelation(r);
   p.unfinished = p.unfinished.filter((row, index, rows) => rows.findIndex(x => x.text === row.text) === index);
   if (!Array.isArray(p.contracts)) p.contracts = [];
   if (p.contract && !p.contracts.some(c => c.id === p.contract.id || c.label === p.contract.label)) {
@@ -40,6 +47,7 @@ export function upgradeState(state) {
   for (const key of ['npcs', 'knowledge', 'history', 'signals', 'worldLog', 'chronicle', 'consequences', 'storyLog']) {
     if (!Array.isArray(state[key])) state[key] = [];
   }
+  for (const event of state.consequences) for (const r of list(event.effects?.relations)) upgradeRelation(r);
   state.processedEvents ||= {};
   state.flags ||= {};
   state.version = 'm2';

@@ -17,7 +17,7 @@ import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
 import { addItem, effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
 import { chronicleText } from './chronicle.js';
-import { assignState, upgradeState, absoluteDay } from './schema.js';
+import { assignState, upgradeState, absoluteDay, closenessOf } from './schema.js';
 import { applyStoryDelta, ensureNpcState, relevantNpcs } from './npcs.js';
 import { selectRelevant } from './memory.js';
 import { isRetiredPostalQuote } from './retired-prices.js';
@@ -259,8 +259,8 @@ function settleGift(state, gift, rejected) {
     if (rel) {
       const income = Math.max(1, (workOf(npc?.profession || '', 'journeyman').daily || 120) * 30);
       const months = amount / income;
-      rel.trust = clamp(rel.trust + Math.round(Math.log2(1 + months) * 6), -100, 100);
-      rel.closeness = clamp(rel.closeness + Math.round(Math.log2(1 + months) * 3), -100, 100);
+      const gain = (Math.round(Math.log2(1 + months) * 6) + Math.round(Math.log2(1 + months) * 3)) / 2;
+      rel.closeness = clamp(rel.closeness + gain, -100, 100);
       rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
     }
     logLedger(state, `送了${npc?.name || '人'}一份人情，${copperText(amount)}`);
@@ -476,12 +476,10 @@ function applyUnsafe(state, delta, rng, opts = {}) {
       }
       const rel = state.player.relations.find((x) => x.npcId === npc.id);
       if (!rel) continue;
-      const dTrust = n(r.trust);
-      const dClose = n(r.closeness);
+      const dClose = closenessOf(r);
       const obs = typeof r.observable === 'string' ? r.observable.trim() : '';
       const obsOk = Boolean(obs) && !/^[（(]?\s*(无变化|没有变化|无|未变|不变|同上|略)\s*[）)]?$/.test(obs);
-      if (!dTrust && !dClose && !obsOk) continue; // 整条都是「无变化」，直接跳过
-      rel.trust = clamp(rel.trust + dTrust, -100, 100);
+      if (!dClose && !obsOk) continue; // 整条都是「无变化」，直接跳过
       rel.closeness = clamp(rel.closeness + dClose, -100, 100);
       rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
       if (obsOk) rel.observable = obs.slice(0, 60);
@@ -683,7 +681,7 @@ export function stateBlock(state, query = '') {
     lines.push('【关系】');
     for (const r of p.relations.filter(r => relevantNpcs(state, query).some(n => n.id === r.npcId))) {
       const npc = state.npcs.find((x) => x.id === r.npcId);
-      lines.push(`  · ${npc?.name || r.npcId}（${npc?.profession || ''}）：${r.observable || '点头之交'}`);
+      lines.push(`  · ${npc?.name || r.npcId}（${npc?.profession || ''}）：亲近 ${r.closeness}；${r.observable || '点头之交'}`);
     }
   }
   if (p.goals.length) lines.push(`【当前目标】${p.goals.join('；')}`);
@@ -827,7 +825,6 @@ export function uiState(state) {
           profession: npc?.profession || '',
           loadout: npc?.loadout || [],
           observable: r.observable,
-          trust: r.trust,
           closeness: r.closeness,
           goals: (npc?.goals || []).filter(g => g.visible !== false),
           memories: (npc?.memories || []).slice(-3),

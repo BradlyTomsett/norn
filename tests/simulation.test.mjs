@@ -45,21 +45,48 @@ test('旧存档只保留健康与文字心情，关系钳制到−100～100且�
   s.player.equipment = Array.from({ length: 100 }, (_, i) => `装备${i}（金）`);
   const u = uiState(s);
   assert.deepEqual(u.player.body, { health: 93 }); assert.deepEqual(u.player.mind, { mood: '平静' });
-  assert.equal(u.player.relations[0].trust, 100); assert.equal(u.player.relations[0].closeness, -100);
+  assert.equal(u.player.relations[0].trust, undefined); assert.equal(u.player.relations[0].closeness, 0);
   apply(s, { equipment: ['新装备（灰）'] }); assert.equal(s.player.equipment.length, 101);
   assert.ok(s.player.equipment.includes('装备0（金）'));
   assert.ok(!stateBlock(s).includes('疲劳'));
 });
 
-test('关系颜色红白绿连续变化，数值、位置和可访问范围完整', () => {
+test('亲近以红白绿渐变的单个数值框显示，没有进度条或信任项', () => {
   assert.equal(relationColor(-100), 'rgb(255, 0, 0)');
   assert.equal(relationColor(0), 'rgb(255, 255, 255)');
   assert.equal(relationColor(100), 'rgb(0, 255, 0)');
   assert.equal(relationColor(-50), 'rgb(255, 128, 128)');
   assert.equal(relationColor(50), 'rgb(128, 255, 128)');
-  const html = VIEWS.people({ player: { relations: [{ name: '甲', trust: -100, closeness: 100 }] } });
-  assert.match(html, /aria-valuemin="-100"/); assert.match(html, /aria-valuenow="100"/);
-  assert.match(html, /信任/); assert.match(html, /亲近/);
+  for (const value of [-100, -50, 0, 50, 100]) {
+    const html = VIEWS.people({ player: { relations: [{ name: '甲', closeness: value }] } });
+    assert.equal((html.match(/<output /g) || []).length, 1);
+    assert.ok(html.includes(`style="color:${relationColor(value)}"`));
+    assert.ok(html.includes(`aria-label="亲近 ${value > 0 ? '+' : ''}${value}"`));
+    assert.doesNotMatch(html, /信任|role="meter"|relation-track|relation-scale/);
+  }
+});
+
+test('旧关系与待触发后果按均值合并一次，存取和再次载入不会重复折算', () => {
+  const s = fresh(), r = s.player.relations[0];
+  r.trust = 80; r.closeness = 40;
+  s.player.relations[1] = { ...s.player.relations[1], trust: -30 }; delete s.player.relations[1].closeness;
+  s.player.relations[2].closeness = 25;
+  s.consequences = [{ id: 'legacy:relation', due: (222 * 365 + 5) * 1440, status: 'pending', cause: '旧选择', text: '旧后果',
+    effects: { relations: [{ npcId: r.npcId, trust: 8, closeness: 4 }], reputation: [] } }];
+  upgradeState(s);
+  assert.equal(r.closeness, 60); assert.equal(s.player.relations[1].closeness, -30); assert.equal(s.player.relations[2].closeness, 25);
+  assert.ok(s.player.relations.every(row => !('trust' in row)));
+  assert.deepEqual(s.consequences[0].effects.relations[0], { npcId: r.npcId, closeness: 6 });
+  const once = structuredClone(s); upgradeState(s); assert.deepEqual(s, once);
+  store.putSave(s, []);
+  const loaded = store.decodeSave(JSON.parse(JSON.stringify(store.savePackage(store.getSave(s.saveId))))).state;
+  assert.equal(loaded.player.relations[0].closeness, 60);
+  advanceWorld(loaded, 1440, makeRng(1), { kind: 'rest' });
+  assert.equal(loaded.player.relations[0].closeness, 66);
+  assert.ok(!('trust' in loaded.player.relations[0]));
+  assert.ok(apply(loaded, { relations: [{ npcId: r.npcId, closeness: 100 }] }, 'relation:limit').applied);
+  assert.equal(loaded.player.relations[0].closeness, 100);
+  assert.match(stateBlock(loaded), /亲近 100/);
 });
 
 test('120金赏金与队友分成原子提交，重试只增加55金', () => {
@@ -96,10 +123,10 @@ test('重复记账入口与重复物品移动会拒绝，不接受未知字段�
 test('新人物、地点、关系、事项完成与目标清空都进入存档', () => {
   const s = fresh(); s.player.unfinished = [{ id: 'old-task', text: '旧任务' }];
   const result = apply(s, { location: { siteId: 'galon', siteName: '加隆城' },
-    npcs: [{ id: 'npc_new', name: '新药师', profession: '药师' }], relations: [{ npcId: 'npc_new', trust: 4, closeness: 3 }],
+    npcs: [{ id: 'npc_new', name: '新药师', profession: '药师' }], relations: [{ npcId: 'npc_new', closeness: 3 }],
     goals: [], problems: [], tasks: [{ id: 'old-task', status: 'completed' }] });
   assert.ok(result.applied); assert.equal(s.player.location.siteName, '加隆城');
-  assert.equal(s.player.relations.find(r => r.npcId === 'npc_new').trust, 4);
+  assert.equal(s.player.relations.find(r => r.npcId === 'npc_new').closeness, 3);
   assert.deepEqual(s.player.goals, []); assert.deepEqual(s.player.problems, []); assert.deepEqual(s.player.unfinished, []);
 });
 
@@ -141,19 +168,19 @@ test('相同31天区间整段、逐日的固定日周月收支一致', () => {
 
 test('NPC目标跨回合和存档持续推进，玩家选择在指定日期产生一次后果', () => {
   let s = fresh(); ensureNpcState(s);
-  const npc = s.npcs[0], before = s.player.relations[0].trust;
+  const npc = s.npcs[0], before = s.player.relations[0].closeness;
   const data = { npcUpdates: [{ npcId: npc.id, goals: [{ id: 'coal', text: '筹齐煤款', action: '联系煤商', completion: '煤炭已经送达', days: 2 }] }],
     consequences: [{ id: 'help-coal', cause: '玩家答应帮忙并支付了煤款', text: '药师介绍了自己的朋友', days: 3,
-      effects: { relations: [{ npcId: npc.id, trust: 5, observable: '主动介绍了朋友' }] } }] };
+      effects: { relations: [{ npcId: npc.id, closeness: 5, observable: '主动介绍了朋友' }] } }] };
   assert.ok(apply(s, data).applied);
   s = JSON.parse(JSON.stringify(s));
   advanceWorld(s, 2 * 1440, makeRng(1), { kind: 'rest' });
   assert.equal(s.npcs[0].goals.find(g => g.id === 'coal').progress, 25);
   assert.equal(s.consequences[0].status, 'pending');
   advanceWorld(s, 1440, makeRng(1), { kind: 'rest' });
-  assert.equal(s.consequences[0].status, 'resolved'); assert.equal(s.player.relations[0].trust, before + 5);
+  assert.equal(s.consequences[0].status, 'resolved'); assert.equal(s.player.relations[0].closeness, before + 5);
   advanceWorld(s, 1440, makeRng(1), { kind: 'rest' });
-  assert.equal(s.player.relations[0].trust, before + 5);
+  assert.equal(s.player.relations[0].closeness, before + 5);
   assert.equal(s.storyLog.filter(e => e.id === 'help-coal').length, 1);
   assert.match(VIEWS.clues(uiState(s)), /玩家答应帮忙/);
   apply(s, { npcUpdates: [{ npcId: npc.id, goals: [{ id: 'coal', status: 'completed' }] }] }, 'goal:completed');

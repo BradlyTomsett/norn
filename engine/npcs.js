@@ -1,4 +1,4 @@
-import { absoluteDay, absoluteMinute, bounded, cleanText, list } from './schema.js';
+import { absoluteDay, absoluteMinute, bounded, cleanText, list, closenessOf } from './schema.js';
 
 const PURPOSES = [
   [/铁匠|锻|矿/, '备齐下一批原料，维持工坊开工', '联系原料商并整理订单', '原料和订单已经安排妥当'],
@@ -23,8 +23,7 @@ export function ensureNpcState(state) {
 function relationEffect(state, effect, cause) {
   const r = state.player.relations.find(r => r.npcId === effect.npcId);
   if (!r) return;
-  r.trust = bounded(r.trust + bounded(effect.trust, -100, 100), -100, 100);
-  r.closeness = bounded(r.closeness + bounded(effect.closeness, -100, 100), -100, 100);
+  r.closeness = bounded(r.closeness + closenessOf(effect), -100, 100);
   if (effect.observable) r.observable = cleanText(effect.observable);
   r.lastTouch = absoluteDay(state.clock);
   const npc = state.npcs.find(n => n.id === effect.npcId);
@@ -57,7 +56,7 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
       age: bounded(row.age ?? 25, 0, 2000), profession: cleanText(row.profession || '居民', 60),
       traits: list(row.traits).map(v => cleanText(v, 40)).slice(0, 5), obsession: cleanText(row.obsession),
       location: { ...state.player.location }, following: row.following === true, voice: {}, memories: [] });
-    state.player.relations.push({ npcId: id, trust: 0, closeness: 0, observable: '初次相识', lastTouch: absoluteDay(state.clock) });
+    state.player.relations.push({ npcId: id, closeness: 0, observable: '初次相识', lastTouch: absoluteDay(state.clock) });
   }
   ensureNpcState(state);
   for (const row of list(delta.npcUpdates)) {
@@ -93,7 +92,8 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
     }
     state.consequences.push({ id, cause, text, due: absoluteMinute(state.clock) + Math.round(bounded(row.days ?? 1, 0, 3650) * 1440),
       status: 'pending', visible: row.visible !== false,
-      effects: { relations: list(effects.relations), reputation: list(effects.reputation), npcUpdates: list(effects.npcUpdates) } });
+      effects: { relations: list(effects.relations).map(r => ({ npcId: r.npcId, closeness: closenessOf(r), observable: r.observable })),
+        reputation: list(effects.reputation), npcUpdates: list(effects.npcUpdates) } });
   }
   for (const r of list(delta.reputation)) {
     if (!r?.place) { rejected.push('声望变化需要地点'); continue; }

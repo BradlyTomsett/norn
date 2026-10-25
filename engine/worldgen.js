@@ -268,8 +268,7 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
       skills: [{ name: '干杂活', level: 3 }, { name: '认路', level: 4 }],
       relations: npcs.map((n) => ({
         npcId: n.id,
-        trust: n.id === 'npc_mother' ? 78 : n.id === 'npc_father' ? 55 : n.id === 'npc_sibling' ? 60 : 5,
-        closeness: n.id === 'npc_mother' ? 85 : n.id === 'npc_father' ? 50 : n.id === 'npc_sibling' ? 70 : 10,
+        closeness: n.id === 'npc_mother' ? 81.5 : n.id === 'npc_father' ? 52.5 : n.id === 'npc_sibling' ? 65 : 7.5,
         observable: n.attitude,
       })),
       socialClass: isOrphan ? 'commoner' : 'commoner',

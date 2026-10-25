@@ -23,9 +23,9 @@ export const RUNTIME = `【唯一机器协议：优先于世界设定和文风�
 消耗用 use:[{name,qty}]，效果由代码结算。只有两套参考都未收录的新物件/服务才用 prices:[{name,copper:1200}] 或 copper:{min:800,max:1500} 补充；不要把单次交易金额、一次赏金或同类活计的不同叫法写进参考表。
 移动后必须给 location:{siteId,siteName}，siteId 同一个地方始终不变；新地方可补 regionTitle/terrain/economy/politics/risk。同行伙伴用 npcUpdates 标明 following:true，留在别处的人 following:false 并记录 location。
 新人物用 npcs:[{id,name,race,age,profession,traits,obsession}] 登记，固定 id；后续更新用 npcUpdates。
-关系用 relations:[{npcId,trust,closeness,observable}]，数字是增量，各最终值限制在−100～100；只能引用已有或本回合新登记的人物。
+人物关系只有“亲近”一个数值，用 relations:[{npcId,closeness,observable}]，closeness 是增量，最终值限制在−100～100；只能引用已有或本回合新登记的人物。
 人物目标用 npcUpdates:[{npcId,goals:[{id,text,action,completion,days:7,status:"active",visible:true}],memory:"会记住的互动"}]；目标有具体事情、推进动作与完成结果。仅更新发生变化的目标，完成用相同id和status:"completed"。
-持久选择后果用 consequences:[{id,cause:"玩家已做出的具体选择",text:"届时出现的结果",days:3,visible:false,effects:{relations:[{npcId,trust:2,closeness:1,observable:"可见表现"}],reputation:[{place,change:2}]}}]。
+持久选择后果用 consequences:[{id,cause:"玩家已做出的具体选择",text:"届时出现的结果",days:3,visible:false,effects:{relations:[{npcId,closeness:2,observable:"可见表现"}],reputation:[{place,change:2}]}}]。
 effects也可用npcUpdates改变人物职业、地点或同一id的目标状态。后果必须源于玩家已经做出的选择，不替玩家预订决定；不把未到时间的后果写成已发生。隐秘目标与后果不得提前透露给玩家。
 事项用 tasks:[{id,text,status:"active"}]；完成或取消使用相同id和status:"completed"/"cancelled"。goals/problems是完整的新列表，[]表示清空，没变化则省略字段。
 knowledge:[{text,source}] 记玩家获得的事实；新技能只写名称，不写等级。声望 reputation:[{place,change}]。

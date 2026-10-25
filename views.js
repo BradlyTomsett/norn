@@ -283,12 +283,10 @@ export function relationColor(value) {
   const fade = Math.round(255 * (1 - Math.abs(v) / 100));
   return v < 0 ? `rgb(255, ${fade}, ${fade})` : `rgb(${fade}, 255, ${fade})`;
 }
-function relationMeter(label, raw) {
+function relationValue(raw) {
   const value = Math.max(-100, Math.min(100, Number(raw) || 0));
-  return `<div class="relation-stat" role="meter" aria-label="${label}" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="${value}">
-    <div class="relation-label"><span>${label}</span><strong style="color:${relationColor(value)}">${value > 0 ? '+' : ''}${value}</strong></div>
-    <div class="relation-track"><i style="left:${(value + 100) / 2}%;background:${relationColor(value)}"></i></div>
-    <div class="relation-scale"><span>−100</span><span>0</span><span>100</span></div></div>`;
+  const text = `${value > 0 ? '+' : ''}${value}`;
+  return `<div class="relation-stat"><span>亲近</span><output class="relation-value" aria-label="亲近 ${text}" style="color:${relationColor(value)}">${text}</output></div>`;
 }
 function viewPeople(u) {
   const list = [...(u.player.relations || [])].sort((a, b) => (b.closeness ?? 0) - (a.closeness ?? 0));
@@ -299,7 +297,7 @@ function viewPeople(u) {
     out.push(
       `<div class="person"><div class="nm">${esc(r.name)}<span>${esc(who)}</span></div>` +
         (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
-        relationMeter('信任', r.trust) + relationMeter('亲近', r.closeness) +
+        relationValue(r.closeness) +
         ((r.goals || []).some(g => g.status === 'active') ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active').map(g => `${g.text}（进展 ${Number(g.progress) || 0}%）`).join('；'))}</div>` : '') +
         `<div class="ob">${esc(r.observable || '')}</div></div>`,
     );

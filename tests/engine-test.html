@@ -206,16 +206,16 @@ try {
   const s7 = fresh();
   const rel = s7.player.relations.find((r) => r.npcId === 'npc_mother');
   rel.lastTouch = -1000;
-  const trustBefore = rel.trust;
+  const closenessBefore = rel.closeness;
   decayRelations(s7, 3);
-  ok('久不联系会回落', rel.trust < trustBefore, `${trustBefore} → ${rel.trust}`);
+  ok('久不联系会回落', rel.closeness < closenessBefore, `${closenessBefore} → ${rel.closeness}`);
 
   // 「（无变化）」不该覆盖上一句观察，也不该算一次互动
   const s7b = fresh();
   const relB = s7b.player.relations.find((r) => r.npcId === 'npc_mother');
   const obsBefore = relB.observable;
   relB.lastTouch = -1000;
-  applyDelta(s7b, { relations: [{ npcId: 'npc_mother', trust: 0, observable: '（无变化）' }] }, rng, {});
+  applyDelta(s7b, { relations: [{ npcId: 'npc_mother', closeness: 0, observable: '（无变化）' }] }, rng, {});
   ok('无变化的观察不覆盖原文', relB.observable === obsBefore, String(relB.observable));
   ok('无变化的条目不算互动', relB.lastTouch === -1000, String(relB.lastTouch));
 
