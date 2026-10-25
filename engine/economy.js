@@ -397,7 +397,7 @@ export const DEFAULT_RATES = {
   '打井 / 修屋顶': { min: 100, max: 3000 },
   '夜里守夜（一晚）': { min: 30, max: 400 },
   '教书 / 代写契约': { min: 10, max: 500 },
-  '牙人 / 中介抽成': { min: 20, max: 2000 },
+  '中介抽成': { min: 20, max: 2000 },
   '说媒 / 操办婚丧': { min: 100, max: 5000 },
   '看病 / 抓药': { min: 50, max: 800 },
   '喂马 / 刷马（一天）': { min: 20, max: 150 },
@@ -421,7 +421,8 @@ export function gamePriceEntry(name) {
   if (named) return named;
   const category = Object.values(CATS).find(c => referenceKey(c.name) === referenceKey(name));
   if (category) return category.base;
-  return tableReference(DEFAULT_PRICES, name) ?? tableReference(DEFAULT_RATES, name);
+  const legacyRate = { '牙人': '中介抽成', '牙行': '中介抽成', '牙人/中介抽成': '中介抽成' };
+  return tableReference(DEFAULT_PRICES, name) ?? tableReference(DEFAULT_RATES, legacyRate[referenceKey(name)] || name);
 }
 export function gameReferenceRows() {
   const rows = NAMED.map(([re, entry]) => ({ name: re.source.replaceAll('|', ' / '), entry, kind: '物品' }));

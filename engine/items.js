@@ -41,7 +41,7 @@ export function parseItemEntry(raw) {
   return { name, grade, qty, label: grade ? `${name}（${grade}）` : name };
 }
 
-/** "药剂包（金疮药 49 / 回血 68 / 磨刀石 / 吴掌柜药盒）" → 容器 + 子项 */
+/** "药剂包（金疮药 49 / 回血 68 / 磨刀石 / 店主的药盒）" → 容器 + 子项 */
 export function parseContainer(raw) {
   const s = String(raw || '').trim();
   const inner = (s.match(/（([^）]*)）/) || [])[1];
