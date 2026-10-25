@@ -440,8 +440,47 @@ function openSettings() {
   $('#set-gh-branch').value = gh.branch || 'main';
   $('#set-gh-token').value = gh.token || '';
   $('#set-gh-msg').textContent = sync.ghReady() ? '已配置。' : '';
+  showBuildInfo();
   $('#settings').classList.remove('hidden');
 }
+
+/** 显示当前缓存的版本号（sw 的 CACHE 名）。 */
+async function showBuildInfo() {
+  const el = $('#build-info');
+  if (!el) return;
+  let ver = '';
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      ver = keys.find((k) => k.startsWith('norn-')) || '';
+    }
+  } catch {
+    /* 忽略 */
+  }
+  const mode =
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+      ? '桌面图标模式'
+      : '浏览器标签页';
+  el.textContent = `${ver || '未缓存'} · ${mode}`;
+}
+
+$('#btn-check-update').onclick = async () => {
+  const el = $('#build-info');
+  if (el) el.textContent = '检查中…';
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    location.reload();
+  } catch {
+    location.reload();
+  }
+};
 
 $('#set-gh-test').onclick = async () => {
   saveGhFromForm();
