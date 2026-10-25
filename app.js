@@ -53,7 +53,8 @@ const RUNTIME = `
     "trade":{"account":"cash","buy":[{"name":"黑面包","qty":2}],"sell":[{"name":"狼皮","qty":1}]}
     "bounty":{"label":"清掉林子边的狼","tier":2}          **接活**：酬劳此刻定死，引擎按威胁等级开
     "bounty":{"result":"完成"}                            **交活**：完成=全额，一半=半额，未完成=一分没有
-    "earn":{"label":"替粮行送信","scale":"job"}           非战斗的进账（跑腿/护送/卖消息）；scale：tip(1天工钱)/job(10天)/contract(40天)/windfall(150天)
+    "earn":{"label":"替粮行送信","copper":300}          非战斗进账：你按下面的参考价自己报一个铜数，第一次定下后存档记住，以后同类按这个
+    参考价（铜/次）：跑腿送信 300｜打杂帮工 150｜带路 600｜盯梢打听 500｜卖消息 800｜抄写代笔 400｜卖艺 200｜护送押运 8000｜商队长途 3 万｜赌 1000
     "prices":[{"name":"刻纹银匕首","copper":1200}]       价目表里没有的东西：你按物价水平给个铜数，引擎记进存档并一直沿用
     "payDebt":{"to":"磨坊主塞德","copper":20000}          还一笔债
     "borrow":{"from":"金匠铺","copper":50000,"months":12,"rate":0.01}   借钱（默认月息 1%）
@@ -62,7 +63,7 @@ const RUNTIME = `
     "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
-    **除了 prices 之外，不要写价钱，也不要写余额**。金额一律由引擎算；只有价目表里没有的东西才用 prices 报一个价。
+    **只有 prices 和 earn 可以写金额**，其余一律不要写价钱、也不要写余额：买东西的价格由引擎算，只有价目表里没有的东西才用 prices 报价；活计收入用 earn 报价。
     账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（产业，个人产业月收益进这里）。
     产业收益**不会**自动转到随身，要动用就写 transfer。家族月钱、债息、吃住开销由引擎自动结算，你不要重复记。
 3c. **技能数值不要写。** 技能等级只由引擎按练习时长与难度涨；你最多只能报一个新技能的名字："skills":["商谈"]。
@@ -445,6 +446,7 @@ function openSettings() {
   $('#set-gh-msg').textContent = sync.ghReady() ? '已配置。' : '';
   showBuildInfo();
   renderPrices();
+  renderRates();
   $('#settings').classList.remove('hidden');
 }
 
@@ -488,6 +490,49 @@ $('#btn-price-save').onclick = () => {
   app.ui = uiState(state);
   renderPrices();
   const tip = $('#price-list');
+  if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
+};
+
+/** 活计收入表，结构与物价表一样。 */
+function renderRates() {
+  const box = $('#rate-list');
+  if (!box) return;
+  const state = store.getSave(app.saveId);
+  const rates = state?.rates && typeof state.rates === 'object' ? state.rates : {};
+  const rows = Object.entries(rates).sort((a, b) => a[0].localeCompare(b[0], 'zh'));
+  if (!rows.length) {
+    box.innerHTML = '<p class="hint">还没有记录。第一次遇到跑腿、护送这类活时会自动定一个数。</p>';
+    return;
+  }
+  box.innerHTML = rows
+    .map(
+      ([name, copper]) =>
+        `<div class="price-row"><span class="nm">${esc(name)}</span>` +
+        `<input class="rate-input" data-name="${esc(name)}" type="number" min="1" step="1" inputmode="numeric" value="${Number(copper) || 0}" /></div>`,
+    )
+    .join('');
+}
+
+$('#btn-rate-save').onclick = () => {
+  const state = store.getSave(app.saveId);
+  if (!state) return;
+  if (!state.rates) state.rates = {};
+  let changed = 0;
+  for (const el of document.querySelectorAll('#rate-list .rate-input')) {
+    const name = el.dataset.name;
+    const v = Math.round(Number(el.value));
+    if (!Number.isFinite(v) || v <= 0) {
+      delete state.rates[name];
+      changed += 1;
+    } else if (state.rates[name] !== v) {
+      state.rates[name] = v;
+      changed += 1;
+    }
+  }
+  store.putSave(state);
+  app.ui = uiState(state);
+  renderRates();
+  const tip = $('#rate-list');
   if (tip) tip.insertAdjacentHTML('afterbegin', `<p class="hint">已保存 ${changed} 处改动。</p>`);
 };
 

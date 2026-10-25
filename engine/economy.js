@@ -257,6 +257,54 @@ export function setPrice(state, name, copper) {
   return learnPrice(state, name, copper, { force: true });
 }
 
+/* ---------------- 活计参考价（AI 报价的依据，也可被玩家改） ---------------- */
+
+export const EARN_REF = [
+  [/跑腿|捎话|送信|传话/, 300],
+  [/打杂|帮工|做工|干一天/, 150],
+  [/带路|向导|引路/, 600],
+  [/盯梢|打听|探听|探消息/, 500],
+  [/卖消息|情报|告密/, 800],
+  [/抄写|代笔|写信|记账/, 400],
+  [/卖艺|弹唱|表演|说书/, 200],
+  [/商队|长途|远行|跨城/, 30000],
+  [/护送|押运|保镖|护卫/, 8000],
+  [/赌|押注|骰|牌局/, 1000],
+];
+
+/** 这一类活计的参考价。 */
+export function earnRef(label) {
+  const s = String(label || '');
+  const hit = EARN_REF.find(([re]) => re.test(s));
+  return hit ? hit[1] : 300;
+}
+
+/** 把 AI 报的价夹在参考价的 0.4–3 倍之内。 */
+export function earnAmount(state, label, copper) {
+  const ref = earnRef(label);
+  const lo = Math.max(1, Math.round(ref * 0.4));
+  const hi = Math.max(lo + 1, Math.round(ref * 3));
+  const v = Math.round(Number(copper) || 0);
+  if (v <= 0) return { copper: ref, ref, clamped: false };
+  const fixed = Math.min(hi, Math.max(lo, v));
+  return { copper: fixed, ref, clamped: fixed !== v };
+}
+
+/** 记下这类活计的价（存档内，之后都按这个来）。 */
+export function learnRate(state, label, copper, { force = false } = {}) {
+  const key = String(label || '').trim().slice(0, 24);
+  const v = Math.round(Number(copper));
+  if (!key || !Number.isFinite(v) || v < PRICE_MIN || v > PRICE_MAX) return false;
+  if (!state.rates || typeof state.rates !== 'object') state.rates = {};
+  if (state.rates[key] && !force) return false;
+  state.rates[key] = v;
+  return true;
+}
+
+export function rateOf(state, label) {
+  return Math.round(Number(state?.rates?.[String(label || '').trim()]) || 0);
+}
+
 export function priceText(state, name) {
   const p = priceOf(state, name);
   return { ...p, saved: Boolean(state?.prices?.[String(name || '').trim()]) };

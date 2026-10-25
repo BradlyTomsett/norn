@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { learnPrice, priceOf, rollBounty, sellOf } from './economy.js';
+import { earnAmount, learnPrice, learnRate, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -189,18 +189,24 @@ function settleBounty(state, bounty, rng, judged, rejected) {
   }
 }
 
-/* 非战斗的一次性收入：跑腿、送信、护送、卖消息。金额由引擎按当地工钱折算。 */
-const EARN_DAYS = { tip: 1, job: 10, contract: 40, windfall: 150 };
-const EARN_BASE = 150; // 铜/天，按一个熟练工算
-
+/* 非战斗的一次性收入：跑腿、送信、护送、卖消息。
+   第一次按参考价 + 模型的报价定下来，之后同类活计都按存档里的价。 */
 function settleEarn(state, earn, rng) {
   for (const e of toList(earn).slice(0, 2)) {
-    const scale = String(e?.scale || 'job').trim();
-    const days = EARN_DAYS[scale] ?? EARN_DAYS.job;
-    const priceIndex = Number(state?.world?.priceIndex) || 1;
-    const pay = Math.max(1, Math.round(EARN_BASE * days * priceIndex * (0.85 + rng() * 0.3)));
+    const label = String(e?.label || '帮工').trim().slice(0, 24);
+    if (!label) continue;
+    const stored = rateOf(state, label);
+    let pay;
+    if (stored > 0) {
+      pay = stored; // 以前定过，就按老价
+    } else {
+      const priceIndex = Number(state?.world?.priceIndex) || 1;
+      const quoted = earnAmount(state, label, e?.copper ?? e?.amount).copper;
+      pay = Math.max(1, Math.round(quoted * priceIndex));
+      learnRate(state, label, pay);
+    }
     addCopper(state, e?.account || 'cash', pay);
-    logLedger(state, `进账：${String(e?.label || '帮工').slice(0, 24)}，${copperText(pay)}`);
+    logLedger(state, `进账：${label}，${copperText(pay)}`);
   }
 }
 
@@ -611,6 +617,7 @@ export function uiState(state) {
       bag: bagOf(state),
       contract: p.contract || null,
       prices: state.prices || {},
+      rates: state.rates || {},
       work: (() => {
         const w = ensureWork(state);
         const text =

@@ -258,9 +258,14 @@ try {
   // --- 非战斗进账 ---
   const s23 = fresh();
   const c23 = s23.player.accounts.find((a) => a.id === 'cash').copper;
-  applyDelta(s23, { earn: { label: '替粮行送信', scale: 'job' } }, makeRng(9), { judged: null });
-  const gain23 = s23.player.accounts.find((a) => a.id === 'cash').copper - c23;
-  ok('earn 按 10 天工钱进账', gain23 >= 1200 && gain23 <= 1800, String(gain23));
+  applyDelta(s23, { earn: { label: '替粮行送信', copper: 300 } }, makeRng(9), { judged: null });
+  eq('earn 按报价进账', s23.player.accounts.find((a) => a.id === 'cash').copper - c23, 300);
+  eq('同类活计的价记进存档', s23.rates['替粮行送信'], 300);
+  const c23b = s23.player.accounts.find((a) => a.id === 'cash').copper;
+  applyDelta(s23, { earn: { label: '替粮行送信', copper: 9999 } }, makeRng(10), { judged: null });
+  eq('第二次仍按存档价', s23.player.accounts.find((a) => a.id === 'cash').copper - c23b, 300);
+  applyDelta(s23, { earn: { label: '护送商队到临河', copper: 999999 } }, makeRng(11), { judged: null });
+  ok('离谱报价会被夹住', s23.rates['护送商队到临河'] <= 90000, String(s23.rates['护送商队到临河']));
 
   // --- 借钱默认月息 1% ---
   const s24 = fresh();
