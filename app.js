@@ -783,8 +783,8 @@ async function send() {
     const parsed = splitDelta(raw);
     let rawText = parsed.text;
     let delta = parsed.delta;
-    // 没有增量块时补一次「只输出 JSON」的短请求，救回钱与关系结算
-    if (!delta) {
+    // 没有增量块时补「只输出 JSON」的短请求；一次不行再试一次
+    for (let attempt = 0; !delta && attempt < 2; attempt += 1) {
       delta = await recoverDelta(raw);
       if (delta) rawText = splitDelta(raw).text;
     }
