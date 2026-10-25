@@ -341,12 +341,10 @@ try {
   // --- economy.js 已钉死的价，不许再生成存档条目 ---
   const s34 = fresh();
   ok('牛皮在 economy.js 里有固定价', fixedPriceOf('牛皮（张）') > 0, String(fixedPriceOf('牛皮（张）')));
-  ok('固定价的不会写进存档表', learnPrice(s34, '牛皮（张）', 12) === false);
-  s34.prices = { '牛皮（张）': 12, '刻纹银匕首': 1200 };
-  ensurePriceTable(s34);
-  ok('打开存档时清掉固定价条目', s34.prices['牛皮（张）'] === undefined && s34.prices['刻纹银匕首'] === 1200);
-  eq('固定价以 economy.js 为准', priceOf(s34, '牛皮（张）').unit, 60);
-  ok('默认表里不再有固定价条目', !Object.keys(DEFAULT_PRICES).some((k) => fixedPriceOf(k) > 0), Object.keys(DEFAULT_PRICES).filter((k) => fixedPriceOf(k) > 0).join(','));
+  ok('AI 不能自动生成固定价条目', learnPrice(s34, '牛皮（张）', 12) === false);
+  eq('没被覆盖时用自带价', priceOf(s34, '牛皮（张）').unit, 60);
+  ok('玩家手动改可以覆盖', setPrice(s34, '牛皮（张）', 12) === true && priceOf(s34, '牛皮（张）').unit === 12);
+  ok('默认表里不含固定价条目', !Object.keys(DEFAULT_PRICES).some((k) => fixedPriceOf(k) > 0), Object.keys(DEFAULT_PRICES).filter((k) => fixedPriceOf(k) > 0).join(','));
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';

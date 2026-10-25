@@ -104,10 +104,6 @@ export function ensurePriceTable(state) {
   if (!state.prices || typeof state.prices !== 'object') return;
   if (!state.rates || typeof state.rates !== 'object') state.rates = {};
   for (const [name, v] of Object.entries(state.prices)) {
-    if (fixedPriceOf(name)) {
-      delete state.prices[name]; // economy.js 里已有的固定价，不重复存
-      continue;
-    }
     if (!isService(name)) continue;
     if (!state.rates[name]) {
       // 一件跑腿记成几十金显然是模型写错了，落回参考价

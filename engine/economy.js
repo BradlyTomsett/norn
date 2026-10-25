@@ -218,7 +218,7 @@ export function priceOf(state, name, opts = {}) {
   const priceIndex = Number(state?.world?.priceIndex) || 1;
 
   // 存档里的自定价（AI 生成或玩家改过）优先，认名字；可以是固定价也可以是范围
-  const saved = fixedPriceOf(key) ? 0 : priceEntryValue(state?.prices?.[key]);
+  const saved = priceEntryValue(state?.prices?.[key]);
   if (saved > 0) {
     return { cat, unit: saved, total: saved * qty, grade, noBag: NO_BAG.has(cat), custom: true, source: 'saved' };
   }
@@ -285,10 +285,11 @@ export function priceEntryText(entry) {
 
 /** 把一件东西的价格记进存档（已有就不覆盖，除非 force）。 */
 export function learnPrice(state, name, copper, { force = false } = {}) {
-  if (fixedPriceOf(name)) return false; // economy.js 已钉死的价，存档表不重复记
+  // 已固定价的条目：AI 不许自动生成；玩家手动改（force）可以覆盖
   const key = String(name || '').trim().slice(0, 40);
   const v = Math.round(Number(copper));
   if (!key || !Number.isFinite(v) || v < PRICE_MIN || v > PRICE_MAX) return false;
+  if (fixedPriceOf(key) && !force) return false;
   if (!state.prices || typeof state.prices !== 'object') state.prices = {};
   if (state.prices[key] && !force) return false;
   state.prices[key] = v;
