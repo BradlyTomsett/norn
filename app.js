@@ -68,6 +68,7 @@ const RUNTIME = `
     "use":[{"name":"金疮药","qty":1}]                    喝药/用道具：数量从【随身货物】里扣，扣完就没有了
     "profession":{"name":"铁匠学徒","state":"apprentice"} 转职业（state：none / apprentice / journeyman / master / guildmaster）
     "money":{"transfer":[{"from":"home","to":"cash","copper":50000}]}  账户之间调度
+    "time":{"minutes":1440}                              这一回合过去了多久：几分钟=即时；一天=1440；一周=10080；一月=43200（引擎按这个推进日历，月钱/产业/生活开销都要它）
     **只有 prices 和 earn 可以写金额**，其余一律不要写价钱、也不要写余额：买东西的价格由引擎算，只有价目表里没有的东西才用 prices 报价；活计收入用 earn 报价。
     账户只有三个：cash（随身，在外面挣的和花的）、home（家里，家族月钱进这里）、workshop（产业，个人产业月收益进这里）。
     产业收益**不会**自动转到随身，要动用就写 transfer。家族月钱、债息、吃住开销由引擎自动结算，你不要重复记。
@@ -818,6 +819,14 @@ async function send() {
       delta = await recoverDelta(raw);
       if (delta) rawText = splitDelta(raw).text;
     }
+    // 模型说了这一段过去了多久，就按它推时间（引擎原本只按动作估半小时，
+    // 导致月钱、产业、生活开销几个月都不结算）
+    const modelMinutes = Math.round(Number(delta?.time?.minutes) || 0);
+    if (modelMinutes > (judged.minutes || 0)) {
+      const extra = Math.min(60 * 24 * 45, modelMinutes) - (judged.minutes || 0);
+      if (extra > 0) advanceWorld(state, extra, rng, judged);
+    }
+
     const cleanText2 =
       pruneEmpty(stripSheet(rawText)) || '（这一回合只见动作，没有留下文字。）';
     cleanText = cleanText2;
