@@ -345,6 +345,12 @@ try {
   eq('没被覆盖时用自带价', priceOf(s34, '牛皮（张）').unit, 60);
   ok('玩家手动改可以覆盖', setPrice(s34, '牛皮（张）', 12) === true && priceOf(s34, '牛皮（张）').unit === 12);
   ok('默认表里不含固定价条目', !Object.keys(DEFAULT_PRICES).some((k) => fixedPriceOf(k) > 0), Object.keys(DEFAULT_PRICES).filter((k) => fixedPriceOf(k) > 0).join(','));
+  // --- 提示词里带上自带价参考 ---
+  const s35 = fresh();
+  const blk = stateBlock(s35);
+  ok('状态块含自带固定价', blk.includes('自带固定价') && blk.includes('金疮药 5'), blk.slice(0, 120));
+  ok('状态块含类目基准', blk.includes('类目基准'));
+
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';

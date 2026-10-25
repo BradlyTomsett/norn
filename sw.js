@@ -1,6 +1,6 @@
 // 网络优先：每次先取服务器，拿到就顺手更新缓存；断网才回落到缓存。
 // 之前的缓存优先会让旧 CSS/JS 一直留在手机上——改一次代码，手机上永远看不到。
-const CACHE = 'norn-v43';
+const CACHE = 'norn-v44';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './format.js', './views.js', './llm.js', './store.js', './sync.js',
   './engine/clock.js', './engine/rng.js', './engine/money.js', './engine/economy.js', './engine/ledger.js',
   './engine/progress.js', './engine/items.js', './engine/assets.js', './engine/reputation.js',

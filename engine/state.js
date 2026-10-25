@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { earnAmount, fixedPriceOf, isService, learnPrice, learnRate, priceEntryText, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
+import { builtinReferenceText, earnAmount, fixedPriceOf, isService, learnPrice, learnRate, priceEntryText, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -609,6 +609,7 @@ export function stateBlock(state) {
   if (p.goals.length) lines.push(`【当前目标】${p.goals.join('；')}`);
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push(`【未完成】${p.unfinished.map((u) => u.text).join('；')}`);
+  lines.push(builtinReferenceText());
   const priceRows = Object.entries(state.prices || {}).slice(0, 12);
   if (priceRows.length) {
     lines.push('【物价表】（本存档自定，报价照这个来）');
