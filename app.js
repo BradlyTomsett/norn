@@ -870,8 +870,10 @@ function doTransfer() {
   if (!(raw > 0)) return say('先填个金额。', 'err');
 
   const copper = Math.round(raw * unit);
+  const fromOther = from === 'other';
+  const toOther = to === 'other';
   const acc = (state.player.accounts || []).find((a) => a.id === from || a.name === from);
-  if (!acc || acc.copper < copper) return say('那边钱不够。', 'err');
+  if (!fromOther && (!acc || acc.copper < copper)) return say('那边钱不够。', 'err');
   if (!transferCopper(state, from, to, copper)) return say('转账失败。', 'err');
 
   store.putSave(state);
@@ -879,7 +881,11 @@ function doTransfer() {
   renderSheet(app.tab);
   const after = $('#tf-msg');
   if (after) {
-    after.textContent = `已转 ${copperText(copper)}。`;
+    after.textContent = fromOther
+      ? `从「其他」转入 ${copperText(copper)}。`
+      : toOther
+        ? `转出 ${copperText(copper)} 到「其他」。`
+        : `已转 ${copperText(copper)}。`;
     after.className = 'hint ok';
   }
   if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});

@@ -6,7 +6,7 @@
 // 打开后看页面里的 PASS / FAIL 列表。
 import { generateWorld } from '../engine/worldgen.js';
 import { priceOf, sellOf, rollBounty, GRADE_MUL, setPrice } from '../engine/economy.js';
-import { addCopper, ensureAccounts, totalCopper, copperText } from '../engine/money.js';
+import { addCopper, ensureAccounts, totalCopper, copperText, transferCopper } from '../engine/money.js';
 import {
   accrueDebts,
   addDebt,
@@ -271,6 +271,16 @@ try {
   const s24 = fresh();
   applyDelta(s24, { borrow: { from: '金匠铺', copper: 100000 } }, makeRng(1), { judged: null });
   eq('默认月息 1%', s24.player.debts[0].rate, 0.01);
+  // --- 「其他」虚拟账户 ---
+  const s25 = fresh();
+  const cash25 = () => s25.player.accounts.find((a) => a.id === 'cash').copper;
+  const home25 = () => s25.player.accounts.find((a) => a.id === 'home').copper;
+  const base25 = cash25();
+  ok('转给「其他」= 少钱', transferCopper(s25, 'cash', 'other', 10000) && cash25() === base25 - 10000, String(cash25()));
+  const baseH = home25();
+  ok('从「其他」转进来 = 多钱', transferCopper(s25, 'other', 'home', 50000) && home25() === baseH + 50000);
+  ok('「其他」转「其他」无效', transferCopper(s25, 'other', 'other', 100) === false);
+  ok('钱不够时只扣到 0', transferCopper(s25, 'cash', 'other', cash25() + 999999) && cash25() === 0);
   // --- 零碎时间也能攒出一天 ---
   const s11 = fresh();
   s11.player.profession = '铁匠';

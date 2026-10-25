@@ -98,20 +98,20 @@ function viewOverview(u) {
   }
   out.push('</div>');
 
-  // 账户之间直接转账：不经过模型，点了就生效
+  // 账户之间直接转账：不经过模型，点了就生效。「其他」是外部：转出去=花掉，转进来=白得。
   const accs = p.accounts || [];
-  if (accs.length > 1) {
-    const opts = (sel) =>
+  if (accs.length >= 1) {
+    const opts = (sel, pickOther = false) =>
       accs
-        .map((a, i) => `<option value="${esc(a.id)}"${i === sel ? ' selected' : ''}>${esc(a.name)}</option>`)
-        .join('');
+        .map((a, i) => `<option value="${esc(a.id)}"${i === sel && !pickOther ? ' selected' : ''}>${esc(a.name)}</option>`)
+        .join('') + `<option value="other"${pickOther ? ' selected' : ''}>其他（外部）</option>`;
     out.push(`<div class="tf">
       <div class="tf-row"><span class="k">从</span><select id="tf-from">${opts(0)}</select>
-      <span class="k">到</span><select id="tf-to">${opts(1)}</select></div>
+      <span class="k">到</span><select id="tf-to">${opts(accs.length > 1 ? 1 : 0, accs.length === 1)}</select></div>
       <div class="tf-row"><input id="tf-amount" type="number" min="0" step="any" inputmode="decimal" placeholder="金额" />
       <select id="tf-unit"><option value="10000">金</option><option value="100">银</option><option value="1">铜</option></select>
       <button id="tf-do" class="chip">转账</button></div>
-      <div class="hint" id="tf-msg">立刻到账，不收手续费。</div>
+      <div class="hint" id="tf-msg">转到「其他」= 直接花掉；从「其他」转进来 = 直接多一笔。</div>
     </div>`);
   }
   if (p.goals?.length) {

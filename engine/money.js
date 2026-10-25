@@ -65,17 +65,47 @@ export function addCopper(state, key, deltaCopper) {
   return true;
 }
 
+/** 「其他」是虚拟账户：转出去等于花掉，转进来等于白得一笔。 */
+export const EXTERNAL = { id: 'other', name: '其他' };
+
+function syncWallet(state) {
+  const cash = state.player.accounts.find((x) => x.id === 'cash');
+  if (cash) state.player.wallet = fromCopper(cash.copper);
+}
+
 /** 账户之间调钱：立刻完成，没有运输与手续费。 */
 export function transferCopper(state, from, to, amount) {
+  const want = Math.round(Number(amount) || 0);
+  if (want <= 0 || from === to) return false;
+
+  // 从「其他」进来：直接加钱
+  if (from === EXTERNAL.id) {
+    const b = accountOf(state, to);
+    if (!b) return false;
+    b.copper += want;
+    syncWallet(state);
+    return true;
+  }
+
+  // 转去「其他」：直接少钱
+  if (to === EXTERNAL.id) {
+    const a = accountOf(state, from);
+    if (!a) return false;
+    const amt = Math.min(a.copper, want);
+    if (amt <= 0) return false;
+    a.copper -= amt;
+    syncWallet(state);
+    return true;
+  }
+
   const a = accountOf(state, from);
   const b = accountOf(state, to);
   if (!a || !b || a === b) return false;
-  const amt = Math.min(a.copper, Math.round(amount));
+  const amt = Math.min(a.copper, want);
   if (amt <= 0) return false;
   a.copper -= amt;
   b.copper += amt;
-  const cash = state.player.accounts.find((x) => x.id === 'cash');
-  state.player.wallet = fromCopper(cash.copper);
+  syncWallet(state);
   return true;
 }
 
