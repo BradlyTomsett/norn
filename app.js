@@ -711,25 +711,12 @@ function parsePriceInput(str) {
 document.addEventListener('click', (e) => {
   const save = e.target.closest('#px-save');
   const add = e.target.closest('#px-add');
-  const del = e.target.closest('.px-del');
-  if (!save && !add && !del) return;
+  if (!save && !add) return;
 
   const state = store.getSave(app.saveId);
   if (!state) return;
   state.prices ||= {};
   state.rates ||= {};
-
-  if (del) {
-    const nm = del.dataset.name;
-    const box = del.dataset.kind === 'rates' ? state.rates : state.prices;
-    if (box[nm] !== undefined) delete box[nm];
-    store.putSave(state);
-    app.ui = uiState(state);
-    renderSheet('prices');
-    const mm = document.querySelector('#px-msg');
-    if (mm) mm.textContent = '已删除：' + nm;
-    return;
-  }
 
   if (save) {
     let n = 0;

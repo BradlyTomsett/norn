@@ -411,10 +411,3 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .turn-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
 .turn-actions button { border:1px solid var(--line); border-radius:8px; padding:5px 9px; background:var(--bg2); color:var(--ink); font:inherit; }
 #turn-status { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(112px + env(safe-area-inset-bottom)); z-index:20; max-width:90vw; padding:8px 12px; background:var(--bg2); border:1px solid var(--line); border-radius:10px; font-size:12px; }
-
-/* 物价表每行的删除按钮 */
-.px-del {
-  flex: 0 0 auto; background: transparent; color: var(--red); border: 1px solid #3a241f;
-  border-radius: 9px; padding: 6px 10px; font-family: var(--serif); font-size: 12.5px;
-}
-.px-del:active { background: #2a1512; }
