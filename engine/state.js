@@ -11,7 +11,7 @@ import {
   totalCopper,
   transferCopper,
 } from './money.js';
-import { builtinReferenceText, fixedPriceOf, isService, learnPrice, learnRate, parsePriceEntry, priceEntryText, priceEntryValue, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
+import { builtinReferenceText, gamePriceEntry, isService, learnPrice, learnRate, parsePriceEntry, priceEntryText, priceEntryValue, priceOf, rateOf, rollBounty, sellOf } from './economy.js';
 import { addDebt, debtText, ensureBills, ensureDebts, ensureWork, openDebts, payDebt, workOf } from './ledger.js';
 import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
@@ -20,6 +20,7 @@ import { chronicleText } from './chronicle.js';
 import { assignState, upgradeState, absoluteDay } from './schema.js';
 import { applyStoryDelta, ensureNpcState, relevantNpcs } from './npcs.js';
 import { selectRelevant } from './memory.js';
+import { isRetiredPostalQuote } from './retired-prices.js';
 
 export {
   accountOf,
@@ -101,18 +102,19 @@ export function bagText(state) {
 
 /* ---------------- 账目日志 ---------------- */
 
-/** 老数据清洗：活计类的价从 prices 挪到 rates；离谱的数按参考价重置。 */
+/** Saved references contain supplements only; game prices are sent directly from economy.js. */
 export function ensurePriceTable(state) {
-  if (!state.prices || typeof state.prices !== 'object') return;
+  if (!state.prices || typeof state.prices !== 'object') state.prices = {};
   if (!state.rates || typeof state.rates !== 'object') state.rates = {};
   for (const [name, v] of Object.entries(state.prices)) {
+    if (gamePriceEntry(name) != null || isRetiredPostalQuote(name, v)) { delete state.prices[name]; continue; }
     if (!isService(name)) continue;
     if (!state.rates[name]) {
-      // 一件跑腿记成几十金显然是模型写错了，落回参考价
       state.rates[name] = v;
     }
     delete state.prices[name];
   }
+  for (const [name, value] of Object.entries(state.rates)) if (gamePriceEntry(name) != null || isRetiredPostalQuote(name, value)) delete state.rates[name];
 }
 export function logLedger(state, text) {
   state.ledgerLog ||= [];
@@ -145,7 +147,6 @@ function settleTrade(state, trade, rejected) {
       total = quoted; // 模型按物价表谈定的价钱
     } else {
       const p = sellOf(state, name, { qty });
-      if (p.source === 'table') learnPrice(state, name, p.unit);
       total = p.total;
     }
     addCopper(state, acc.id, total);
@@ -157,11 +158,11 @@ function settleTrade(state, trade, rejected) {
     const qty = Math.max(1, Math.round(n(it?.qty) || 1));
     if (!name) continue;
     const quoted = Math.round(n(it?.copper ?? it?.amount) || 0);
+    if (isRetiredPostalQuote(name, quoted)) { rejected.push('这条寄信金额已确认为错误，不予结算'); continue; }
     let total = quoted;
     let noBag = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade }).noBag || isService(name);
     if (total <= 0) {
       const p = priceOf(state, name, { qty, cat: it?.cat, grade: it?.grade });
-      if (p.source === 'table') learnPrice(state, name, p.unit);
       total = p.total;
       noBag = p.noBag;
     }
@@ -230,22 +231,15 @@ function settleBounty(state, bounty, rng, judged, rejected) {
   }
 }
 
-/* 非战斗的一次性收入：跑腿、送信、护送、卖消息。
-   第一次按参考价 + 模型的报价定下来，之后同类活计都按存档里的价。 */
+/* The actual quote settles this job; it does not become a permanent reference. */
 function settleEarn(state, earn, rng, rejected) {
   for (const e of toList(earn).slice(0, 2)) {
     const label = String(e?.label || '帮工').trim().slice(0, 100);
     if (!label) continue;
+    if (isRetiredPostalQuote(label, e?.copper ?? e?.amount)) { rejected.push('错误邮资不能作为报酬引用'); continue; }
     if (/赏金|委托|任务报酬|公会结/.test(label)) { rejected.push('任务报酬请用 bounty 并关联委托 id'); continue; }
-    const stored = rateOf(state, label);
-    let pay;
-    if (stored > 0) {
-      pay = stored; // 以前定过，就按老价
-    } else {
-      pay = Math.round(n(e?.copper ?? e?.amount));
-      if (pay <= 0) { rejected.push(`活计“${label}”需要谈定报酬`); continue; }
-      learnRate(state, label, pay);
-    }
+    const pay = Math.round(n(e?.copper ?? e?.amount)) || rateOf(state, label);
+    if (pay <= 0) { rejected.push(`活计“${label}”需要谈定报酬`); continue; }
     if (!addCopper(state, e?.account || 'cash', pay)) { rejected.push('活计收款账户不存在'); continue; }
     logLedger(state, `进账：${label}，${copperText(pay)}`);
   }
@@ -369,6 +363,7 @@ function settleMoneyChange(state, change, rejected) {
   for (const m of toList(change).slice(0, 8)) {
     const acc = accountOf(state, m?.account || 'cash');
     const want = Math.round(n(m?.copper ?? m?.amount));
+    if (isRetiredPostalQuote(m?.note || m?.label, Math.abs(want))) { rejected.push('这条寄信金额已确认为错误，不予结算'); continue; }
     if (!acc) { rejected.push('收支账户不存在'); continue; }
     if (!want) continue;
     if (want < 0 && acc.copper < -want) { rejected.push(`${acc.name}余额不足，需要 ${copperText(-want)}`); continue; }
@@ -434,7 +429,8 @@ function applyUnsafe(state, delta, rng, opts = {}) {
       const nm = String(pr?.name || '').trim();
       const entry = parsePriceEntry(pr?.copper ?? pr?.price);
       const v = priceEntryValue(entry);
-      if (!nm || !entry || fixedPriceOf(nm)) continue;
+      if (isRetiredPostalQuote(nm, entry)) { rejected.push('这条错误邮资已经废弃，不能恢复为参考价'); continue; }
+      if (!nm || !entry || gamePriceEntry(nm) != null) continue;
       // 送信、跑腿、护送这类是「活计」，记进 rates，不混进物品价表
       const ok = isService(nm) ? learnRate(state, nm, v) : learnPrice(state, nm, Math.min(v, 5000000));
       if (ok && typeof entry === 'object') (isService(nm) ? state.rates : state.prices)[nm] = entry;
@@ -696,11 +692,11 @@ export function stateBlock(state, query = '') {
   lines.push(builtinReferenceText());
   const priceRows = selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]);
   if (priceRows.length) {
-    lines.push('【物价表】（本存档自定，报价照这个来）');
+    lines.push('【存档物价·物品与服务】（补充游戏物价未收录的条目，供 AI 报价参考，不锁定成交金额）');
     for (const [n2, v] of priceRows) lines.push(`  · ${n2} ${priceEntryText(v)} 铜`);
   }
   const rates = selectRelevant(Object.entries(state.rates || {}), query, 12, x => x[0]);
-  if (rates.length) lines.push('【活计报酬参考】', ...rates.map(([name, v]) => `  · ${name} ${priceEntryText(v)} 铜`));
+  if (rates.length) lines.push('【存档物价·活计】（供 AI 报价参考，不锁定本次报酬）', ...rates.map(([name, v]) => `  · ${name} ${priceEntryText(v)} 铜`));
   if (state.ledgerLog?.length) {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
@@ -842,6 +838,8 @@ export function uiState(state) {
     ledgerLog: (state.ledgerLog || []).slice(-6),
     worldLog: (state.worldLog || []).slice(-8),
     storyLog: state.storyLog.slice(-10),
+    prices: state.prices || {},
+    rates: state.rates || {},
     priceIndex: state.world.priceIndex || 1,
   };
 }

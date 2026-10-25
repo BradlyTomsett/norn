@@ -1,4 +1,5 @@
 import { upgradeState, SCHEMA_VERSION } from './engine/schema.js';
+import { cleanRetiredMessages } from './engine/retired-prices.js';
 
 const IDX = 'norn.index';
 const SAVE = id => `norn.save.${id}`;
@@ -22,6 +23,7 @@ function readRecord(id) {
     messages: Array.isArray(raw.messages) ? raw.messages : parse(localStorage.getItem(MSGS(id)), []), pending: null, lastTurn: null };
 }
 function writeRecord(id, record) {
+  record.messages = cleanRetiredMessages(record.messages);
   // State, narration, checkpoint and pending status are ONE atomic storage value.
   localStorage.setItem(SAVE(id), JSON.stringify(record));
   try { localStorage.removeItem(MSGS(id)); } catch { /* Legacy duplicate cleanup is optional. */ }
@@ -39,9 +41,17 @@ export function getSave(id) {
   if (!record) return null;
   return upgradeState(record.state);
 }
-export function getMessages(id) { return readRecord(id)?.messages || []; }
-export function getPending(id) { return readRecord(id)?.pending || null; }
-export function getLastTurn(id) { return readRecord(id)?.lastTurn || null; }
+export function getMessages(id) { return cleanRetiredMessages(readRecord(id)?.messages || []); }
+export function getPending(id) {
+  const pending = readRecord(id)?.pending || null;
+  if (pending?.history) pending.history = cleanRetiredMessages(pending.history);
+  return pending;
+}
+export function getLastTurn(id) {
+  const turn = readRecord(id)?.lastTurn || null;
+  if (turn) { turn.base = upgradeState(turn.base); turn.messages = cleanRetiredMessages(turn.messages); }
+  return turn;
+}
 export function putPending(id, pending) {
   const record = readRecord(id);
   if (!record) throw new Error('找不到存档');
@@ -77,7 +87,7 @@ export function newId() {
   return 'sv_' + (globalThis.crypto?.randomUUID?.().replaceAll('-', '') || Math.random().toString(36).slice(2));
 }
 export function savePackage(state, messages = getMessages(state.saveId)) {
-  return { format: 'norn-save', schemaVersion: SCHEMA_VERSION, state: upgradeState(structuredClone(state)), messages };
+  return { format: 'norn-save', schemaVersion: SCHEMA_VERSION, state: upgradeState(structuredClone(state)), messages: cleanRetiredMessages(messages) };
 }
 export function exportSave(state) {
   const blob = new Blob([JSON.stringify(savePackage(state), null, 2)], { type: 'application/json' });
@@ -94,7 +104,7 @@ export function decodeSave(payload) {
   const messages = payload.messages || state.messages || [];
   if (!Array.isArray(messages) || messages.some(m => !['user', 'assistant', 'system'].includes(m.role) || typeof m.content !== 'string')) throw new Error('存档的对话记录无效');
   delete state.messages;
-  return { state: upgradeState(state), messages };
+  return { state: upgradeState(state), messages: cleanRetiredMessages(messages) };
 }
 export async function importSave(file) {
   const { state, messages } = decodeSave(JSON.parse(await file.text()));

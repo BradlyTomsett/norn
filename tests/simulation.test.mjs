@@ -9,12 +9,13 @@ import { ensureAccounts } from '../engine/money.js';
 import { ensureNpcState } from '../engine/npcs.js';
 import { prepareTurn, finishTurn } from '../engine/turn.js';
 import { judge, classify, isCorrection } from '../engine/resolve.js';
-import { rateOf } from '../engine/economy.js';
+import { rateOf, gamePriceEntry, DEFAULT_PRICES, DEFAULT_RATES, builtinReferenceText, earnAmount } from '../engine/economy.js';
 import { VIEWS, relationColor } from '../views.js';
 import { selectRelevant } from '../engine/memory.js';
 import { streamChat, setKey, setSessionOnly } from '../llm.js';
 import * as store from '../store.js';
 import * as sync from '../sync.js';
+import { isRetiredPostalText } from '../engine/retired-prices.js';
 
 class Storage {
   data = new Map(); fail = null;
@@ -268,4 +269,53 @@ test('借还款使用统一交易，余额不足或债权人不符时不部分�
   s.player.accounts[0].copper = 100;
   assert.equal(apply(s, { transactions: [{ id: 'poor', kind: 'repay', debtId, copper: 1000 }] }, 'repay:poor').applied, false);
   assert.equal(cash(s), 100); assert.equal(s.player.debts[0].remaining, 10000);
+});
+
+test('游戏物价直接引用且包含九项活计，不复制或覆盖到存档', () => {
+  const s = fresh(); s.prices = { ...DEFAULT_PRICES, 牛皮: 999, 墨水: { min: 20, max: 80 } };
+  s.rates = { ...DEFAULT_RATES, 配钥匙: { min: 15, max: 80 } };
+  const prompt = stateBlock(s);
+  assert.deepEqual(s.prices, { 墨水: { min: 20, max: 80 } });
+  assert.deepEqual(s.rates, { 配钥匙: { min: 15, max: 80 } });
+  const builtin = builtinReferenceText();
+  for (const [name, value] of Object.entries(DEFAULT_RATES).slice(0, 9)) {
+    assert.ok(builtin.includes(name)); assert.deepEqual(gamePriceEntry(name), value);
+  }
+  assert.equal(gamePriceEntry('送信').max, 300);
+  assert.equal(gamePriceEntry('牛皮'), 60);
+  assert.match(prompt, /【游戏物价】/); assert.match(prompt, /【存档物价·物品与服务】/);
+  const view = VIEWS.prices(uiState(s));
+  assert.match(view, /游戏物价（内置参考/); assert.match(view, /存档物价/);
+  assert.ok(!view.includes('data-name="牛皮"')); assert.ok(view.includes('data-name="墨水"'));
+});
+
+test('参考区间不变成成交价、上限或下一次活计的固定收入', () => {
+  const s = fresh(); s.rates = { '专门活计': { min: 10, max: 50 } };
+  const start = cash(s), references = JSON.stringify(s.rates);
+  assert.equal(earnAmount(s, '专门活计', 500).copper, 500);
+  apply(s, { earn: { label: '专门活计', copper: 500 } }, 'job:one');
+  assert.equal(cash(s) - start, 500); assert.equal(JSON.stringify(s.rates), references);
+  apply(s, { transactions: [{ kind: 'purchase', id: 'bread', name: '黑面包', qty: 1, copper: 3 }] }, 'trade:bread');
+  assert.equal(cash(s) - start, 497); assert.equal(s.prices?.黑面包, undefined);
+});
+
+test('撤销的错误邮资从旧存档、备份和对话清除，不能重新写入或结算', () => {
+  const s = fresh(), incorrect = 568_437;
+  s.prices = { '寄信（石桥铺至加隆城）': incorrect, '正确的封蜡': 10 };
+  s.rates = { '雇人送信': incorrect };
+  s.ledgerLog = [{ text: '买了 雇人送信×1，花 56 金 84 银 37 铜' }, { text: '合法的寄信账目，花 6 铜' }];
+  const message = { role: 'assistant', content: '信已经送到。\n寄信费用 56 金 84 银 37 铜\n其他记录保留。' };
+  const loaded = store.decodeSave({ ...s, messages: [message] });
+  assert.equal(loaded.state.prices['寄信（石桥铺至加隆城）'], undefined);
+  assert.equal(loaded.state.rates['雇人送信'], undefined);
+  assert.equal(loaded.state.prices['正确的封蜡'], 10);
+  assert.equal(loaded.state.ledgerLog.length, 1);
+  assert.ok(!isRetiredPostalText(loaded.messages[0].content)); assert.match(loaded.messages[0].content, /其他记录保留/);
+  store.putSave(loaded.state, [message]);
+  assert.ok(!isRetiredPostalText(localStorage.getItem(`norn.save.${loaded.state.saveId}`)));
+  assert.ok(!isRetiredPostalText(store.savePackage(loaded.state, [message]).messages[0].content));
+  const before = cash(loaded.state);
+  assert.equal(apply(loaded.state, { prices: [{ name: '寄信', copper: incorrect }] }, 'bad:reference').applied, false);
+  assert.equal(apply(loaded.state, { transactions: [{ id: 'bad:post', kind: 'payment', copper: incorrect, note: '寄信费用' }] }, 'bad:payment').applied, false);
+  assert.equal(cash(loaded.state), before);
 });

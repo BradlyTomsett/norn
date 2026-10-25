@@ -12,6 +12,8 @@ state.saveId = 'sv_browser_fixture'; upgradeState(state); ensureAccounts(state);
 state.clock = { year: 222, doy: 10, hour: 12, minute: 0, weather: 'clear' };
 state.player.accounts.forEach(a => a.copper = a.id === 'cash' ? 1000000 : 0);
 state.player.debts = []; state.player.equipment = ['旧传说剑（金）'];
+state.prices = { '针线包（一套）': { min: 10, max: 40 }, '墨水（一小瓶）': { min: 20, max: 80 } };
+state.rates = { '配钥匙（每把）': { min: 15, max: 80 } };
 state.npcs = state.npcs.slice(0, 3);
 for (const [i, name] of ['老杜', '薇拉', '瑟拉'].entries()) {
   state.npcs[i].name = name; state.npcs[i].profession = '冒险者';

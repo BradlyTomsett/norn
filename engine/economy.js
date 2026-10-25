@@ -1,4 +1,5 @@
-// 定价：物品价格由引擎算，模型只说"买什么、卖什么、几件"，不许写金额。
+// 游戏物价：AI 生成报价的公共参考。存档物价只补充这里未收录的条目。
+// 实际成交按 AI 与玩家谈定并提交的金额结算；以下算法用于没有报价时的兜底。
 //
 // 覆盖任意商品的办法是三层归并，而不是穷举商品表：
 //   1. 关键词归到「类目」，每个类目有一个锚定价；
@@ -9,9 +10,10 @@
 // 少数日常物价差得太远的物件（药水、战马、皮革）走 NAMED 精确价，命中就直接用，
 // 不再叠材质/品阶，避免"金疮药被当成药剂乘品阶"这种事。
 //
-// 模型可以给 cat 提示（必须命中 CATS），但不能给价。
+// 类目、材质和品阶提供估价依据，不把参考区间自动变成固定成交价。
 
 import { int } from './rng.js';
+import { isRetiredPostalQuote } from './retired-prices.js';
 
 export const GRADES = ['灰', '绿', '蓝', '紫', '金'];
 // 灰：老百姓都用；绿：普通人能见到的顶配；蓝：城主级，一个城里没几件；
@@ -217,8 +219,9 @@ export function priceOf(state, name, opts = {}) {
   const grade = detectGrade(name) || (GRADES.includes(opts.grade) ? opts.grade : '');
   const priceIndex = Number(state?.world?.priceIndex) || 1;
 
-  // 存档里的自定价（AI 生成或玩家改过）优先，认名字；可以是固定价也可以是范围
-  const saved = priceEntryValue(state?.prices?.[key]);
+  const game = gamePriceEntry(key);
+  // A save supplements game references; it never duplicates a known game entry.
+  const saved = game == null && !isRetiredPostalQuote(key, state?.prices?.[key]) ? priceEntryValue(state?.prices?.[key]) : 0;
   if (saved > 0) {
     return { cat, unit: saved, total: saved * qty, grade, noBag: NO_BAG.has(cat), custom: true, source: 'saved' };
   }
@@ -228,6 +231,10 @@ export function priceOf(state, name, opts = {}) {
     // NAMED 是作者钉死的绝对价（金疮药 5 铜就是 5 铜），不随物价指数浮动
     const unit = Math.max(1, Math.round(named));
     return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat) || NAMED_NO_BAG.has(cat), source: 'named' };
+  }
+  if (game != null) {
+    const unit = Math.max(1, Math.round(priceEntryValue(game) * priceIndex));
+    return { cat, unit, total: unit * qty, grade, noBag: NO_BAG.has(cat), source: 'game' };
   }
 
   // 品阶只用于武器与护甲（见 rules.md 第八条）；工具、首饰、奢侈品只按材质定价
@@ -285,11 +292,12 @@ export function priceEntryText(entry) {
 
 /** 把一件东西的价格记进存档（已有就不覆盖，除非 force）。 */
 export function learnPrice(state, name, copper, { force = false } = {}) {
-  // 已固定价的条目：AI 不许自动生成；玩家手动改（force）可以覆盖
+  // Public game references are shown directly, never copied into a save.
   const key = String(name || '').trim().slice(0, 40);
   const v = Math.round(Number(copper));
   if (!key || !Number.isFinite(v) || v < PRICE_MIN || v > PRICE_MAX) return false;
-  if (fixedPriceOf(key) && !force) return false;
+  if (isRetiredPostalQuote(key, v)) return false;
+  if (gamePriceEntry(key) != null) return false;
   if (!state.prices || typeof state.prices !== 'object') state.prices = {};
   if (state.prices[key] && !force) return false;
   state.prices[key] = v;
@@ -305,23 +313,21 @@ export function setPrice(state, name, copper) {
 
 /* ---------------- 给 AI 看的自带价参考 ---------------- */
 
-const BUILTIN_FIXED =
-  '小麦/大米 40｜金疮药 5｜回血药水 200｜清醒药 300｜浮水/气力/夜眼 500｜火油罐 40｜烟丸 25｜酸液瓶 80｜' +
-  '战马 80000｜骏马 25000｜驮马 6000｜耕牛/奶牛 15000｜牛犊 4000｜羊羔 300｜猪崽 150｜雏鸡 2｜' +
-  '牛皮 60｜羊皮 25｜狼皮 40｜野猪皮 60｜鹿皮 40｜熊皮 300｜虎皮 1500｜狐皮/貂皮 100｜鳄鱼皮 200';
-
 /** 引擎自带价 + 类目基准，塞进提示词让 AI 报价时有个准头。 */
 export function builtinReferenceText() {
   const cats = Object.values(CATS)
-    .map((c) => `${c.name}${c.base}`)
+    .map((c) => `${c.name} ${c.base}/${c.unit}`)
     .join(' ');
   return [
-    `【自带固定价】（铜，不随物价指数变）${BUILTIN_FIXED}`,
-    `【类目基准】（铜/单位，再乘材质与品阶）${cats}`,
+    '【游戏物价】（来自 economy.js，供 AI 生成价格参考；不重复写入存档。以下均为铜。）',
+    ...gameReferenceRows().map(row => `  · ${row.kind}：${row.name} ${priceEntryText(row.entry)} 铜`),
+    `【类目基准】（没有具体条目时估价，按所列单位，再参考材质与品阶）${cats}`,
+    `【材质倍率】${MATERIAL_MUL.map(([re, value]) => `${re.source.replaceAll('|', '/')}×${value}`).join('；')}`,
+    `【特殊名号倍率】${SPECIAL_MUL.map(([re, value]) => `${re.source.replaceAll('|', '/')}×${value}`).join('；')}`,
     `【品阶倍率】灰1 绿4 蓝82 紫1120 金21525（只作用于武器与护甲）`,
   ].join('\n');
 }
-/* ---------------- 开局面板：常见物价与活计参考（可改，可删） ---------------- */
+/* ---------------- 游戏内常见物价与活计参考：不自动复制到存档 ---------------- */
 
 export const DEFAULT_PRICES = {
   // 吃食
@@ -396,6 +402,38 @@ export const DEFAULT_RATES = {
   '看病 / 抓药': { min: 50, max: 800 },
   '喂马 / 刷马（一天）': { min: 20, max: 150 },
 };
+
+function referenceKey(name) {
+  return String(name || '').trim().replace(/\s+/g, '')
+    .replace(/[（(]([^）)]*)[）)]/g, (_, inner) => /^[灰绿蓝紫金]$/.test(inner) ? `（${inner}）` : '');
+}
+function tableReference(table, name) {
+  const key = referenceKey(name);
+  for (const [label, entry] of Object.entries(table)) {
+    const aliases = referenceKey(label).split(/[\/／]/);
+    if (referenceKey(label) === key || aliases.includes(key)) return entry;
+  }
+  return null;
+}
+/** Exact named entries and grouped aliases; broad category keywords are only estimation anchors. */
+export function gamePriceEntry(name) {
+  const named = namedPrice(String(name || ''));
+  if (named) return named;
+  const category = Object.values(CATS).find(c => referenceKey(c.name) === referenceKey(name));
+  if (category) return category.base;
+  return tableReference(DEFAULT_PRICES, name) ?? tableReference(DEFAULT_RATES, name);
+}
+export function gameReferenceRows() {
+  const rows = NAMED.map(([re, entry]) => ({ name: re.source.replaceAll('|', ' / '), entry, kind: '物品' }));
+  for (const [name, entry] of Object.entries(DEFAULT_PRICES)) {
+    if (namedPrice(name)) continue;
+    const category = Object.values(CATS).find(c => referenceKey(c.name) === referenceKey(name));
+    if (category) continue;
+    rows.push({ name, entry, kind: '物品或服务' });
+  }
+  for (const [name, entry] of Object.entries(DEFAULT_RATES)) rows.push({ name, entry, kind: '活计' });
+  return rows;
+}
 /* ---------------- 活计参考价（AI 报价的依据，也可被玩家改） ---------------- */
 
 export const EARN_REF = [
@@ -418,22 +456,21 @@ export function earnRef(label) {
   return hit ? hit[1] : 300;
 }
 
-/** 把 AI 报的价夹在参考价的 0.4–3 倍之内。 */
+/** References inform the AI; a supplied positive quote remains the agreed amount. */
 export function earnAmount(state, label, copper) {
-  const ref = earnRef(label);
-  const lo = Math.max(1, Math.round(ref * 0.4));
-  const hi = Math.max(lo + 1, Math.round(ref * 3));
+  const ref = rateOf(state, label) || earnRef(label);
   const v = Math.round(Number(copper) || 0);
   if (v <= 0) return { copper: ref, ref, clamped: false };
-  const fixed = Math.min(hi, Math.max(lo, v));
-  return { copper: fixed, ref, clamped: fixed !== v };
+  return { copper: v, ref, clamped: false };
 }
 
 /** 记下这类活计的价（存档内，之后都按这个来）。 */
 export function learnRate(state, label, copper, { force = false } = {}) {
-  const key = String(label || '').trim().slice(0, 24);
+  const key = String(label || '').trim().slice(0, 100);
   const v = Math.round(Number(copper));
   if (!key || !Number.isFinite(v) || v < PRICE_MIN || v > PRICE_MAX) return false;
+  if (isRetiredPostalQuote(key, v)) return false;
+  if (gamePriceEntry(key) != null) return false;
   if (!state.rates || typeof state.rates !== 'object') state.rates = {};
   if (state.rates[key] && !force) return false;
   state.rates[key] = v;
@@ -445,7 +482,8 @@ export const SERVICE_RE = /送信|跑腿|打杂|帮工|带路|向导|盯梢|打�
 export const isService = (name) => SERVICE_RE.test(String(name || ''));
 
 export function rateOf(state, label) {
-  return priceEntryValue(state?.rates?.[String(label || '').trim()]);
+  const saved = state?.rates?.[String(label || '').trim()];
+  return priceEntryValue(gamePriceEntry(label) ?? (isRetiredPostalQuote(label, saved) ? null : saved));
 }
 
 export function priceText(state, name) {

@@ -1,3 +1,4 @@
+import { removeRetiredPostalData } from './retired-prices.js';
 export const SCHEMA_VERSION = 2;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
@@ -9,6 +10,7 @@ export const list = (v) => v == null ? [] : Array.isArray(v) ? v : [v];
 export function upgradeState(state) {
   if (!state?.player || !state.clock) throw new Error('存档缺少人物或日历');
   const p = state.player;
+  removeRetiredPostalData(state);
   p.body = { health: bounded(p.body?.health ?? 100, 0, 100) };
   p.mind = { mood: cleanText(p.mind?.mood || '平静', 80) };
   for (const key of ['skills', 'relations', 'bag', 'equipment', 'assets', 'goals', 'problems', 'unfinished']) {

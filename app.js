@@ -9,7 +9,8 @@ import { buildPrompt } from './engine/protocol.js';
 import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 import { addItem, removeItem, gradeOfName, stripGrade, composeName, normalizeItems } from './engine/items.js';
-import { DEFAULT_PRICES, DEFAULT_RATES } from './engine/economy.js';
+import { gamePriceEntry } from './engine/economy.js';
+import { isRetiredPostalQuote } from './engine/retired-prices.js';
 import { ensureAssets } from './engine/assets.js';
 import { VIEWS } from './views.js';
 import { BUILD } from './build.js';
@@ -179,8 +180,8 @@ $('#start').onclick = () => {
   });
   state.saveId = store.newId();
   state.updatedAt = new Date().toISOString();
-  state.prices = { ...DEFAULT_PRICES };
-  state.rates = { ...DEFAULT_RATES };
+  state.prices = {};
+  state.rates = {};
   const opening = openingText(state, family, region);
   store.putSave(state, [{ role: 'assistant', content: opening }]);
 
@@ -748,6 +749,11 @@ document.addEventListener('click', (e) => {
     if (m2) m2.textContent = '名字和价格都要填（价格可写 800-1500）。';
     return;
   }
+  if (gamePriceEntry(name) != null) {
+    if (m2) m2.textContent = '该条目已有游戏物价，AI 会直接参考，无需重复加入存档。';
+    return;
+  }
+  if (isRetiredPostalQuote(name, v)) { if (m2) m2.textContent = '这条错误邮资已经废弃，不能重新加入。'; return; }
   const kind = $('#px-kind')?.value === 'rates' ? 'rates' : 'prices';
   const target = kind === 'rates' ? state.rates : state.prices;
   target[name] = v;
@@ -1143,8 +1149,8 @@ $('#cu-start').onclick = () => {
   if (origin) state.player.profession = origin;
   state.saveId = store.newId();
   state.updatedAt = new Date().toISOString();
-  if (!state.prices || !Object.keys(state.prices).length) state.prices = { ...DEFAULT_PRICES };
-  if (!state.rates || !Object.keys(state.rates).length) state.rates = { ...DEFAULT_RATES };
+  state.prices ||= {};
+  state.rates ||= {};
 
   const opening = [
     `你十二岁。家在${place}。`,

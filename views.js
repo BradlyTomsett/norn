@@ -1,6 +1,7 @@
 // 角色卡各标签页的渲染：纯字符串拼接，不碰 DOM，方便单独测试。
 import { esc } from './format.js';
 import { isConsumable } from './engine/items.js';
+import { CATS, gameReferenceRows, gamePriceEntry, priceEntryText } from './engine/economy.js';
 
 /* ---------------- 角色卡 ---------------- */
 
@@ -327,8 +328,9 @@ function viewClues(u) {
 
 // 物价表：这份存档自定，AI 报价照它来。可改、可删、可加；价格可以是固定值或范围。
 function viewPrices(u) {
-  const prices = (u && u.prices) || {};
-  const rates = (u && u.rates) || {};
+  const supplements = map => Object.fromEntries(Object.entries(map || {}).filter(([name]) => gamePriceEntry(name) == null));
+  const prices = supplements(u?.prices ?? u?.player?.prices);
+  const rates = supplements(u?.rates ?? u?.player?.rates);
   const text = (val) => {
     if (typeof val === 'object' && val) {
       const lo = val.min != null ? val.min : '';
@@ -355,10 +357,14 @@ function viewPrices(u) {
     );
   };
   const out = [
-    '<p class="hint">这份存档自己的价目，AI 报价以它为参考。固定价写数字，范围写 800-1500，只写下限写 800-，只写上限写 -1500；清空一行即删除。</p>',
+    '<p class="hint">游戏物价与存档物价都供 AI 生成价格时参考，实际成交以本次谈定金额为准。游戏已有的条目直接参考，不重复存进这份存档。</p>',
+    `<details class="game-prices"><summary>游戏物价（内置参考，点击查看）</summary><div class="price-list">${gameReferenceRows().map(row => `<div class="game-price-row"><span>${esc(row.name)}</span><span>${esc(priceEntryText(row.entry))} 铜</span></div>`).join('')}</div>
+    <h3>类目估价基准</h3><div class="price-list">${Object.values(CATS).map(row => `<div class="game-price-row"><span>${esc(row.name)} / ${esc(row.unit)}</span><span>${row.base} 铜</span></div>`).join('')}</div></details>`,
+    '<h3>存档物价</h3>',
+    '<p class="hint">只补充游戏未收录的物件与服务。数字或范围均为参考：800-1500、800-、-1500；清空一行即删除。</p>',
     '<h3>物品与服务</h3>',
     list(prices, 'prices'),
-    '<h3 style="margin-top:18px">活计收入（跑腿 / 护送 / 卖消息）</h3>',
+    '<h3 style="margin-top:18px">服务与活计参考</h3>',
     list(rates, 'rates'),
     '<div class="chips" style="margin-top:10px"><button id="px-save" class="chip">保存改动</button></div>',
     `<h3 style="margin-top:18px">新增一条</h3>

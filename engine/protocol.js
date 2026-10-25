@@ -19,7 +19,8 @@ export const RUNTIME = `【唯一机器协议：优先于世界设定和文风�
 队友分成作为同一 transactions 数组中各自的 gift，不要重复用普通 payment 扣一次。接新委托不要覆盖旧委托。
 账户为 cash/home/workshop。玩家明确分赏金120金、两人各5金、自己与第三人平分余款，应一次收入120金、支付5+5+55金，净增55金。
 物品获取与失去用 items/lose，真正收下带品阶武器护甲用 equipment；交易已经自动移动物品，不能再写 items/equipment/lose 重复移动。
-消耗用 use:[{name,qty}]，效果由代码结算。物价表没有的物品可以用 prices:[{name,copper:1200}] 或 copper:{min:800,max:1500} 补充。
+【游戏物价】来自游戏本身，不复制到存档；【存档物价】只补充游戏未收录的条目。两者都供你生成价格时参考，不是强制成交价或收入上限，须结合数量、品质、路程、风险与本次商谈给出实际金额。
+消耗用 use:[{name,qty}]，效果由代码结算。只有两套参考都未收录的新物件/服务才用 prices:[{name,copper:1200}] 或 copper:{min:800,max:1500} 补充；不要把单次交易金额、一次赏金或同类活计的不同叫法写进参考表。
 移动后必须给 location:{siteId,siteName}，siteId 同一个地方始终不变；新地方可补 regionTitle/terrain/economy/politics/risk。同行伙伴用 npcUpdates 标明 following:true，留在别处的人 following:false 并记录 location。
 新人物用 npcs:[{id,name,race,age,profession,traits,obsession}] 登记，固定 id；后续更新用 npcUpdates。
 关系用 relations:[{npcId,trust,closeness,observable}]，数字是增量，各最终值限制在−100～100；只能引用已有或本回合新登记的人物。
