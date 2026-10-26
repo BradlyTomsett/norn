@@ -1,0 +1,12 @@
+# Compatibility for repositories still publishing directly from main.
+# The supported Actions workflow publishes dist/ after all checks pass.
+exclude:
+  - tests
+  - tools
+  - docs
+  - node_modules
+  - dist
+  - package.json
+  - package-lock.json
+  - playwright.config.mjs
+  - README.md

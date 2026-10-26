@@ -11,6 +11,7 @@ test('真实IndexedDB大存档、迁移、原子失败、冲突与导入导出',
 });
 test('手机选择按钮直接执行一次，刷新后历史和回合仍在', async ({ page }) => {
   await open(page);
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '1 · 睡觉八小时', exact: true }).click();
   await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('.turn-receipt')).toHaveCount(1);
