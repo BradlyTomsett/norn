@@ -1,4 +1,5 @@
 import { removeRetiredPostalData } from './retired-prices.js';
+import { ensureAccounts } from './money.js';
 export const SCHEMA_VERSION = 3;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
@@ -34,6 +35,8 @@ export function upgradeState(state) {
   for (const key of ['bag', 'stock', 'vehicles']) for (const row of p[key] || []) row.qty = Math.max(0, Math.round(Number(row.qty) || 0));
   p.reputation ||= {};
   p.location ||= { siteId: state.world?.id || 'unknown', siteName: state.world?.name || '无名之地' };
+  // Every entry point, including the first saved turn, needs the same accounts.
+  if (!Array.isArray(p.accounts) || !p.accounts.length) ensureAccounts(state);
   state.locations ||= {};
   if (state.world?.id && !state.locations[state.world.id]) state.locations[state.world.id] = { ...state.world };
   for (const r of p.relations) upgradeRelation(r);

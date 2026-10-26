@@ -9,7 +9,7 @@ const RULES = [
   ['social', /说|问|求|谈|劝|骂|告诉|请求|商量|打招呼/],
   ['observe', /看|听|找|查|观察|留意|打听|四周|盯|窥|监视|数一数/],
   ['travel', /去|走|出发|赶路|前往|上路|回城|回家|返回/],
-  ['rest', /坐|躺|睡|歇|发呆|蹲|喘|什么也不做|等一会|吃|喝|休息/],
+  ['rest', /坐|躺|睡|歇|发呆|蹲|喘|什么也不做|等待|等到|等一会|吃|喝|休息/],
 ];
 const PROFILE = {
   rest: { label: '休息与生活', stat: 'spirit', skill: '', diff: 0, minutes: [15, 45] },
@@ -31,11 +31,31 @@ const OUTCOMES = [
 export function isCorrection(text) {
   return /^\/(纠错|纠正|重试|撤回)/.test(text) || /账.*(不对|错|乱)|钱数.*(不对|没.*增加)|没有.*(入账|新增)|光支出|重复(扣|结算)|不仅没增加|给我.*(重新|按照.*收入).*结算/.test(text);
 }
+const FUTURE = /^(?:我(?:们)?(?:打算|计划|准备)?|打算|计划|准备)?(?:明天|明日|明早|明晚|后天|下周|下个月|改天|以后|稍后|待会儿?)/;
+const SPEECH = /^(?:我(?:们)?(?:想|要)?|向[^，。；]{1,12})?(?:问|询问|请问|打听|说|告诉|聊|谈|劝|请求|商量|打招呼)/;
+
+/** Separate what is being done now from quoted speech and future plans. */
+export function currentAction(text) {
+  const raw = String(text || '');
+  const withoutQuotes = raw.replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '（引语）');
+  const active = [], future = [];
+  for (const part of withoutQuotes.split(/[，,。；;！？!?\n]+/).map(s => s.trim()).filter(Boolean)) {
+    if (FUTURE.test(part)) future.push(part);
+    else active.push(part);
+  }
+  const execution = active.join('，').replace(/不(?:要|想|打算|会)?(?:杀|砍|攻击|买|卖|交易)[^，。；,!！]*[，。；,!！]?/g, '');
+  return { text: execution, parts: execution.split('，').filter(Boolean), future };
+}
+
 export function classify(text) {
   const raw = String(text || '');
   if (isCorrection(raw) || /^\/(状态|时间|存档|整理记忆|编年)/.test(raw)) return 'meta';
-  const t = raw.replace(/不(?:要|想|打算|会)?(?:杀|砍|攻击|买|卖|交易)[^，。；,!！]*[，。；,!！]?/g, '');
-  return RULES.find(([, re]) => re.test(t))?.[0] || 'observe';
+  const action = currentAction(raw);
+  if (!action.text) return 'meta';
+  const kinds = action.parts.map(part => SPEECH.test(part) ? 'social'
+    : /^(?:我)?(?:先)?等(?:待|到|一会|\d|[一二两三四五六七八九十])/u.test(part) ? 'rest'
+      : RULES.find(([, re]) => re.test(part))?.[0]).filter(Boolean);
+  return RULES.find(([kind]) => kinds.includes(kind))?.[0] || (/^(好的?|可以|同意|答应|行|不行|不用|不了|谢谢)[。！!]?$/u.test(raw) ? 'social' : 'observe');
 }
 function numeral(s) {
   if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s);
@@ -48,12 +68,29 @@ function numeral(s) {
   }
   return total + current;
 }
-export function actionMinutes(text, kind, fallback) {
+export function actionMinutes(text, kind, fallback, clock = null) {
   if (kind === 'meta') return 0;
-  const m = String(text).match(/(\d+(?:\.\d+)?|[一二两三四五六七八九十百半]+)(?:整|个)?(分钟|小时|天|日|周|星期|个月|月|年)/);
-  if (m) return Math.max(1, Math.min(3650 * 1440, Math.round(numeral(m[1]) * ({ 分钟: 1, 小时: 60, 天: 1440, 日: 1440, 周: 10080, 星期: 10080, 个月: 43200, 月: 43200, 年: 525600 }[m[2]]))));
-  if (/睡.*(觉|夜)|睡到天亮/.test(text)) return 480;
-  if (/一整天|整日/.test(text)) return 1440;
+  const execution = currentAction(text).text;
+  const duration = /(?<number>\d+(?:\.\d+)?|[一二两三四五六七八九十百半]+)(?:整|个)?(?<halfBefore>半)?(?<unit>分钟|小时|天|日|周|星期|个月|月|年)(?<halfAfter>半)?/g;
+  for (const m of execution.matchAll(duration)) {
+    const after = execution.slice(m.index + m[0].length), before = execution.slice(0, m.index);
+    const { number, unit, halfBefore, halfAfter } = m.groups;
+    if (number === '四' && unit === '周'
+      && /(?:看看?|查看|观察|打量|环顾|环视|留意)$/.test(before)
+      && !/连续|持续|整整/.test(before) && !/^(?:时间|之久)/.test(after)) continue;
+    if (/^(?:(?:以|之)?前|之内|内|的|以来|期间)/.test(after) || /(?:过去|最近|近|此前|之前|以前|上次)\s*$/.test(before)) continue;
+    if (/^(?:以|之)?后/.test(after) && !/(?:等|睡|歇|休息|练|学习|工作|赶路|守夜)[^，]{0,8}$/.test(before)) continue;
+    return Math.max(1, Math.min(3650 * 1440, Math.round((numeral(number) + (halfBefore || halfAfter ? 0.5 : 0)) * ({ 分钟: 1, 小时: 60, 天: 1440, 日: 1440, 周: 10080, 星期: 10080, 个月: 43200, 月: 43200, 年: 525600 }[unit]))));
+  }
+  if (kind === 'rest') {
+    const morning = /睡到天亮|睡到(?:早上|清晨)|(?:睡|歇下|歇息).*(?:明早|明日早上)/.test(text);
+    if (morning && clock) {
+      const hour = /天亮|清晨/.test(text) ? 6 : 7;
+      return (hour * 60 - clock.hour * 60 - clock.minute + 1440) % 1440 || 1440;
+    }
+    if (/睡.*(觉|夜)|歇下|休息一夜/.test(execution)) return 480;
+    if (/一整天|整日/.test(execution)) return 1440;
+  }
   return fallback;
 }
 function difficultyFor(state, text, kind, fallback) {
@@ -69,7 +106,8 @@ function difficultyFor(state, text, kind, fallback) {
 }
 export function judge(state, text, rng) {
   const kind = classify(text), prof = PROFILE[kind], p = state.player;
-  const minutes = actionMinutes(text, kind, int(rng, ...prof.minutes));
+  const intent = currentAction(text);
+  const minutes = actionMinutes(text, kind, int(rng, ...prof.minutes), state.clock);
   const stat = p.stats[prof.stat] || 10;
   const skill = p.skills.find(s => s.name === prof.skill)?.level ?? Math.max(0, (stat - 10) * 0.4);
   const mods = [];
@@ -78,16 +116,16 @@ export function judge(state, text, rng) {
   if (state.clock.hour < 6 || state.clock.hour > 20) { ability -= ['observe', 'stealth'].includes(kind) ? 8 : 3; mods.push('天黑'); }
   if (['storm', 'snow'].includes(state.clock.weather)) { ability -= 5; mods.push('天气恶劣'); }
   if (p.age < 15) { ability -= 4; mods.push('年纪小'); }
-  if (/提前准备|备好|侦察过|事先查清|设好埋伏/.test(text)) { ability += 5; mods.push('准备充分'); }
-  const difficulty = difficultyFor(state, text, kind, prof.diff);
+  if (/提前准备|备好|侦察过|事先查清|设好埋伏/.test(intent.text)) { ability += 5; mods.push('准备充分'); }
+  const difficulty = difficultyFor(state, intent.text, kind, prof.diff);
   const margin = ability - difficulty, score = margin + (rng() - 0.5) * 20;
   let outcome = OUTCOMES.find(o => score >= o.min);
   if (outcome.key === 'crush' && margin < 12) outcome = OUTCOMES[1];
-  if (kind === 'rest' || kind === 'meta') outcome = OUTCOMES[2];
+  if (kind === 'rest' || kind === 'meta' || (kind === 'social' && !/说服|劝服|欺骗|威胁|撒谎|谈判|交涉|请求|劝|求/.test(intent.text))) outcome = OUTCOMES[2];
   return { kind, label: prof.label, skill: prof.skill, statName: prof.stat, stat, skillLevel: Number(skill.toFixed(1)),
     ability: Math.round(ability), difficulty: Math.round(difficulty), margin, score: Math.round(score),
-    outcome: outcome.key, outcomeCn: outcome.cn, modifiers: mods, minutes };
+    outcome: outcome.key, outcomeCn: outcome.cn, modifiers: mods, minutes, actionText: intent.text, futurePlans: intent.future };
 }
 export function judgeBrief(d) {
-  return `判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n本回合耗时：${d.minutes} 分钟（由引擎统一推进）`;
+  return `当前行动：${d.actionText || '只作计划，不执行未来行动'}\n判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n本回合耗时：${d.minutes} 分钟（由引擎统一推进）${d.futurePlans?.length ? `\n留待以后、这回合不得执行：${d.futurePlans.join('；')}` : ''}`;
 }

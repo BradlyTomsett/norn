@@ -1,5 +1,10 @@
 import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 const root = new URL('../', import.meta.url);
+// Include the application entry point; engine imports alone do not check it.
+const syntax = spawnSync(process.execPath, ['--check', fileURLToPath(new URL('app.js', root))], { encoding: 'utf8' });
+if (syntax.status !== 0) throw new Error(syntax.stderr || 'app.js syntax check failed');
 let count = 0;
 for (const name of ['engine-test', 'format-test', 'chronicle-test', 'views-test']) {
   const nodes = new Map();

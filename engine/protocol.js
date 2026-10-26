@@ -19,8 +19,10 @@ export const RUNTIME = `【唯一机器协议：优先于世界设定和文风�
 ${WESTERN_STYLE}
 人物只保留健康与文字心情，不计算疲劳、饥饿、伤病、压力、士气。健康由引擎与物品处理，禁止输出 body。
 时间由引擎统一决定，禁止输出 time；不要在叙事里额外跳过未结算的时间。
+严格执行【当前行动】，不要提前执行【留待以后】的计划。只选歇下休息时，到醒来就停，不能自动安排白天活动或跳到傍晚赴约。
 不替玩家说话、答应、付款或决定；NPC 问完就停，重要选择等玩家亲自回答。
 章节按需使用【本次行动】【生活变化】【人物关系】【当地变化】【新信息】【未完成事项】，没有内容就省略。
+不要输出【实际结算】【财务变化】【账户变化】【物品变化】或余额回执，这些只由程序生成。正文可以清楚说明本次约定的金额。
 普通对话简洁，重要场景可以详写。可给 2–4 个行动方向，不必每回合列选项。不输出角色数值表。
 钱的数量可以明确说出，所有机器金额都是正整数铜，1金=10000铜。钱没有重量、体积或运输费用。
 经济统一使用 transactions 数组，每笔有固定 id。一次业务只能记录一次，禁止同时输出 money/trade/earn/gift 等旧记账字段。
@@ -49,6 +51,7 @@ json 中不要加入未定义字段。所有变动必须有叙事和玩家行动
 export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', chronicleDue = false } = {}) {
   return [rules, worldbook, state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
     '【当前状态】', stateBlock(state, query), '【当前相关人物】', npcCards(state, query),
+    '【已有人物编号索引，仅用于识别，不得重复创建】', state.npcs.map(n => `[${n.id}] ${n.name}｜${n.age}岁｜${n.race}｜${n.profession}`).join('\n'),
     '【已确定的本回合判定】', judgeBrief(judged),
     '【本回合已结算的世界变化】', events.map(e => e.text).join('\n') || '没有新事件',
     `姓名始终为${state.player.name}。叙事体现“${judged.outcomeCn}”，耗时严格为${judged.minutes}分钟。`,

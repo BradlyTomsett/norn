@@ -4,14 +4,16 @@ import { advanceWorld, engineDelta } from './tick.js';
 import { applyDelta } from './state.js';
 import { trainSkill } from './progress.js';
 import { upgradeState } from './schema.js';
+import { resolveAction } from './actions.js';
 
-export function prepareTurn(source, text, id) {
+export function prepareTurn(source, input, id, { messages = [] } = {}) {
+  const action = resolveAction(input, messages), text = action.text;
   const base = upgradeState(structuredClone(source));
   const state = structuredClone(base);
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
   const events = advanceWorld(state, judged.minutes, rng, judged);
-  return { id, text, base, state, judged, events, rng };
+  return { id, text, input: action.input, selected: action.selected, base, state, judged, events, rng };
 }
 export function finishTurn(plan, delta) {
   const state = structuredClone(plan.state);

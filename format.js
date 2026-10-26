@@ -148,6 +148,7 @@ function matchBrace(s, start) {
 const DELTA_KEYS = [
   'money', 'trade', 'relations', 'knowledge', 'mind', 'body', 'goals', 'problems',
   'items', 'use', 'skills', 'unfinished', 'bounty', 'payDebt', 'borrow', 'gift', 'profession', 'time',
+  'transactions', 'location', 'npcs', 'npcUpdates', 'tasks', 'consequences', 'reputation',
 ];
 
 /** 从文本里找最像增量的那个 JSON 对象（取最外层、命中字段最多的）。 */

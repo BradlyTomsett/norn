@@ -6,6 +6,7 @@ import { uiState } from '../engine/state.js';
 import * as store from '../store.js';
 import { setKey } from '../llm.js';
 localStorage.clear(); sessionStorage.clear();
+const scenario = new URLSearchParams(location.search).get('scenario');
 setKey('fixture-key-no-network');
 const { state } = generateWorld({ regionId: 'greywater', seed: 77, playerName: '测试旅人' });
 state.saveId = 'sv_browser_fixture'; upgradeState(state); ensureAccounts(state);
@@ -21,17 +22,17 @@ for (const [i, name] of ['老杜', '薇拉', '瑟拉'].entries()) {
 }
 state.player.relations = state.player.relations.slice(0, 3);
 state.player.contracts = [{ id: 'nightcart', label: '柳洼夜车调查', copper: 1200000, status: 'active', tier: 3 }];
-store.putSave(state, [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。' }]);
+if (scenario !== 'empty') store.putSave(state, [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。\n【你现在可以做什么】\n① 睡觉八小时\n② 领取赏金并按约定分钱' }]);
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
-for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误']]) {
+for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复']]) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => { mode = value; }; controls.append(b);
 }
 const hide = document.createElement('button'); hide.textContent = '隐藏测试工具'; hide.onclick = () => { controls.hidden = true; }; controls.append(hide);
 const monitor = document.createElement('pre'); monitor.id = 'fixture-monitor'; controls.append(monitor); document.body.append(controls);
 const refresh = () => {
-  const s = store.getSave(state.saveId); if (!s) return;
+  const active = store.listSaves()[0]; const s = active && store.getSave(active.id); if (!s) return;
   monitor.textContent = `测试模式：${mode}\n回合：${s.turn}\n随身：${s.player.accounts[0].copper} 铜\n待提交：${store.getPending(s.saveId) ? '有' : '无'}\n地点：${s.player.location.siteName}\n后果：${s.consequences.map(e => e.status).join(',')}`;
 };
 setInterval(refresh, 200); refresh();
@@ -41,6 +42,7 @@ window.fetch = async (url, options = {}) => {
   if (!String(url).startsWith('https://api.deepseek.com')) return original(url, options);
   const request = JSON.parse(options.body), system = request.messages[0].content;
   const input = request.messages.at(-1).content;
+  const repairing = system.includes('你现在只修复变化数据');
   let delta = {}, text = '【本次行动】\n你等了一阵，街上的人继续忙着各自的事。';
   if (/领取|赏金|分钱/.test(input)) {
     delta = { transactions: [{ id: 'reward', kind: 'reward', contractId: 'nightcart' }], location: { siteId: 'galon', siteName: '加隆城 · 公会' } };
@@ -50,7 +52,10 @@ window.fetch = async (url, options = {}) => {
     text = '【本次行动】\n公会付清了一百二十金币，账房把收据递来。你要求的分配已交给账本核对。';
   }
   if (mode === 'invalid') delta = { transactions: [{ id: 'bad', kind: 'payment', copper: 99999999999, note: '错误金额' }] };
-  const output = `${text}\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;
+  if (mode === 'duplicate') delta = { npcs: [{ id: state.npcs[0].id, name: state.npcs[0].name, profession: '冒险者' }] };
+  if (mode === 'repair') delta = repairing ? {} : { time: { minutes: 999 } };
+  if (/睡|歇|休息/.test(input) && !repairing) text = '【生活变化】\n你在旅店休息，醒来后仍留在原处。\n【你现在可以做什么】\n① 问候老杜\n② 等一会';
+  const output = `${text}\n\n【实际结算】\n模型写的错误余额999金币，不应显示。\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;
   const frame = `data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\r\n\r\n`;
   return new Response(frame + (mode === 'disconnect' ? '' : 'data: [DONE]\r\n\r\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
 };

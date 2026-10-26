@@ -4,9 +4,12 @@ import * as sync from './sync.js';
 import { REGIONS, generateWorld, openingText } from './engine/worldgen.js';
 import { stateBlock, npcCards, uiState, transferCopper, copperText } from './engine/state.js';
 import { isCorrection } from './engine/resolve.js';
-import { prepareTurn, finishTurn } from './engine/turn.js';
+import { prepareTurn } from './engine/turn.js';
+import { extractChoices } from './engine/actions.js';
+import { settleReply } from './engine/reply.js';
 import { buildPrompt } from './engine/protocol.js';
-import { esc, format, pruneEmpty, splitDelta, stripSheet } from './format.js';
+import { esc, format, splitDelta } from './format.js';
+import { messageParts, narrationText, stripSettlement } from './messages.js';
 import { chronicleDue, mergeChronicle, parseChronicle } from './engine/chronicle.js';
 import { addItem, removeItem, gradeOfName, stripGrade, composeName, normalizeItems } from './engine/items.js';
 import { gamePriceEntry } from './engine/economy.js';
@@ -38,10 +41,24 @@ function scrollToElement(el, pad = 8) {
   logEl.scrollTop = Math.max(0, top);
 }
 
-function addMessage(role, text) {
+function renderMessageBody(el, message) {
+  const parts = messageParts(message);
+  el.innerHTML = format(parts.text);
+  if (parts.receipt) {
+    const receipt = document.createElement('section'); receipt.className = 'turn-receipt';
+    receipt.setAttribute('aria-label', '实际结算');
+    const title = document.createElement('p'); title.className = 'sec'; title.textContent = '【实际结算】'; receipt.append(title);
+    for (const line of parts.receipt.split('\n')) {
+      const row = document.createElement('p'); row.textContent = line; receipt.append(row);
+    }
+    el.append(receipt);
+  }
+}
+
+function addMessage(role, text, receipt) {
   const el = document.createElement('div');
   el.className = 'msg ' + (role === 'user' ? 'me' : role === 'error' ? 'err' : '');
-  el.innerHTML = format(text);
+  renderMessageBody(el, { role, content: text, receipt });
   logEl.appendChild(el);
   if (role !== 'assistant') scrollToEnd();
   return el;
@@ -234,7 +251,8 @@ function loadGame(id) {
   app.saveId = id;
   app.ui = uiState(state);
   app.messages = store.getMessages(id);
-  $('#wizard').classList.add('hidden');
+  for (const panel of ['#menu', '#wizard', '#custom', '#saves', '#restore', '#settings', '#sheet']) $(panel).classList.add('hidden');
+  $('#menu-load').disabled = false; $('#menu-load').style.opacity = '1';
   composerEl.classList.remove('hidden');
   logEl.innerHTML = '';
   let last = null;
@@ -245,7 +263,7 @@ function loadGame(id) {
     older.onclick = () => {
       const next = Math.max(0, start - 60), fragment = document.createDocumentFragment();
       for (const m of app.messages.slice(next, start)) {
-        const el = document.createElement('div'); el.className = 'msg ' + (m.role === 'user' ? 'me' : ''); el.innerHTML = format(m.content); fragment.append(el);
+        const el = document.createElement('div'); el.className = 'msg ' + (m.role === 'user' ? 'me' : ''); renderMessageBody(el, m); fragment.append(el);
       }
       older.after(fragment); start = next; if (!start) older.remove(); renderToc();
     };
@@ -253,7 +271,7 @@ function loadGame(id) {
   }
   for (const m of app.messages.slice(firstVisible)) {
     if (!String(m.content || '').trim()) continue; // 空的回复不渲染
-    last = addMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
+    last = addMessage(m.role === 'user' ? 'user' : 'assistant', m.content, m.receipt);
   }
   const tail = app.messages[app.messages.length - 1];
   if (tail && tail.role === 'user') {
@@ -548,13 +566,6 @@ function turnStatus(text = '') {
   const el = $('#turn-status');
   el.textContent = text; el.classList.toggle('hidden', !text);
 }
-function receiptText(receipt) {
-  const rows = [
-    ...(receipt.accounts || []).map(a => `${a.name} ${a.change >= 0 ? '+' : '−'}${copperText(Math.abs(a.change))}；余额 ${copperText(a.after)}`),
-    ...(receipt.items || []).map(i => `${i.name} ${i.change >= 0 ? '+' : '−'}${Math.abs(i.change)}`),
-  ];
-  return rows.join('\n') || '本回合没有账户或物品变化。';
-}
 function showPending() {
   const pending = store.getPending(app.saveId);
   if (!pending) { turnStatus(); return; }
@@ -571,7 +582,7 @@ function turnButtons(bubble) {
 }
 async function recoverDelta(raw, plan, error = '') {
   const system = buildSystem(plan.state, plan.judged, plan.events, { query: plan.text }) +
-    '\n你现在只修复变化数据，只输出一个 json 代码块。依据玩家原行动、当前状态与已写出的叙事，不能增加交易或重写剧情。没有证据的金额不能猜。\n验证问题：' + error;
+    '\n你现在只修复变化数据，只输出一个 json 代码块。依据玩家原行动、当前状态与已写出的叙事，不能增加、删除或改变交易金额、数量、收付款对象，也不能重写剧情。没有证据的金额不能猜。已有人物必须使用原 id 和 npcUpdates，不要重复登记或覆盖不同身份。\n验证问题：' + error;
   let out = '';
   for await (const chunk of llm.streamChat({ system, messages: [{ role: 'user', content: `原行动：${plan.text}\n待修复的本回合输出：\n${raw}` }],
     maxTokens: 3000, temperature: 0.2, signal: app.controller.signal })) out += chunk;
@@ -615,13 +626,18 @@ async function send(options = {}) {
   }
   const source = draft.baseState || current;
   const history = draft.history || store.getMessages(app.saveId);
-  const plan = prepareTurn(source, draft.text, draft.id);
+  let plan;
+  try {
+    plan = prepareTurn(source, draft.text, draft.id, { messages: history });
+    draft = { ...draft, input: draft.input || plan.input, text: plan.text };
+  } catch (error) { addMessage('error', '这次行动还没有开始：' + error.message); return; }
   try { store.putPending(app.saveId, { ...draft, raw: '' }); }
   catch { addMessage('error', '本机空间不足，无法保存待处理回合。请先导出存档或清理旧分支。'); return; }
   inputEl.value = ''; inputEl.style.height = 'auto';
   app.streaming = true; app.controller = new AbortController(); sendEl.disabled = true;
   $('#cancel-turn').classList.remove('hidden');
-  addMessage('user', draft.correction || draft.text);
+  const playerText = draft.input !== draft.text ? `${draft.input}\n${draft.text}` : draft.text;
+  addMessage('user', draft.correction || playerText);
   const bubble = addMessage('assistant', ''); bubble.classList.add('cursor'); scrollToElement(bubble);
   turnStatus('正在生成，完成验证后保存…');
   let raw = '', timer = null, lastDraftAt = Date.now();
@@ -629,20 +645,20 @@ async function send(options = {}) {
     const system = buildSystem(plan.state, plan.judged, plan.events,
       { query: draft.text, chronicleDue: chronicleDue(plan.state, draft.text) }) +
       (draft.correction ? `\n【纠正原回合】${draft.correction}\n这是原回合的替换，已经回到原结算前；只完成原行动，不额外耗时。` : '');
-    for await (const chunk of llm.streamChat({ system, messages: [...history.slice(-14).map(m => ({ role: m.role, content: m.content })),
+    for await (const chunk of llm.streamChat({ system, messages: [...history.slice(-14).map(m => ({ role: m.role, content: m.role === 'assistant' ? narrationText(m.content) : m.content })).filter(m => m.content.trim()),
       { role: 'user', content: draft.text }], signal: app.controller.signal })) {
       raw += chunk;
-      if (!timer) timer = setTimeout(() => { timer = null; bubble.innerHTML = format(raw); }, 100);
+      if (!timer) timer = setTimeout(() => { timer = null; bubble.innerHTML = format(stripSettlement(raw)); }, 100);
       if (Date.now() - lastDraftAt > 2000) { store.putPending(app.saveId, { ...draft, raw }); lastDraftAt = Date.now(); }
     }
     clearTimeout(timer); timer = null;
-    let delta = splitDelta(raw).delta;
-    if (!delta) delta = await recoverDelta(raw, plan);
-    const result = finishTurn(plan, delta);
-    const clean = pruneEmpty(stripSheet(splitDelta(raw).text)) || '这一回合的行动已经记下。';
+    const result = await settleReply(plan, raw, { repair: async (...args) => {
+      turnStatus('正在核对回复，完成后保存…'); return recoverDelta(...args);
+    } });
+    const clean = narrationText(raw) || '这一回合的行动已经记下。';
     mergeChronicle(result.state, parseChronicle(clean));
-    const content = `${clean}\n\n【实际结算】\n${receiptText(result.receipt)}`;
-    const messages = [...history, { role: 'user', content: draft.text + (draft.correction ? `\n（本回合纠正：${draft.correction}）` : '') }, { role: 'assistant', content, turnId: draft.id }];
+    const messages = [...history, { role: 'user', content: playerText + (draft.correction ? `\n（本回合纠正：${draft.correction}）` : '') },
+      { role: 'assistant', content: clean, turnId: draft.id, receipt: result.receipt, choices: extractChoices(clean) }];
     result.state.saveId = app.saveId;
     store.putSave(result.state, messages, { expectedRevision: draft.baseRevision, pending: null,
       lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt } });
@@ -657,7 +673,7 @@ async function send(options = {}) {
   } catch (error) {
     clearTimeout(timer);
     try { store.putPending(app.saveId, { ...draft, raw }); } catch { /* The original committed save is still intact. */ }
-    bubble.innerHTML = format(raw ? pruneEmpty(stripSheet(splitDelta(raw).text)) : '');
+    bubble.innerHTML = format(raw ? narrationText(raw) : '');
     bubble.classList.remove('cursor');
     addMessage('error', '本回合尚未提交：' + (app.controller.signal.aborted ? '生成已停止' : error.message));
     showPending();
@@ -671,7 +687,7 @@ async function send(options = {}) {
 }
 $('#cancel-turn').onclick = () => app.controller?.abort();
 
-sendEl.onclick = send;
+sendEl.onclick = () => send();
 // 输入框里回车只换行，不发送；发送只认「说」按钮。
 inputEl.addEventListener('input', () => {
   inputEl.style.height = 'auto';
@@ -1087,15 +1103,16 @@ function showMenu() {
   }
   const has = store.listSaves().length > 0;
   const btn = $('#menu-load');
-  btn.disabled = !has;
-  btn.style.opacity = has ? '1' : '.4';
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.querySelector('b').textContent = has ? '载入存档' : '导入存档';
+  btn.querySelector('span').textContent = has ? '接着之前那一局玩' : '从备份文件或云端接着玩';
   const b = $('#build');
   if (b) b.textContent = '版本 ' + BUILD + ' · 存档在 GitHub 备份过就不用怕清缓存';
   $('#menu').classList.remove('hidden');
 }
 
 $('#menu-load').onclick = () => {
-  if (!store.listSaves().length) return alert('还没有存档。');
   renderSaves();
   updateGhStatus();
   $('#menu').classList.add('hidden');
