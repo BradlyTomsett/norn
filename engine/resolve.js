@@ -1,9 +1,11 @@
 import { int } from './rng.js';
 import { actionAbilities, abilityBrief } from './abilities.js';
+import { actionSkill, fixedSkills } from './skills.js';
 
 const RULES = [
+  ['craft', /维修|修理|修复|制作|打造|锻造|打铁|炼制|制药|配药|配制|调制|烹饪|做饭/],
   ['labor', /打水|打饭|打酒|打柴|打扫|劈柴|挑水|喂|搬|挖|帮工|收拾|修屋|种田/],
-  ['combat', /攻击|砍|刺杀|刺向|刺一|刺深|揍|搏斗|动手|打他|打人|打死|打起来|拔刀|拔剑|杀|抵挡|挡住|防御|招架|格挡|射击|射箭|投掷|掷出|投出|扔出|制伏|制服|擒住|擒拿|抓住|逮捕|控制住|掷(?:飞刀|飞斧|标枪|飞镖)|投(?:矛|枪)|射(?:出|向|一箭)/],
+  ['combat', /攻击|砍|刺杀|刺向|刺一|刺深|揍|搏斗|动手|打他|打人|打死|打起来|拔刀|拔剑|杀|抵挡|挡住|防御|招架|格挡|射击|射箭|投掷|掷出|投出|扔出|制伏|制服|擒住|擒拿|抓住|逮捕|控制住|施法|念咒|施展.*(?:法术|魔法)|释放.*(?:法术|魔法|火球|冰箭)|掷(?:飞刀|飞斧|标枪|飞镖)|投(?:矛|枪)|射(?:出|向|一箭)/],
   ['stealth', /悄悄|偷偷|溜|躲|潜行|摸过去|不让人看见/],
   ['trade', /买|卖|交易|换钱|讲价|讨价|付钱|赊|转账|还钱|借钱|打赏|给.{0,12}[金银铜](?:币)?|赠款|送钱/],
   ['study', /学|读|练|背书|请教|研究|琢磨/],
@@ -14,14 +16,15 @@ const RULES = [
 ];
 const PROFILE = {
   rest: { label: '休息与生活', stat: 'spirit', skill: '', diff: 0, minutes: [15, 45] },
-  labor: { label: '体力活', stat: 'body', skill: '干杂活', diff: 22, minutes: [30, 90] },
+  labor: { label: '体力活', stat: 'body', skill: '机械', diff: 22, minutes: [30, 90] },
+  craft: { label: '制作与修理', stat: 'wisdom', skill: '机械', diff: 28, minutes: [30, 90] },
   combat: { label: '动手', stat: 'body', skill: '武技', diff: 40, minutes: [5, 20] },
-  stealth: { label: '暗中行事', stat: 'agility', skill: '潜行', diff: 32, minutes: [10, 30] },
+  stealth: { label: '暗中行事', stat: 'agility', skill: '察觉', diff: 32, minutes: [10, 30] },
   trade: { label: '交易', stat: 'wisdom', skill: '交涉', diff: 26, minutes: [10, 30] },
   social: { label: '说话', stat: 'wisdom', skill: '交涉', diff: 28, minutes: [10, 30] },
-  study: { label: '学习', stat: 'wisdom', skill: '识字', diff: 28, minutes: [60, 180] },
+  study: { label: '学习', stat: 'wisdom', skill: '察觉', diff: 28, minutes: [60, 180] },
   observe: { label: '观察', stat: 'wisdom', skill: '察觉', diff: 24, minutes: [10, 20] },
-  travel: { label: '赶路', stat: 'body', skill: '识路', diff: 24, minutes: [120, 480] },
+  travel: { label: '赶路', stat: 'body', skill: '察觉', diff: 24, minutes: [120, 480] },
   meta: { label: '查看与纠错', stat: 'wisdom', skill: '', diff: 0, minutes: [0, 0] },
 };
 const OUTCOMES = [
@@ -54,7 +57,7 @@ export function classify(text) {
   const action = currentAction(raw);
   if (!action.text) return 'meta';
   const kinds = action.parts.map(classifyPart);
-  if (kinds.includes('rest') && !kinds.some(k => ['combat', 'stealth', 'labor', 'study', 'trade'].includes(k))
+  if (kinds.includes('rest') && !kinds.some(k => ['combat', 'stealth', 'labor', 'craft', 'study', 'trade'].includes(k))
     && action.parts.some(p => /睡|歇下|休息一夜/.test(p))) return 'rest';
   return RULES.find(([kind]) => kinds.includes(kind))?.[0] || (/^(好的?|可以|同意|答应|行|不行|不用|不了|谢谢)[。！!]?$/u.test(raw) ? 'social' : 'observe');
 }
@@ -62,6 +65,7 @@ function classifyPart(part) {
   if (/^(?:散了|好了|就这样|行了|好吧)$/.test(part)) return 'meta';
   if (/^(?:早安|晚安|你好|谢谢|好的?|可以|同意|行|不行|不用|不了)$/.test(part)) return 'social';
   if (SPEECH.test(part)) return 'social';
+  if (/^(?:我)?(?:先)?(?:学习|练习|练|研究|阅读|读书|请教)/.test(part)) return 'study';
   if (/^(?:我)?(?:先)?等(?:待|到|一会|\d|[一二两三四五六七八九十])/u.test(part)) return 'rest';
   if (/^(?:我)?(?:先)?(?:去|走到|走向|前往|返回|回到|回屋|出门|赶往|到).+/.test(part)
     && !/攻击|制伏|制服|抓住|买|卖|学习|练习|睡|歇下/.test(part)) return 'travel';
@@ -75,15 +79,6 @@ export function travelScope(state, text) {
   const place = Object.values(state?.locations || {}).find(p => text.includes(p.name) && p.id !== state.player.location.siteId);
   if (place?.travelMinutes > 0) return 'route';
   return 'city';
-}
-function studySkill(state, text, weapon) {
-  if (weapon && /剑|刀|枪|矛|弓|斧|锤|武器|武技|格斗|练武/.test(text)) return '武技';
-  const subjects = [[/炼金|药剂|制药/, ['炼金', '炼金术', '药材']], [/药材|草药|辨药/, ['药材']],
-    [/锻造|打铁/, ['锻造']], [/烹饪|做饭/, ['烹饪']], [/符文/, ['符文']], [/法术|魔法|施法/, ['魔法']]];
-  const known = state.player.skills.find(s => s.name !== '识字' && text.includes(s.name));
-  if (known) return known.name;
-  const choices = subjects.find(([re]) => re.test(text))?.[1];
-  return choices ? choices.find(name => state.player.skills.some(s => s.name === name)) || choices[0] : '识字';
 }
 export function actionSchedule(state, text, rng) {
   if (classify(text) === 'meta') return [];
@@ -155,11 +150,11 @@ export function judge(state, text, rng) {
   const effects = actionAbilities(state, intent.text, kind);
   const segments = actionSchedule(state, text, rng), minutes = segments.reduce((sum, s) => sum + s.minutes, 0);
   const mainText = segments.filter(s => s.kind === kind).map(s => s.text).join('，') || intent.text;
-  const skillName = kind === 'study' ? studySkill(state, mainText, effects.weapon) : prof.skill;
+  const skillName = actionSkill(kind, mainText), skills = fixedSkills(p.skills);
   const weaponStudy = skillName === '武技' && kind === 'study';
-  const statName = weaponStudy ? 'body' : prof.stat;
+  const statName = weaponStudy ? 'body' : skillName === '魔法' ? 'spirit' : prof.stat;
   const stat = p.stats[statName] || 10;
-  const skill = p.skills.find(s => s.name === skillName)?.level ?? Math.max(0, (stat - 10) * 0.4);
+  const skill = skills.find(s => s.name === skillName)?.level || 0;
   const mods = [];
   let ability = 15 + stat * 0.8 + skill * 1.5;
   ability += effects.weaponBonus + effects.masteryBonus + effects.strengthBonus;
@@ -184,10 +179,10 @@ export function judge(state, text, rng) {
   if (outcome.key === 'crush' && margin < 12) outcome = OUTCOMES[1];
   if (kind === 'rest' || kind === 'meta' || (kind === 'social' && !/说服|劝服|欺骗|威胁|撒谎|谈判|交涉|请求|劝|求/.test(intent.text))) outcome = OUTCOMES[2];
   for (const segment of segments) {
-    const context = actionAbilities(state, segment.text, segment.kind), profile = PROFILE[segment.kind];
-    segment.skill = segment.kind === 'study' ? studySkill(state, segment.text, context.weapon) : profile.skill;
-    const attribute = segment.kind === 'study' && segment.skill === '武技' ? 'body' : profile.stat;
-    const level = p.skills.find(s => s.name === segment.skill)?.level || 0;
+    const profile = PROFILE[segment.kind];
+    segment.skill = actionSkill(segment.kind, segment.text);
+    const attribute = segment.kind === 'study' && segment.skill === '武技' ? 'body' : segment.skill === '魔法' ? 'spirit' : profile.stat;
+    const level = skills.find(s => s.name === segment.skill)?.level || 0;
     segment.margin = 15 + (p.stats[attribute] || 10) * 0.8 + level * 1.5 - profile.diff;
   }
   return { kind, label: prof.label, skill: skillName, statName, stat, skillLevel: Number(skill.toFixed(1)), effects,

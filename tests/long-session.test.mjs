@@ -42,15 +42,15 @@ test('有明确条件的事项自动完成，截止日过后归档，旧事项�
   assert.ok(s.player.unfinished.some(t => t.text === '旧承诺要核对'));
 });
 
-test('历史中已定的三夜班次自动完成，不会完成三夜守夜委托或移动账目时间', () => {
+test('排班和盯窗小步骤收起，不会完成三夜守夜委托或移动账目时间', () => {
   const s = fresh(); s.player.unfinished = [{ id: 'roster', text: '定下三夜守夜的班次，谁头半夜谁后半夜' }, { id: 'clue', text: '守夜时盯账房小窗，查清谁进出' }];
   s.player.contracts = [{ id: 'warehouse', label: '北仓清点', status: 'active', copper: 2400000 }];
   const before = JSON.stringify([s.player.accounts, s.clock, s.turn, s.player.contracts]);
   const history = [{ role: 'assistant', content: '三夜守夜怎么排班，还没定。\n【你现在可以做什么】\n② 当场把三夜的班排出来' },
     { role: 'assistant', content: '三夜的班定下来了：头两夜你带塔姆守头半夜，老杜带凯尔守后半夜，第三夜对调。' }];
   assert.equal(maintainTasks(s, history), true);
-  assert.deepEqual(s.player.unfinished.map(t => t.id), ['clue']);
-  assert.equal(s.player.taskHistory[0].status, 'completed'); assert.match(s.player.taskHistory[0].evidence.quote, /定下来了/);
+  assert.deepEqual(s.player.unfinished, []);
+  assert.ok(s.player.taskHistory.every(t => t.status === 'archived')); assert.equal(s.player.taskHistory.length, 2);
   assert.equal(JSON.stringify([s.player.accounts, s.clock, s.turn, s.player.contracts]), before);
   assert.equal(maintainTasks(s, history), false);
 });
@@ -58,7 +58,8 @@ test('历史中已定的三夜班次自动完成，不会完成三夜守夜委�
 test('未定、建议、选项、待办和不相关排班均不能冒充已完成证据', () => {
   for (const content of ['三夜的班还没排好。', '三夜的班已经准备排好了。', '建议三夜的班排好了再出发。', '商队的轮班已经排好。', '【未完成事项】\n三夜的班排好了再出发。', '【你现在可以做什么】\n② 把三夜的班排好了再走']) {
     const s = fresh(); s.player.unfinished = [{ id: 'roster', text: '定下三夜守夜的班次' }];
-    maintainTasks(s, [{ role: 'assistant', content }]); assert.equal(s.player.unfinished.length, 1, content);
+    maintainTasks(s, [{ role: 'assistant', content }]); assert.equal(s.player.unfinished.length, 0, content);
+    assert.equal(s.player.taskHistory[0].status, 'archived'); assert.equal(s.player.taskHistory[0].evidence, undefined);
   }
 });
 

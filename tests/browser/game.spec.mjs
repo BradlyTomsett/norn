@@ -87,7 +87,7 @@ test('当前委托移到状态事项，旧事项自动完成与精简，待领�
   await expect(page.locator('#task-maintenance-status')).toContainText('事项已自动整理');
   await expect(page.locator('#current-contracts')).toContainText('北仓清点'); await expect(page.locator('#current-contracts')).not.toContainText('西门仓库调查');
   await expect(page.locator('#unpaid-contracts')).toContainText('西门仓库调查');
-  await expect(page.locator('#active-tasks .task-entry')).toHaveCount(1); await expect(page.locator('#active-tasks')).toContainText('明晚日落');
+  await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0); await expect(page.locator('#active-tasks')).not.toContainText('明晚日落');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：0'); await expect(page.locator('#fixture-monitor')).toContainText('随身：1000000 铜');
   const contract = page.locator('[data-contract-id="warehouse"]'); await contract.locator('summary').click();
   await contract.getByRole('spinbutton').fill('2500000'); await contract.getByRole('button', { name: '保存酬劳', exact: true }).click();
@@ -97,8 +97,27 @@ test('当前委托移到状态事项，旧事项自动完成与精简，待领�
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-reviews', '1');
   await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click(); await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
   await expect(page.locator('#task-maintenance-status')).toContainText('事项已自动整理');
-  await expect(page.locator('#active-tasks .task-entry')).toHaveCount(1); await expect(page.locator('#current-contracts')).toContainText('250 金');
+  await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0); await expect(page.locator('#current-contracts')).toContainText('250 金');
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-reviews', /\d/);
+});
+
+test('固定六项技能含零值，旧药材保留数值，小步骤退出清单且刷新后保持', async ({ page }) => {
+  await open(page, 'skills'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  const labels = page.locator('.skill-list .lab');
+  await expect(labels).toHaveText(['武技130', '魔法0', '炼金20', '机械0', '察觉71.1', '交涉55.3']);
+  await expect(page.locator('.skill-list')).not.toContainText('药材');
+  await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
+  await expect(page.locator('#task-maintenance-status')).toContainText('事项已自动整理');
+  await expect(page.locator('#current-contracts')).toContainText('北仓清点');
+  await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0);
+  await page.locator('#cs-body summary').filter({ hasText: '历史事项' }).click();
+  await expect(page.locator('#cs-body')).toContainText('历史事项（5）');
+  await expect(page.getByRole('button', { name: '重新打开', exact: true })).toHaveCount(0);
+  await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click();
+  await expect(labels).toHaveText(['武技130', '魔法0', '炼金20', '机械0', '察觉71.1', '交涉55.3']);
+  await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
+  await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0);
 });
 test('同名人物在发请求前选身份，搜索定位完整历史', async ({ page }) => {
   await open(page, 'long'); await act(page, '问候凯尔');

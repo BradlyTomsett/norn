@@ -132,7 +132,7 @@ test('自称准备过不白加优势，有来源和适用对象的准备才生�
 });
 
 test('学习按实际技能成长，三天多于四小时，睡眠不训练八小时交涉', () => {
-  const s = fresh(); assert.equal(judge(s, '练习炼金术四小时', makeRng(1)).skill, '药材');
+  const s = fresh(); assert.equal(judge(s, '练习炼金术四小时', makeRng(1)).skill, '炼金');
   const a = structuredClone(s), b = structuredClone(s);
   trainSkill(a, judge(a, '练剑四小时', makeRng(1))); trainSkill(b, judge(b, '练剑三天', makeRng(1)));
   assert.ok(b.player.skills[0].level + b.player.skills[0].xp > a.player.skills[0].level + a.player.skills[0].xp);
