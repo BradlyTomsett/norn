@@ -40,6 +40,11 @@ if (scenario === 'long') {
   initial = [{ role: 'assistant', content: '凯尔（30岁·佣兵）约定明天在北门交付蓝色信物。', entities: { npcIds: [state.npcs[0].id] } },
     ...Array.from({ length: 1000 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `这是第${i}段日常生活记录。` + '城中的生活照常继续。'.repeat(45) })), ...initial];
 }
+if (scenario === 'tasks') {
+  state.player.contracts = [{ id: 'warehouse', label: '北仓清点', copper: 2400000, status: 'active' }, { id: 'west', label: '西门仓库调查', copper: 30000, status: 'active' }, { id: 'paid', label: '旧护送', copper: 1000, status: 'paid', paidCopper: 1000 }];
+  state.player.unfinished = [{ id: 'roster', text: '定下三夜守夜的班次，谁头半夜谁后半夜' }, { id: 'investigation', text: '查清西门仓库失窃原因' }, { id: 'promise', text: '明晚日落前后到北关第三座仓门口碰头' }, { id: 'food', text: '吃饭' }, { id: 'secret', text: '传说级天赋严格保密' }];
+  initial = [{ role: 'assistant', content: '三夜的班定下来了：头两夜你带塔姆守头半夜，老杜带凯尔守后半夜，第三夜对调。\n西门仓库失窃原因已经调查清楚，西门仓库调查已经完成，证物交给治安官。' }];
+}
 if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
 await store.initStorage();
 if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);
@@ -65,6 +70,20 @@ window.fetch = async (url, options = {}) => {
   requests++; controls.dataset.requests = requests;
   const input = request.messages.at(-1).content;
   const repairing = system.includes('你现在只修复变化数据');
+  const reviewing = system.includes('你只整理这份游戏存档的事项');
+  if (reviewing) {
+    const review = { decisions: [], contracts: [] }, payload = JSON.parse(input);
+    if (scenario === 'tasks') {
+      const source = payload.sources.find(row => row.text.includes('西门仓库失窃原因已经调查清楚'));
+      if (source) {
+        review.decisions.push({ id: 'investigation', status: 'completed', confidence: 'certain', evidenceId: source.id, quote: source.text });
+        review.contracts.push({ id: 'west', workStatus: 'completed', confidence: 'certain', evidenceId: source.id, quote: source.text });
+      }
+    }
+    controls.dataset.reviews = String(Number(controls.dataset.reviews || 0) + 1);
+    const output = '```json\n' + JSON.stringify(review) + '\n```';
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
   let delta = {}, text = '【本次行动】\n你等了一阵，街上的人继续忙着各自的事。';
   if (/领取|赏金|分钱/.test(input)) {
     delta = { transactions: [{ id: 'reward', kind: 'reward', contractId: 'nightcart' }], location: { siteId: 'galon', siteName: '加隆城 · 公会' } };

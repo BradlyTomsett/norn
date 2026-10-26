@@ -20,6 +20,7 @@ import { BUILD } from './build.js';
 import { ambiguousPeople, entityRefs } from './engine/entities.js';
 import { recallHistory } from './engine/memory.js';
 import { applyTasks } from './engine/tasks.js';
+import { maintainTasks, taskReviewKey, taskReviewInput, applyTaskReview, TASK_REVIEW_SYSTEM } from './engine/task-review.js';
 import { searchArchive } from './search.js';
 import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
@@ -382,40 +383,8 @@ function openSettings() {
   $('#set-gh-token').value = gh.token || '';
   $('#set-gh-msg').textContent = sync.ghReady() ? '已配置。' : '';
   showBuildInfo();
-  renderContract();
   $('#settings').classList.remove('hidden');
 }
-
-/** 当前委托：显示名字与酬劳，可直接改。 */
-function renderContract() {
-  const box = $('#contract-box');
-  if (!box) return;
-  const state = store.getSave(app.saveId);
-  const c = state?.player?.contract;
-  if (!c) {
-    box.innerHTML = '<p class="hint">现在手上没有接下的活。</p>';
-    return;
-  }
-  box.innerHTML =
-    `<div class="price-row"><span class="nm">${esc(c.label)}</span>` +
-    `<input id="contract-pay" type="number" min="1" step="1" inputmode="numeric" value="${Math.round(Number(c.copper) || 0)}" /></div>` +
-    `<div class="chips" style="margin-top:8px"><button id="btn-contract-save" class="chip">保存酬劳</button></div>`;
-  const btn = $('#btn-contract-save');
-  if (btn) {
-    btn.onclick = async () => {
-      const st = store.getSave(app.saveId);
-      if (!st?.player?.contract) return;
-      const v = Math.round(Number($('#contract-pay')?.value) || 0);
-      if (v <= 0) return;
-      st.player.contract.copper = v;
-      const contract = st.player.contracts.find(c => c.id === st.player.contract.id);
-      if (contract) contract.copper = v;
-      await store.putSaveAsync(st);
-      app.ui = uiState(st);
-      renderContract();
-    };
-  }
-};
 
 /** 把看得懂的关键数据拼成一段文本，方便贴给作者排查。 */
 async function buildDiagnostics() {
@@ -713,6 +682,7 @@ async function sendTurn(options = {}) {
     } });
     const clean = narrationText(result.raw) || '这一回合的行动已经记下。';
     mergeChronicle(result.state, parseChronicle(clean));
+    maintainTasks(result.state, [...history.slice(-12), { role: 'assistant', content: clean }], draft.id);
     const messages = [...history, { role: 'user', content: playerText + (draft.correction ? `\n（本回合纠正：${draft.correction}）` : '') },
       { role: 'assistant', content: clean, sourceTurn: result.state.turn, entities: entityRefs(result.state, clean + '\n' + plan.text), turnId: draft.id, receipt: result.receipt, choices: extractChoices(clean) }];
     result.state.saveId = app.saveId;
@@ -764,7 +734,58 @@ function renderSheet(tab = app.tab) {
   $('#cs-sub').textContent = `${p.age} 岁 · ${p.race} · ${p.profession}（${p.professionState}）`;
   for (const b of $('#cs-tabs').children) b.classList.toggle('active', b.dataset.tab === tab);
   $('#cs-body').innerHTML = VIEWS[tab](u);
+  if (tab === 'tasks') queueMicrotask(() => { if (!$('#sheet').classList.contains('hidden')) autoMaintainTasks(); });
 }
+
+const taskReviewFlights = new Set();
+function taskNotice(text) { const node = $('#task-maintenance-status'); if (app.tab === 'tasks' && node) node.textContent = text; }
+function refreshTasks(state, message) {
+  if (app.saveId !== state.saveId) return;
+  app.loadedRevision = state.revision; app.ui = uiState(state);
+  if (app.tab === 'tasks' && !$('#sheet').classList.contains('hidden')) { $('#cs-body').innerHTML = VIEWS.tasks(app.ui); taskNotice(message); }
+}
+async function autoMaintainTasks() {
+  const id = app.saveId;
+  if (!id || busy() || taskReviewFlights.has(id)) return;
+  if (store.getPending(id)) { taskNotice('当前回合提交后会自动整理事项。'); return; }
+  taskReviewFlights.add(id);
+  try {
+    const state = store.getSave(id), messages = store.getMessages(id);
+    if (!state) return;
+    const changed = maintainTasks(state, messages);
+    if (changed) { await store.putSaveAsync(state); refreshTasks(state, '已自动整理完成和日常事项。'); }
+    if (app.saveId !== id || busy() || store.getPending(id)) return;
+    const key = taskReviewKey(state, messages);
+    if (state.taskMaintenance?.key === key) { taskNotice('事项已自动整理。'); return; }
+    const input = taskReviewInput(state, messages);
+    if ((!input.tasks.length && !input.contracts.length) || !input.sources.length || !llm.hasKey() || busy() || app.saveId !== id) return;
+    taskNotice('正在核对历史，自动整理重要事项…');
+    let raw = '';
+    for await (const chunk of llm.streamChat({ system: TASK_REVIEW_SYSTEM,
+      messages: [{ role: 'user', content: JSON.stringify(input) }], maxTokens: 3000, temperature: 0.1, timeoutMs: 45000 })) raw += chunk;
+    if (busy() || app.saveId !== id || store.getSave(id)?.revision !== state.revision || store.getPending(id)) return;
+    const review = splitDelta(raw).delta; applyTaskReview(state, review, input.sources);
+    state.taskMaintenance = { version: 1, key: taskReviewKey(state, messages) };
+    await store.putSaveAsync(state); refreshTasks(state, '事项已自动整理。');
+    if (sync.ghReady()) sync.backupSave(state, messages).catch(() => {});
+  } catch (error) {
+    if (app.saveId === id) taskNotice('本次整理未完成，现有任务已保留；下次打开事项时再核对。');
+  } finally { taskReviewFlights.delete(id); }
+}
+
+$('#cs-body').addEventListener('click', event => {
+  const button = event.target.closest('[data-contract-save]'); if (!button || busy()) return;
+  runAction(async () => {
+    if (store.getPending(app.saveId)) { taskNotice('请先处理未提交的回合，再调整酬劳。'); return; }
+    const state = store.getSave(app.saveId), contract = state?.player.contracts.find(row => row.id === button.dataset.contractSave && row.status === 'active');
+    const input = button.closest('[data-contract-id]').querySelector('[data-contract-pay]'), amount = Number(input.value);
+    if (!contract || !Number.isSafeInteger(amount) || amount <= 0) { taskNotice('酬劳请输入正整数铜币。'); return; }
+    contract.copper = amount;
+    if (state.player.contract?.id === contract.id) state.player.contract.copper = amount;
+    await store.putSaveAsync(state); refreshTasks(state, '委托酬劳已保存。');
+    if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
+  });
+});
 
 $('#cs-body').addEventListener('click', event => {
   const button = event.target.closest('[data-task]'); if (!button || busy()) return;

@@ -1,5 +1,11 @@
 import { entityRefs, textId } from './entities.js';
 
+export function incidentalTask(task) {
+  if (task.kind === 'note' || task.category === 'note' || /天赋.{0,8}(?:保密|秘密)|严格保密|(?:这单|这趟|本次|这次).{0,8}不动刀|撞上人就抓住/.test(task.text || '')) return 'note';
+  if (task.kind === 'routine' || task.category === 'routine' || /^(?:先|去|回去|回房|现在)?(?:吃饭|喝水|喝酒|吃早饭|洗漱|洗脸|睡觉|休息一下|回房休息|问候|打招呼)(?:[，,。！!].*)?$/.test(task.text || '')) return 'routine';
+  return null;
+}
+
 const day = state => state.clock.year * 365 + state.clock.doy - 1;
 const textKey = text => String(text || '').trim().replace(/^(?:前往|去|到)/, '').replace(/[\s，,。；;、：:！？!?·]/g, '');
 const sameTask = (a, b) => {
@@ -32,10 +38,10 @@ export function upgradeTasks(state) {
   return active;
 }
 
-function closeTask(state, task, status, eventId) {
+export function closeTask(state, task, status, eventId, extra = {}) {
   state.player.unfinished = state.player.unfinished.filter(row => row.id !== task.id);
   const previous = state.player.taskHistory.find(row => row.id === task.id);
-  const closed = { ...task, status, closedDay: day(state), closedTurn: state.turn, closedBy: eventId, needsReview: false };
+  const closed = { ...task, status, closedDay: day(state), closedTurn: state.turn, closedBy: eventId, needsReview: false, ...extra };
   if (previous) Object.assign(previous, closed); else state.player.taskHistory.push(closed);
 }
 
@@ -50,12 +56,13 @@ export function applyTasks(state, changes, rejected = [], eventId = '') {
       else if (!closed) rejected.push(`找不到事项：${row.id}`);
       continue;
     }
-    if (row.status === 'active' && closed && !row.text) {
+    if (row.status === 'active' && closed && !row.text && eventId.startsWith('player:')) {
       state.player.taskHistory = state.player.taskHistory.filter(old => old !== closed);
       state.player.unfinished.push({ ...closed, status: 'active', dueDay: undefined, closedDay: undefined });
       continue;
     }
     if (closed) continue;
+    if (incidentalTask(row) || row.importance === 'minor') continue;
     if (!row.text) { if (!task) rejected.push('新事项需要内容'); continue; }
     const next = { ...task, ...row, id: task?.id || String(row.id), text: String(row.text).trim().slice(0, 500), status: 'active',
       openedDay: task?.openedDay ?? day(state), sourceTurn: task?.sourceTurn ?? state.turn,

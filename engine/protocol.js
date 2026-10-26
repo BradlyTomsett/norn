@@ -47,7 +47,8 @@ ${WESTERN_STYLE}
 人物目标用 npcUpdates:[{npcId,goals:[{id,text,action,completion,days:7,status:"active",visible:true}],memory:"会记住的互动"}]；目标有具体事情、推进动作与完成结果。仅更新发生变化的目标，完成用相同id和status:"completed"。
 持久选择后果用 consequences:[{id,cause:"玩家已做出的具体选择",text:"届时出现的结果",days:3,visible:false,effects:{relations:[{npcId,closeness:2,observable:"可见表现"}],reputation:[{place,change:2}]}}]。
 effects也可用npcUpdates改变人物职业、地点或同一id的目标状态。后果必须源于玩家已经做出的选择，不替玩家预订决定；不把未到时间的后果写成已发生。隐秘目标与后果不得提前透露给玩家。
-事项用 tasks:[{id,text,status:"active",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，期限不明确就不填 dueDays。与委托交付绑定可用 completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用 {type:"arrival",siteId}。完成或取消使用相同id和status:"completed"/"cancelled"；已完成事项不可再写成新的待办，相近表述沿用同一编号。旧事项标记待核对时，先核对事实，不凭空完成。
+事项用 tasks:[{id,text,status:"active",kind:"task|commitment|investigation",importance:"major",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，只登记重要且尚未完成、需要后续处理的任务、调查、交付与跨回合承诺。普通吃饭、问候、闲聊、逐个小问题、已经当场办完的安排不新增待办；永久保密和行动原则是说明，不是任务。已经登记的委托不再复制成同名任务。期限不明确就不填dueDays。与委托交付绑定可用completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用{type:"arrival",siteId}。
+每回合根据实际发生的结果，主动核对现有事项：完成或取消使用相同id和status:"completed"/"cancelled"。例如班次已定下，应立即关闭“定下三夜守夜班次”，不能继续列为未完成；排班完成不等于守夜任务已完成。已完成事项不得改写成新待办、也不得自动重开；相近表述沿用同一编号。没有完成依据的任务继续保留，不用单纯经过日期推定完成。未完成事项小节只列重要、尚需后续行动的新变化，不重复抄整张清单。
 knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 记玩家获得的事实，人物引用固定编号，同名人物按年龄、职业与地点区分，无法确定时先问一句。新技能只写名称，不写等级。声望 reputation:[{place,change}]。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。
 json 中不要加入未定义字段。所有变动必须有叙事和玩家行动依据；游戏会验证并生成实际结算回执。`;

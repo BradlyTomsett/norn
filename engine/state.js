@@ -678,7 +678,7 @@ export function stateBlock(state, query = '') {
   }
   const debts = openDebts(state);
   if (debts.length) lines.push(`【债务】${debts.map((d) => debtText(state, d)).join('；')}`);
-  for (const c of p.contracts) lines.push(`【委托 ${c.id}】${c.label}｜${c.status}｜${copperText(c.copper)}${c.paidCopper != null ? `｜已付 ${copperText(c.paidCopper)}` : ''}`);
+  for (const c of p.contracts) lines.push(`【委托 ${c.id}】${c.label}｜${c.status}${c.status === 'active' && c.workStatus === 'completed' ? '｜工作已完成，酬劳尚未领取，不要再次当作进行中的工作' : ''}｜${copperText(c.copper)}${c.paidCopper != null ? `｜已付 ${copperText(c.paidCopper)}` : ''}`);
   const bagAll = bagText(state);
   if (bagAll) lines.push(`【随身货物】${bagAll}`);
   const assetsAll = assetsText(state);
