@@ -1,5 +1,6 @@
 import { splitDelta } from '../format.js';
 import { finishTurn } from './turn.js';
+import { AgencyError, assertPlayerAgency, approvedFinance } from './agency.js';
 
 const rows = value => value == null ? [] : Array.isArray(value) ? value : [value];
 
@@ -31,19 +32,26 @@ function financeSignature(delta) {
     if (!value || typeof value !== 'object') return value;
     return Object.fromEntries(Object.keys(value).filter(key => !(path === '.transactions[]' && key === 'id')).sort().map(key => [key, stable(value[key], path + '.' + key)]));
   };
-  return JSON.stringify(stable(Object.fromEntries(financial.filter(key => delta?.[key] != null).map(key => [key, delta[key]]))));
+  return JSON.stringify(stable(Object.fromEntries(financial.filter(key => delta?.[key] != null
+    && !(typeof delta[key] === 'object' && Object.keys(delta[key]).length === 0)).map(key => [key, delta[key]]))));
 }
 
 /** Validation may request one data-only repair; neither attempt mutates the plan. */
-export async function settleReply(plan, raw, { repair } = {}) {
+export async function settleReply(plan, raw, { repair, repairAgency } = {}) {
   const original = splitDelta(raw).delta;
   try {
     if (!original) throw new Error('回复缺少有效变化块');
-    return { ...finishTurn(plan, normalizeNpcDelta(original, plan.state)), repaired: false };
+    assertPlayerAgency(plan, raw, original);
+    return { ...finishTurn(plan, normalizeNpcDelta(original, plan.state)), raw, repaired: false };
   } catch (error) {
-    if (!repair) throw error;
-    const repaired = await repair(raw, plan, error.message);
-    if (original && financeSignature(original) !== financeSignature(repaired)) throw new Error('回复修复改变了原有交易，请重试本回合，原进度已保留。');
-    return { ...finishTurn(plan, normalizeNpcDelta(repaired, plan.state)), repaired: true };
+    const agency = error instanceof AgencyError;
+    if (agency ? !repairAgency : !repair) throw error;
+    const repairedRaw = agency ? await repairAgency(raw, plan, error.message) : raw;
+    const repaired = agency ? splitDelta(repairedRaw).delta : await repair(raw, plan, error.message);
+    if (!repaired) throw new Error('修复后仍缺少有效变化数据，原进度已保留。');
+    const originalFinance = agency ? approvedFinance(original, plan.text) : original;
+    if (original && financeSignature(originalFinance) !== financeSignature(repaired)) throw new Error('回复修复改变了原有交易，请重试本回合，原进度已保留。');
+    assertPlayerAgency(plan, repairedRaw, repaired);
+    return { ...finishTurn(plan, normalizeNpcDelta(repaired, plan.state)), raw: repairedRaw, repaired: true };
   }
 }

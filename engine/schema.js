@@ -1,6 +1,7 @@
 import { removeRetiredPostalData } from './retired-prices.js';
 import { ensureAccounts } from './money.js';
-export const SCHEMA_VERSION = 3;
+import { upgradeTasks } from './tasks.js';
+export const SCHEMA_VERSION = 4;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
 export const absoluteMinute = (clock) => absoluteDay(clock) * 1440 + clock.hour * 60 + clock.minute;
@@ -40,7 +41,6 @@ export function upgradeState(state) {
   state.locations ||= {};
   if (state.world?.id && !state.locations[state.world.id]) state.locations[state.world.id] = { ...state.world };
   for (const r of p.relations) upgradeRelation(r);
-  p.unfinished = p.unfinished.filter((row, index, rows) => rows.findIndex(x => x.text === row.text) === index);
   if (!Array.isArray(p.contracts)) p.contracts = [];
   if (p.contract && !p.contracts.some(c => c.id === p.contract.id || c.label === p.contract.label)) {
     p.contracts.push({ ...p.contract, id: p.contract.id || 'legacy-contract', status: 'active' });
@@ -53,6 +53,7 @@ export function upgradeState(state) {
   for (const event of state.consequences) for (const r of list(event.effects?.relations)) upgradeRelation(r);
   state.processedEvents ||= {};
   state.flags ||= {};
+  upgradeTasks(state);
   state.version = 'm2';
   state.schemaVersion = SCHEMA_VERSION;
   state.revision = Number(state.revision) || 0;

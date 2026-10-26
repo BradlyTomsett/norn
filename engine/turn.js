@@ -5,6 +5,7 @@ import { applyDelta } from './state.js';
 import { trainSkill } from './progress.js';
 import { upgradeState } from './schema.js';
 import { resolveAction } from './actions.js';
+import { advanceTasks } from './tasks.js';
 
 export function prepareTurn(source, input, id, { messages = [] } = {}) {
   const action = resolveAction(input, messages), text = action.text;
@@ -13,6 +14,7 @@ export function prepareTurn(source, input, id, { messages = [] } = {}) {
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
   const events = advanceWorld(state, judged.minutes, rng, judged);
+  advanceTasks(state);
   return { id, text, input: action.input, selected: action.selected, base, state, judged, events, rng };
 }
 export function finishTurn(plan, delta) {
@@ -29,6 +31,7 @@ export function finishTurn(plan, delta) {
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });
   if (!result.applied) throw new Error(result.rejected.join('；'));
   trainSkill(state, plan.judged);
+  advanceTasks(state);
   if (state.flags.pendingAwakening) { state.flags.pendingAwakening = false; state.flags.awakeningAsked = true; }
   const before = plan.base.player.accounts || [];
   result.receipt.accounts = state.player.accounts.map(a => ({ ...a, before: before.find(b => b.id === a.id)?.copper || 0,

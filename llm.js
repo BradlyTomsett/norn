@@ -14,17 +14,17 @@ export const hasKey = () => Boolean(getKey());
 const ENDPOINT = 'https://api.deepseek.com/v1/chat/completions';
 
 /** A stream is successful only after an explicit, non-truncated completion. */
-export async function* streamChat({ system, messages, temperature = 0.85, maxTokens = 6000, signal, timeoutMs = 180000 }) {
+export async function* streamChat({ system, messages, temperature = 0.85, maxTokens = 6000, signal, timeoutMs = 180000, onUsage }) {
   const key = getKey();
   if (!key) throw new Error('还没有填 API Key');
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(new Error('生成超时，可以重试本回合')), timeoutMs);
-  let reader;
+  let reader, usage;
   try {
     const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: getModel(), temperature, max_tokens: maxTokens, reasoning_effort: getEffort(), stream: true,
+      body: JSON.stringify({ model: getModel(), temperature, max_tokens: maxTokens, reasoning_effort: getEffort(), stream: true, stream_options: { include_usage: true },
         messages: [{ role: 'system', content: system }, ...messages] }), signal: controller.signal });
     if (!res.ok || !res.body) {
       const hint = { 401: 'Key 不对或已失效', 402: '余额不足', 429: '请求太频繁，请稍后重试' }[res.status] || '服务暂时不可用';
@@ -32,14 +32,17 @@ export async function* streamChat({ system, messages, temperature = 0.85, maxTok
     }
     reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '', complete = false;
+    let buffer = '', complete = false, ended = false;
     const parseLine = line => {
       if (!line.startsWith('data:')) return null;
       const data = line.slice(5).trim();
-      if (data === '[DONE]') { complete = true; return null; }
+      if (data === '[DONE]') { complete = true; ended = true; return null; }
       if (!data) return null;
       let json; try { json = JSON.parse(data); } catch { throw new Error('回复数据损坏，本回合尚未提交'); }
       if (json.error) throw new Error('模型生成失败，本回合尚未提交');
+      if (json.usage) usage = { promptTokens: Number(json.usage.prompt_tokens) || 0,
+        completionTokens: Number(json.usage.completion_tokens) || 0,
+        cachedTokens: Number(json.usage.prompt_cache_hit_tokens ?? json.usage.prompt_tokens_details?.cached_tokens) || 0 };
       const choice = json.choices?.[0];
       if (choice?.finish_reason === 'length') throw new Error('回复超过长度限制，本回合尚未提交');
       if (choice?.finish_reason && choice.finish_reason !== 'stop') throw new Error('模型未能完整完成回复');
@@ -55,10 +58,11 @@ export async function* streamChat({ system, messages, temperature = 0.85, maxTok
         const chunk = parseLine(line); if (chunk) yield chunk;
       }
       if (done) { if (buffer.trim()) { const chunk = parseLine(buffer.replace(/\r$/, '')); if (chunk) yield chunk; } break; }
-      if (complete) break;
+      if (ended) break;
     }
     if (!complete) throw new Error('连接在回复完成前断开，本回合尚未提交');
   } finally {
+    if (usage) onUsage?.(usage);
     clearTimeout(timer); signal?.removeEventListener('abort', abort);
     await reader?.cancel().catch(() => {});
   }

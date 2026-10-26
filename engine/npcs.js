@@ -1,4 +1,6 @@
 import { absoluteDay, absoluteMinute, bounded, cleanText, list, closenessOf } from './schema.js';
+import { applyTasks } from './tasks.js';
+import { entityRefs } from './entities.js';
 
 const PURPOSES = [
   [/铁匠|锻|矿/, '备齐下一批原料，维持工坊开工', '联系原料商并整理订单', '原料和订单已经安排妥当'],
@@ -99,18 +101,7 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
     if (!r?.place) { rejected.push('声望变化需要地点'); continue; }
     state.player.reputation[cleanText(r.place)] = bounded((state.player.reputation[r.place] || 0) + bounded(r.change, -100, 100), -100, 100);
   }
-  if (Array.isArray(delta.tasks)) {
-    for (const t of delta.tasks) {
-      const id = cleanText(t?.id, 100);
-      if (!id) { rejected.push('事项需要固定 id'); continue; }
-      const old = state.player.unfinished.find(x => x.id === id || x.text === t.text);
-      if (['completed', 'cancelled'].includes(t.status)) state.player.unfinished = state.player.unfinished.filter(x => x !== old);
-      else if (t.text) {
-        if (old) Object.assign(old, { id, text: cleanText(t.text), status: 'active' });
-        else state.player.unfinished.push({ id, text: cleanText(t.text), status: 'active', openedDay: absoluteDay(state.clock) });
-      }
-    }
-  }
+  if (Array.isArray(delta.tasks)) applyTasks(state, delta.tasks, rejected, eventId);
 }
 
 /** Advance persistent schedules once per date; nothing depends on the number of turns. */
@@ -144,8 +135,9 @@ export function advanceNpcs(state) {
 }
 
 export function relevantNpcs(state, text = '') {
+  const refs = entityRefs(state, text);
   return state.npcs.filter(n => !n.dead).map((n, index) => ({ n, index, score:
-    (text.includes(n.name) ? 100 : 0) + (n.following ? 60 : 0) + (n.location?.siteId === state.player.location.siteId ? 40 : 0)
+    (refs.npcIds.includes(n.id) ? 200 : text.includes(n.name) ? 100 : 0) + (n.following ? 60 : 0) + (n.location?.siteId === state.player.location.siteId ? 40 : 0)
     + Math.max(0, state.player.relations.find(r => r.npcId === n.id)?.closeness || 0) / 10 }))
     .sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 8).map(x => x.n);
 }

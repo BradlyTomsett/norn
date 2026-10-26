@@ -119,6 +119,18 @@ body {
   font-family: var(--serif);
 }
 .send:disabled { opacity: .4; }
+.composer-tools { display: flex; flex-direction: column; gap: 3px; }
+.composer-tools .send { flex: 1; min-height: 44px; }
+.composer-tools .ghost { min-height: 32px; padding: 3px 8px; }
+.action-choices { display: grid; gap: 8px; margin-top: 14px; }
+.action-choice { width: 100%; min-height: 44px; padding: 12px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 8px; text-align: left; font: inherit; line-height: 1.6; }
+.action-choice:disabled { opacity: .45; }
+.task-entry { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.task-entry p { overflow-wrap: anywhere; }
+#search-filters { margin-top: 18px; }
+#search-results .card { width: 100%; text-align: left; overflow-wrap: anywhere; }
+#search-results .card span { white-space: pre-line; }
+.history-focus { outline: 1px solid var(--ink-dim); outline-offset: 5px; }
 
 button.ghost {
   background: transparent; color: var(--ink-dim);

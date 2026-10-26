@@ -18,8 +18,11 @@ import { repText } from './reputation.js';
 import { addItem, effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
 import { chronicleText } from './chronicle.js';
 import { assignState, upgradeState, absoluteDay, closenessOf } from './schema.js';
+import { applyTasks } from './tasks.js';
+import { textId } from './entities.js';
 import { applyStoryDelta, ensureNpcState, relevantNpcs } from './npcs.js';
-import { selectRelevant } from './memory.js';
+import { selectRelevant, memoryContext, linkKnowledge } from './memory.js';
+import { npcLabel } from './entities.js';
 import { isRetiredPostalQuote } from './retired-prices.js';
 
 export {
@@ -510,11 +513,12 @@ function applyUnsafe(state, delta, rng, opts = {}) {
       if (!text) continue;
       const clean = String(text).trim();
       if (!clean || /^[（(]?\s*(无变化|没有变化|无|同上|略)\s*[）)]?$/.test(clean)) continue;
-      state.knowledge.push({
+      state.knowledge.push(linkKnowledge(state, {
+        ...(typeof k === 'object' ? k : {}),
         text: clean.slice(0, 80),
         source: typeof k === 'object' && k.source ? String(k.source).slice(0, 20) : '亲历',
         day: state.clock.doy,
-      });
+      }, opts.eventId));
     }
   };
   pushKnowledge(delta?.knowledge);
@@ -523,7 +527,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
   if (Array.isArray(delta?.unfinished)) {
     for (const u of delta.unfinished.slice(0, 3)) {
       const text = typeof u === 'string' ? u : u?.text;
-      if (text && !state.player.unfinished.some(x => x.text === text)) state.player.unfinished.push({ text: String(text).slice(0, 160), openedDay: absoluteDay(state.clock) });
+      if (text) applyTasks(state, [{ id: `task:${textId(text)}`, text: String(text).slice(0, 160) }], rejected, opts.eventId);
     }
   }
 
@@ -641,6 +645,7 @@ export function stateBlock(state, query = '') {
   ensurePriceTable(state);
   const p = state.player;
   const lines = [];
+  const context = memoryContext(state, query);
   lines.push(`【时间】${formatDate(state.clock)}`);
   lines.push(`【地点】${p.location.siteName}（${state.world.regionTitle}）｜物价指数 ${(state.world.priceIndex || 1).toFixed(2)}`);
   lines.push(
@@ -686,7 +691,8 @@ export function stateBlock(state, query = '') {
   }
   if (p.goals.length) lines.push(`【当前目标】${p.goals.join('；')}`);
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
-  if (p.unfinished.length) lines.push(`【未完成】${p.unfinished.map((u) => u.text).join('；')}`);
+  if (p.unfinished.length) lines.push('【未完成事项，完成后按相同编号关闭】', ...p.unfinished.map(u => `[${u.id}] ${u.text}${u.dueDay != null ? `｜截止绝对日${u.dueDay}` : ''}${u.needsReview ? '｜旧事项，状态待核对' : ''}`));
+  if (p.taskHistory?.length) lines.push('【相关已结束事项，不得当成仍未完成】', ...selectRelevant(p.taskHistory, query, 5, row => row.text, context).map(row => `[${row.id}] ${row.text}｜${row.status}`));
   lines.push(builtinReferenceText());
   const priceRows = selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]);
   if (priceRows.length) {
@@ -699,14 +705,14 @@ export function stateBlock(state, query = '') {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
   }
-  const chron = selectRelevant(state.chronicle, query, 12).join('\n');
+  const chron = selectRelevant(state.chronicle.map(row => linkKnowledge(state, row)), query, 12, row => row.text, context).map(row => row.text).join('\n');
   if (chron) {
     lines.push('【编年】（更早发生的事，回忆优先按这个来）');
     for (const l of chron.split('\n')) lines.push(`  · ${l}`);
   }
   if (state.knowledge.length) {
     lines.push('【玩家已知】（只能用这些）');
-    for (const k of selectRelevant(state.knowledge, query, 18)) lines.push(`  · ${k.text}（${k.source}）`);
+    for (const k of selectRelevant(state.knowledge.map(row => linkKnowledge(state, row)), query, 18, row => row.text, context)) lines.push(`  · [${k.id}] ${k.text}（${k.source}${k.sourceTurn != null ? `；来源回合${k.sourceTurn}` : ''}）`);
   }
   if (state.storyLog.length) lines.push('【已经发生的后果】', ...selectRelevant(state.storyLog, query, 6).map(e => `  · ${e.text}${e.cause ? `（起因：${e.cause}）` : ''}`));
   for (const e of state.consequences.filter(e => e.status === 'pending' && e.visible)) lines.push(`【待发生 ${e.id}】${e.text}；起因：${e.cause}`);
@@ -720,7 +726,7 @@ export function npcCards(state, query = '') {
     .map((npc) => {
       const v = npc.voice || {};
       return [
-        `· [${npc.id}] ${npc.name}｜${npc.age} 岁｜${RACE_CN[npc.race] || npc.race}｜${npc.profession}`,
+        `· [${npc.id}] ${npcLabel(state, npc)}｜${npc.age} 岁｜${RACE_CN[npc.race] || npc.race}｜${npc.profession}`,
         `  说话：词汇 ${v.vocabulary || 2}/5，${v.sentence || 'short'} 句，礼貌 ${v.politeness ?? 1}/3，口癖「${(v.tics || []).join('、') || '无'}」，比喻取自${v.metaphor || '日常'}`,
         `  在意：${npc.obsession || '无'}｜性格：${(npc.traits || []).join('、') || '普通'}`,
         npc.loadout?.length ? `  惯用：${npc.loadout.join('、')}` : null,
@@ -817,10 +823,12 @@ export function uiState(state) {
       goals: p.goals,
       problems: p.problems,
       unfinished: p.unfinished,
+      taskHistory: p.taskHistory,
       relations: p.relations.map((r) => {
         const npc = state.npcs.find((x) => x.id === r.npcId);
         return {
-          name: npc?.name || r.npcId,
+          name: npc ? npcLabel(state, npc) : r.npcId,
+          npcId: r.npcId,
           race: RACE_CN[npc?.race] || npc?.race || '',
           profession: npc?.profession || '',
           loadout: npc?.loadout || [],

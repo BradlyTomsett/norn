@@ -5,8 +5,12 @@ import { ensureAccounts } from '../engine/money.js';
 import { uiState } from '../engine/state.js';
 import * as store from '../store.js';
 import { setKey } from '../llm.js';
-localStorage.clear(); sessionStorage.clear();
-const scenario = new URLSearchParams(location.search).get('scenario');
+const params = new URLSearchParams(location.search), scenario = params.get('scenario');
+if (params.has('reset')) {
+  localStorage.clear(); sessionStorage.clear();
+  await new Promise((resolve, reject) => { const request = indexedDB.deleteDatabase('norn.archive'); request.onsuccess = resolve; request.onerror = reject; });
+  params.delete('reset'); history.replaceState(null, '', '?' + params);
+}
 setKey('fixture-key-no-network');
 const { state } = generateWorld({ regionId: 'greywater', seed: 77, playerName: '测试旅人' });
 state.saveId = 'sv_browser_fixture'; upgradeState(state); ensureAccounts(state);
@@ -22,11 +26,21 @@ for (const [i, name] of ['老杜', '薇拉', '瑟拉'].entries()) {
 }
 state.player.relations = state.player.relations.slice(0, 3);
 state.player.contracts = [{ id: 'nightcart', label: '柳洼夜车调查', copper: 1200000, status: 'active', tier: 3 }];
-if (scenario !== 'empty') store.putSave(state, [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。\n【你现在可以做什么】\n① 睡觉八小时\n② 领取赏金并按约定分钱' }]);
+state.player.unfinished = [{ text: '到公会领取柳洼调查的报酬' }, { text: '去公会领取柳洼调查的报酬' }];
+let initial = [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。\n【你现在可以做什么】\n① 睡觉八小时\n② 领取赏金并按约定分钱' }];
+if (scenario === 'long') {
+  state.npcs[0].name = '凯尔'; state.npcs[0].age = 30; state.npcs[0].profession = '佣兵';
+  state.npcs[1].name = '凯尔'; state.npcs[1].age = 22; state.npcs[1].profession = '冒险者';
+  initial = [{ role: 'assistant', content: '凯尔（30岁·佣兵）约定明天在北门交付蓝色信物。', entities: { npcIds: [state.npcs[0].id] } },
+    ...Array.from({ length: 1000 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `这是第${i}段日常生活记录。` + '城中的生活照常继续。'.repeat(45) })), ...initial];
+}
+if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
+await store.initStorage();
+if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
-for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复']]) {
+for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺']]) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => { mode = value; }; controls.append(b);
 }
 const hide = document.createElement('button'); hide.textContent = '隐藏测试工具'; hide.onclick = () => { controls.hidden = true; }; controls.append(hide);
@@ -37,10 +51,12 @@ const refresh = () => {
 };
 setInterval(refresh, 200); refresh();
 const original = window.fetch.bind(window);
+let requests = 0;
 window.fetch = async (url, options = {}) => {
   if (String(url).startsWith('https://api.github.com')) throw new Error('Fixture blocks cloud writes');
   if (!String(url).startsWith('https://api.deepseek.com')) return original(url, options);
   const request = JSON.parse(options.body), system = request.messages[0].content;
+  requests++; controls.dataset.requests = requests;
   const input = request.messages.at(-1).content;
   const repairing = system.includes('你现在只修复变化数据');
   let delta = {}, text = '【本次行动】\n你等了一阵，街上的人继续忙着各自的事。';
@@ -54,9 +70,13 @@ window.fetch = async (url, options = {}) => {
   if (mode === 'invalid') delta = { transactions: [{ id: 'bad', kind: 'payment', copper: 99999999999, note: '错误金额' }] };
   if (mode === 'duplicate') delta = { npcs: [{ id: state.npcs[0].id, name: state.npcs[0].name, profession: '冒险者' }] };
   if (mode === 'repair') delta = repairing ? {} : { time: { minutes: 999 } };
+  if (mode === 'agency') {
+    delta = {}; text = system.includes('你现在修复玩家自主权问题') ? '商人报了价格，等你决定是否购买。' : '你答应买下货物。你说：“这笔钱我来付。”';
+  }
   if (/睡|歇|休息/.test(input) && !repairing) text = '【生活变化】\n你在旅店休息，醒来后仍留在原处。\n【你现在可以做什么】\n① 问候老杜\n② 等一会';
   const output = `${text}\n\n【实际结算】\n模型写的错误余额999金币，不应显示。\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;
   const frame = `data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\r\n\r\n`;
-  return new Response(frame + (mode === 'disconnect' ? '' : 'data: [DONE]\r\n\r\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  const usage = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 120, completion_tokens: 40, prompt_cache_hit_tokens: 50 } })}\r\n\r\n`;
+  return new Response(frame + (mode === 'disconnect' ? '' : usage + 'data: [DONE]\r\n\r\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
 };
 await import('../app.js');

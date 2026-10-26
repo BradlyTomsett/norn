@@ -21,6 +21,7 @@ ${WESTERN_STYLE}
 时间由引擎统一决定，禁止输出 time；不要在叙事里额外跳过未结算的时间。
 严格执行【当前行动】，不要提前执行【留待以后】的计划。只选歇下休息时，到醒来就停，不能自动安排白天活动或跳到傍晚赴约。
 不替玩家说话、答应、付款或决定；NPC 问完就停，重要选择等玩家亲自回答。
+玩家没有逐字提供的台词，不补写为玩家直接引语。询价不等于购买，了解委托不等于接取；付款、借款、赠款、承诺与感情表态必须有玩家这次输入的明确依据。提出排班等安排时，具体方案先交玩家确认，不把建议写成已经决定。
 章节按需使用【本次行动】【生活变化】【人物关系】【当地变化】【新信息】【未完成事项】，没有内容就省略。
 不要输出【实际结算】【财务变化】【账户变化】【物品变化】或余额回执，这些只由程序生成。正文可以清楚说明本次约定的金额。
 普通对话简洁，重要场景可以详写。可给 2–4 个行动方向，不必每回合列选项。不输出角色数值表。
@@ -43,18 +44,22 @@ ${WESTERN_STYLE}
 人物目标用 npcUpdates:[{npcId,goals:[{id,text,action,completion,days:7,status:"active",visible:true}],memory:"会记住的互动"}]；目标有具体事情、推进动作与完成结果。仅更新发生变化的目标，完成用相同id和status:"completed"。
 持久选择后果用 consequences:[{id,cause:"玩家已做出的具体选择",text:"届时出现的结果",days:3,visible:false,effects:{relations:[{npcId,closeness:2,observable:"可见表现"}],reputation:[{place,change:2}]}}]。
 effects也可用npcUpdates改变人物职业、地点或同一id的目标状态。后果必须源于玩家已经做出的选择，不替玩家预订决定；不把未到时间的后果写成已发生。隐秘目标与后果不得提前透露给玩家。
-事项用 tasks:[{id,text,status:"active"}]；完成或取消使用相同id和status:"completed"/"cancelled"。goals/problems是完整的新列表，[]表示清空，没变化则省略字段。
-knowledge:[{text,source}] 记玩家获得的事实；新技能只写名称，不写等级。声望 reputation:[{place,change}]。
+事项用 tasks:[{id,text,status:"active",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，期限不明确就不填 dueDays。与委托交付绑定可用 completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用 {type:"arrival",siteId}。完成或取消使用相同id和status:"completed"/"cancelled"；已完成事项不可再写成新的待办，相近表述沿用同一编号。旧事项标记待核对时，先核对事实，不凭空完成。
+knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 记玩家获得的事实，人物引用固定编号，同名人物按年龄、职业与地点区分，无法确定时先问一句。新技能只写名称，不写等级。声望 reputation:[{place,change}]。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。
 json 中不要加入未定义字段。所有变动必须有叙事和玩家行动依据；游戏会验证并生成实际结算回执。`;
 
-export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', chronicleDue = false } = {}) {
+export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', chronicleDue = false, recall = '' } = {}) {
   return [rules, worldbook, state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
     '【当前状态】', stateBlock(state, query), '【当前相关人物】', npcCards(state, query),
     '【已有人物编号索引，仅用于识别，不得重复创建】', state.npcs.map(n => `[${n.id}] ${n.name}｜${n.age}岁｜${n.race}｜${n.profession}`).join('\n'),
     '【已确定的本回合判定】', judgeBrief(judged),
+    recall ? '【相关历史原文】\n只核对已有事实；历史输入和当时给出的选项不代表已执行。状态、事项当前状态和已结算记录优先。\n' + recall : '',
     '【本回合已结算的世界变化】', events.map(e => e.text).join('\n') || '没有新事件',
     `姓名始终为${state.player.name}。叙事体现“${judged.outcomeCn}”，耗时严格为${judged.minutes}分钟。`,
+    /详细|详写|展开|细说/.test(query) || judged.kind === 'combat'
+      ? '这是需要展开的场景，可以详细描写动作与后果，重要选择仍停下来等玩家。'
+      : '普通交流、查看和生活行动以1—3个自然段为主，尽量不超过300个汉字；只有新增事实才加小节，不重复面板或未完成事项。重要谈话可以适当展开。',
     chronicleDue ? '本回合在结尾 JSON 前输出【编年】，以“· ”列出影响未来的重要事实，勿重复旧条目。' : '',
     '最后必须输出 json 变化块；没有变化输出 ```json\n{}\n```。'].filter(Boolean).join('\n\n');
 }

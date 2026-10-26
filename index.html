@@ -29,7 +29,7 @@
 
 <div id="composer" class="composer hidden">
   <textarea id="input" rows="2" placeholder="你要做什么？（直接说人话）"></textarea>
-  <button id="send" class="send">说</button>
+  <div class="composer-tools"><button id="send" class="send">说</button><button id="btn-search" class="ghost" type="button">查找</button></div>
   <button id="cancel-turn" class="ghost hidden" type="button">停止</button>
 </div>
 <div id="turn-status" class="hidden" role="status" aria-live="polite"></div>
@@ -194,7 +194,7 @@
     <div id="contract-box" class="price-list"></div>
 
     <h2 style="margin-top:22px">诊断</h2>
-    <p class="hint">账目对不上时，点一下把关键数据复制出来发给作者。</p>
+    <p class="hint">查看最近回合的耗时、请求次数与用量。诊断不包含密钥或对话原文。</p>
     <div class="chips" style="margin-top:10px">
       <button id="btn-diag" class="chip">复制诊断信息</button>
     </div>
@@ -230,12 +230,25 @@
       <button class="tab" data-tab="gear">装备</button>
       <button class="tab" data-tab="people">关系</button>
       <button class="tab" data-tab="clues">线索</button>
+      <button class="tab" data-tab="tasks">事项</button>
       <button class="tab" data-tab="prices">物价</button>
     </nav>
     <div id="cs-body" class="cs-body"></div>
   </div>
 </div>
 
+<div id="search" class="sheet hidden" role="dialog" aria-label="查找记录">
+  <div class="sheet-inner">
+    <div class="cs-top"><h1>查找记录</h1><button id="search-close" class="ghost">关闭查找</button></div>
+    <input id="search-query" class="name-input" type="search" placeholder="人物、地点、约定或历史内容" aria-label="查找内容" />
+    <nav id="search-filters" class="tabs" aria-label="查找范围">
+      <button class="tab active" data-kind="all">全部</button><button class="tab" data-kind="people">人物</button><button class="tab" data-kind="places">地点</button><button class="tab" data-kind="tasks">事项</button><button class="tab" data-kind="history">历史</button>
+    </nav>
+    <p id="search-count" class="hint" role="status">在当前存档的完整记录中查找。</p>
+    <div id="search-results" class="cards"></div>
+    <button id="search-more" class="ghost hidden">显示更多结果</button>
+  </div>
+</div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

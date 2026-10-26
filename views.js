@@ -381,7 +381,14 @@ function viewPrices(u) {
   ];
   return out.join('');
 }
-const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues, prices: viewPrices };
+function viewTasks(u) {
+  const status = { completed: '已完成', cancelled: '已取消', expired: '已过期' };
+  const row = (task, active) => `<article class="task-entry"><p>${esc(task.text)}</p><p class="hint">${active ? '进行中' : status[task.status] || task.status}${task.needsReview ? ' · 旧事项待核对' : ''}${task.sourceTurn != null ? ` · 来源回合 ${task.sourceTurn}` : ''}${task.dueDay != null ? ` · 截止：${Math.floor(task.dueDay / 365)}年 第${task.dueDay % 365 + 1}天` : ''}${task.completionText ? ` · ${esc(task.completionText)}` : ''}</p><div class="chips">${active ? `<button class="chip" data-task="${esc(task.id)}" data-status="completed">标记完成</button><button class="chip" data-task="${esc(task.id)}" data-status="cancelled">取消事项</button>` : `<button class="chip" data-task="${esc(task.id)}" data-status="active">重新打开</button>`}</div></article>`;
+  return '<p class="hint">完成和取消都会保留历史；标记事项不会发放报酬或改变账目。旧事项请先核对。</p><h3>进行中</h3>'
+    + (u.player.unfinished.map(task => row(task, true)).join('') || '<p class="hint">没有待办事项。</p>')
+    + `<details><summary>历史事项（${u.player.taskHistory.length}）</summary>${[...u.player.taskHistory].reverse().map(task => row(task, false)).join('')}</details>`;
+}
+const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues, prices: viewPrices, tasks: viewTasks };
 
 
 export { VIEWS, viewOverview, viewItems, viewGear, viewPeople, viewClues, viewPrices };

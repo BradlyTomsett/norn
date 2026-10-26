@@ -107,8 +107,8 @@ test('有效JSON但无法结算时只修复一次，失败不提交，不偷偷�
   await assert.rejects(settleReply(plan, response({ time: { minutes: 90 } }), { repair: async () => { attempts++; return { time: { minutes: 10 } }; } }));
   assert.equal(attempts, 1); assert.deepEqual(plan.state, original);
   const payment = { transactions: [{ id: 'bad', kind: 'payment', copper: 999999, note: '约定付款' }] };
-  await assert.rejects(settleReply(plan, response(payment), { repair: async () => ({}) }), /改变了原有交易/);
-  await assert.rejects(settleReply(plan, response({ bounty: { id: 'q1', label: '约定', copper: -1 } }), {
+  await assert.rejects(settleReply(prepareTurn(fresh(), '按约定付款', 'turn:pay'), response(payment), { repair: async () => ({}) }), /改变了原有交易/);
+  await assert.rejects(settleReply(prepareTurn(fresh(), '答应接下委托', 'turn:accept'), response({ bounty: { id: 'q1', label: '约定', copper: -1 } }), {
     repair: async () => ({ bounty: { id: 'q2', label: '约定', copper: -1 } }),
   }), /改变了原有交易/);
   assert.deepEqual(plan.state, original);
