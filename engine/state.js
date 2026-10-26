@@ -23,6 +23,8 @@ import { textId } from './entities.js';
 import { applyStoryDelta, ensureNpcState, relevantNpcs } from './npcs.js';
 import { selectRelevant, memoryContext, linkKnowledge } from './memory.js';
 import { npcLabel } from './entities.js';
+import { gearState } from './equipment.js';
+import { talentRuleText } from './abilities.js';
 import { isRetiredPostalQuote } from './retired-prices.js';
 
 export {
@@ -492,16 +494,15 @@ function applyUnsafe(state, delta, rng, opts = {}) {
 
   // 装备（只增不减：丢东西需要玩家明确说）
   if (Array.isArray(delta?.equipment)) {
-    let added = 0;
-    for (const e of delta.equipment.slice(0, 3)) {
+    for (const e of delta.equipment) {
       const name = typeof e === 'string' ? e : e?.name;
       if (!name) continue;
       for (const item of normalizeEquipment(name)) {
-        if (added >= 8) break;
-        const s = String(item).slice(0, 40);
-        if (state.player.equipment.includes(s)) continue;
-        state.player.equipment.push(s);
-        added++;
+        const count = String(item).match(/[×xX]\s*(\d+)\s*$/);
+        const label = count ? String(item).slice(0, count.index).trim() : String(item);
+        const qty = (count ? Number(count[1]) : 1) * (typeof e === 'object' && e.qty != null ? Number(e.qty) : 1);
+        if (!Number.isSafeInteger(qty) || qty < 1) { rejected.push('装备数量必须为正整数'); continue; }
+        addItem(state, label, qty);
       }
     }
   }
@@ -555,7 +556,10 @@ function validateTree(value, path = '') {
 function inventory(state) {
   const out = {};
   for (const key of ['bag', 'stock', 'vehicles']) for (const row of state.player[key] || []) out[row.name] = (out[row.name] || 0) + row.qty;
-  for (const name of state.player.equipment || []) out[name] = (out[name] || 0) + 1;
+  for (const raw of state.player.equipment || []) {
+    const match = String(raw).match(/[×xX]\s*(\d+)\s*$/), name = match ? String(raw).slice(0, match.index).trim() : raw;
+    out[name] = (out[name] || 0) + (match ? Number(match[1]) : 1);
+  }
   return out;
 }
 
@@ -679,7 +683,10 @@ export function stateBlock(state, query = '') {
   if (bagAll) lines.push(`【随身货物】${bagAll}`);
   const assetsAll = assetsText(state);
   if (assetsAll) lines.push(`【资产】${assetsAll}`);
-  if (p.equipment?.length) lines.push(`【装备】${p.equipment.join('、')}`);
+  const gear = gearState(p);
+  lines.push(`【常用武器 ${gear.slots}/9 栏】${gear.loadout.weapons.map(row => `${row.key}×${row.qty}`).join('、') || '无'}；主用：${gear.loadout.primary || '徒手'}；护甲：${gear.loadout.armor || '无'}；盾牌：${gear.loadout.shield || '无'}`);
+  if (p.equipment?.length) lines.push(`【拥有的装备，仅为收藏，不叠加判定】${p.equipment.join('、')}`);
+  if (p.talent) lines.push('【已明确的天赋规则】' + talentRuleText(p).join('；'));
   if (p.skills.length) lines.push(`【技能】${p.skills.map((s) => `${s.name} ${s.level}`).join('、')}`);
   lines.push(`【身份】${p.socialClass}｜声誉：${repText(p.reputation)}`);
   if (p.relations.length) {
@@ -818,6 +825,8 @@ export function uiState(state) {
       reputationText: repText(p.reputation),
       talent: p.talent || null,
       equipment: p.equipment || [],
+      gear: gearState(p),
+      talentRules: talentRuleText(p),
       incomeMonthly: p.incomeMonthly || 0,
       location: p.location,
       goals: p.goals,

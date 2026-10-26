@@ -21,6 +21,7 @@ import { ambiguousPeople, entityRefs } from './engine/entities.js';
 import { recallHistory } from './engine/memory.js';
 import { applyTasks } from './engine/tasks.js';
 import { searchArchive } from './search.js';
+import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
 const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl = $('#composer'), dateEl = $('#date');
@@ -604,6 +605,15 @@ async function recoverAgency(raw, plan, error) {
   for await (const chunk of trackedChat({ system, messages: [{ role: 'user', content: `原行动：${plan.text}\n待修复回复：\n${raw}` }], temperature: 0.2, signal: app.controller.signal })) out += chunk;
   return out;
 }
+async function recoverAbilityNarrative(raw, plan, error) {
+  if (app.metrics) app.metrics.repairs++;
+  turnStatus('正文与装备或天赋效果不一致，正在重写核对…');
+  const system = buildSystem(plan.state, plan.judged, plan.events, { query: plan.text })
+    + '\n你现在只修复本回合叙事与能力结果的矛盾。重新输出完整正文及原有JSON变化块。实际使用的武器、免疫效果与引擎健康结算不可推翻；删除无效的受伤、中毒或控制描写。不能变更原有交易、物品变化、人物、地点或行动目标结果。秘密天赋不直接透露给NPC。验证问题：' + error;
+  let out = '';
+  for await (const chunk of trackedChat({ system, messages: [{ role: 'user', content: `本次行动：${plan.text}\n待核对回复：\n${raw}` }], temperature: 0.2, signal: app.controller.signal })) out += chunk;
+  return out;
+}
 async function send(options = {}) {
   if (busy() || !app.saveId) return;
   app.preparing = true; sendEl.disabled = true;
@@ -698,7 +708,7 @@ async function sendTurn(options = {}) {
     }
     clearTimeout(timer); timer = null;
     category = 'validation';
-    const result = await settleReply(plan, raw, { repairAgency: recoverAgency, repair: async (...args) => {
+    const result = await settleReply(plan, raw, { repairAgency: recoverAgency, repairNarrative: recoverAbilityNarrative, repair: async (...args) => {
       turnStatus('正在核对回复，完成后保存…'); return recoverDelta(...args);
     } });
     const clean = narrationText(result.raw) || '这一回合的行动已经记下。';
@@ -763,6 +773,38 @@ $('#cs-body').addEventListener('click', event => {
     applyTasks(state, [{ id: button.dataset.task, status: button.dataset.status }], [], 'player:task-review');
     await store.putSaveAsync(state); if (state.saveId === app.saveId) app.loadedRevision = state.revision;
     app.loadedRevision = state.revision; app.ui = uiState(state); renderSheet('tasks');
+  });
+});
+
+function readLoadoutForm() {
+  return { weapons: [...document.querySelectorAll('[data-gear-weapon]:checked')].map(input => ({ key: input.dataset.gearWeapon,
+    qty: Number([...document.querySelectorAll('[data-gear-qty]')].find(row => row.dataset.gearQty === input.dataset.gearWeapon)?.value) })),
+    primary: $('#gear-primary').value, armor: document.querySelector('[name="gear-armor"]:checked')?.value || '',
+    shield: document.querySelector('[name="gear-shield"]:checked')?.value || '' };
+}
+$('#cs-body').addEventListener('change', event => {
+  if (!event.target.closest('#loadout-editor')) return;
+  const draft = readLoadoutForm(), primary = $('#gear-primary'), previous = primary.value;
+  primary.replaceChildren();
+  const empty = document.createElement('option'); empty.value = ''; empty.textContent = '徒手 / 未指定'; primary.append(empty);
+  for (const row of draft.weapons) { const option = document.createElement('option'); option.value = row.key; option.textContent = row.key; primary.append(option); }
+  primary.value = previous === '' || draft.weapons.some(row => row.key === previous) ? previous : draft.weapons[0]?.key || '';
+  const state = store.getSave(app.saveId), slots = weaponSlots(draft.weapons, gearInventory(state.player));
+  $('#gear-slot-count').textContent = `武器：${slots}/9 栏`;
+  $('#gear-slot-count').classList.toggle('err', slots > 9);
+  try { validateLoadout(state.player, readLoadoutForm()); $('#gear-message').textContent = ''; $('#gear-save').disabled = false; }
+  catch (error) { $('#gear-message').textContent = error.message; $('#gear-save').disabled = true; }
+});
+$('#cs-body').addEventListener('click', event => {
+  if (!event.target.closest('#gear-save') || busy()) return;
+  runAction(async () => {
+    if (store.getPending(app.saveId)) { $('#gear-message').textContent = '请先重试未提交的回合，或输入 /取消重试 后再调整装备。'; return; }
+    const state = store.getSave(app.saveId);
+    try { state.player.loadout = validateLoadout(state.player, readLoadoutForm()); }
+    catch (error) { $('#gear-message').textContent = error.message; return; }
+    await store.putSaveAsync(state); app.loadedRevision = state.revision; app.ui = uiState(state); renderSheet('gear');
+    $('#gear-message').textContent = '常用装备已保存。';
+    if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
   });
 });
 

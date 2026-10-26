@@ -223,14 +223,18 @@ export function removeItem(state, name, qty = 1) {
   }
 
   const eq = Array.isArray(p.equipment) ? p.equipment : [];
-  const idx = [];
-  eq.forEach((e, i) => {
-    if (e === n) idx.push(i);
-  });
-  if (idx.length) {
-    const drop = idx.slice(0, count);
-    p.equipment = eq.filter((_, i) => !drop.includes(i));
-    return { ok: true, where: 'equipment', count: drop.length };
+  let remaining = count;
+  const kept = [];
+  for (const raw of eq) {
+    const match = String(raw).match(/[×xX]\s*(\d+)\s*$/), label = match ? String(raw).slice(0, match.index).trim() : raw;
+    if (remaining && (label === n || raw === n)) {
+      const available = match ? Number(match[1]) : 1, took = Math.min(remaining, available); remaining -= took;
+      if (available > took) kept.push(`${label}×${available - took}`);
+    } else kept.push(raw);
+  }
+  if (remaining < count) {
+    p.equipment = kept;
+    return { ok: true, where: 'equipment', count: count - remaining };
   }
 
   for (const [listKey, where] of [

@@ -28,6 +28,11 @@ state.player.relations = state.player.relations.slice(0, 3);
 state.player.contracts = [{ id: 'nightcart', label: '柳洼夜车调查', copper: 1200000, status: 'active', tier: 3 }];
 state.player.unfinished = [{ text: '到公会领取柳洼调查的报酬' }, { text: '去公会领取柳洼调查的报酬' }];
 let initial = [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。\n【你现在可以做什么】\n① 睡觉八小时\n② 领取赏金并按约定分钱' }];
+if (scenario === 'gear') {
+  state.player.equipment = ['长剑（金）', '大枪（紫）', '长弓（紫）', '弓箭（灰）×500', '弓箭（绿）×30', '飞刀（蓝）×20', '匕首（紫）×20', '飞斧（灰）×10', '标枪（绿）×20', '战斧（紫）', '木盾（灰）', '铁盾（蓝）', '皮甲（紫）', '板甲（金）'];
+  state.player.talent = { name: '暗金剑纹', grade: '传说', effect: '精通所有武器；免疫不利魔法与物理攻击；免疫冰、火、电、毒', secret: true };
+  delete state.player.loadout; upgradeState(state);
+}
 if (scenario === 'long') {
   state.npcs[0].name = '凯尔'; state.npcs[0].age = 30; state.npcs[0].profession = '佣兵';
   state.npcs[1].name = '凯尔'; state.npcs[1].age = 22; state.npcs[1].profession = '冒险者';
@@ -40,7 +45,7 @@ if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
-for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺']]) {
+for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫']]) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => { mode = value; }; controls.append(b);
 }
 const hide = document.createElement('button'); hide.textContent = '隐藏测试工具'; hide.onclick = () => { controls.hidden = true; }; controls.append(hide);
@@ -72,6 +77,9 @@ window.fetch = async (url, options = {}) => {
   if (mode === 'repair') delta = repairing ? {} : { time: { minutes: 999 } };
   if (mode === 'agency') {
     delta = {}; text = system.includes('你现在修复玩家自主权问题') ? '商人报了价格，等你决定是否购买。' : '你答应买下货物。你说：“这笔钱我来付。”';
+  }
+  if (mode === 'ability') {
+    delta = {}; text = system.includes('你现在只修复本回合叙事与能力结果的矛盾') ? '你用大枪抵开攻击，身体没有受伤。守卫后退了一步。' : '你被守卫砍伤了，鲜血流了下来。';
   }
   if (/睡|歇|休息/.test(input) && !repairing) text = '【生活变化】\n你在旅店休息，醒来后仍留在原处。\n【你现在可以做什么】\n① 问候老杜\n② 等一会';
   const output = `${text}\n\n【实际结算】\n模型写的错误余额999金币，不应显示。\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;

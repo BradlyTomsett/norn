@@ -8,6 +8,7 @@ import { ensureAssets, runIndustries } from './assets.js';
 import { decayRelations, decayReputation } from './progress.js';
 import { upgradeState, absoluteDay } from './schema.js';
 import { advanceNpcs, ensureNpcState } from './npcs.js';
+import { actionAbilities } from './abilities.js';
 
 const DAY_EVENTS = [
   '路上过了一队收羊毛的商人，价压得很低',
@@ -186,8 +187,9 @@ export function advanceWorld(state, minutes, rng, judged) {
 
 /** The engine owns combat health changes; time has already advanced exactly once. */
 export function engineDelta(judgeResult, state) {
-  const immune = /免疫.*(物理|攻击)/.test(state.player.talent?.effect || '');
-  const damage = judgeResult.kind === 'combat' && ['fail', 'disaster'].includes(judgeResult.outcome) && !immune ? -6 : 0;
+  const effects = judgeResult.effects || actionAbilities(state, judgeResult.actionText || '', judgeResult.kind);
+  const immune = effects.blocked;
+  const damage = judgeResult.kind === 'combat' && ['fail', 'disaster'].includes(judgeResult.outcome) && !immune ? -Math.max(1, 6 - (effects?.defenseBonus || 0)) : 0;
   const recovery = judgeResult.kind === 'rest' && judgeResult.minutes >= 360 ? 10 : 0;
   return { body: { health: damage + recovery } };
 }

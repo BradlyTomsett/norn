@@ -79,3 +79,34 @@ test('另一页面保存后，旧页面先刷新状态再允许行动', async ({
   await act(page, '再等一会'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：2'); await other.close();
 });
+test('手机常用装备最多9栏，箭矢分颜色堆叠，护甲盾牌单选，刷新保持配置', async ({ page }) => {
+  await open(page, 'gear'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.locator('#cs-tabs').getByRole('button', { name: '装备', exact: true }).click();
+  await expect(page.locator('#gear-slot-count')).toContainText('1/9');
+  const choices = page.locator('[data-gear-weapon]'); await expect(choices).toHaveCount(10);
+  for (let i = 0; i < 9; i++) await choices.nth(i).check();
+  await expect(page.locator('#gear-slot-count')).toContainText('9/9'); await expect(page.locator('#gear-save')).toBeEnabled();
+  await choices.nth(9).check(); await expect(page.locator('#gear-message')).toContainText('最多占 9'); await expect(page.locator('#gear-save')).toBeDisabled();
+  await choices.nth(9).uncheck();
+  await expect(page.getByRole('spinbutton', { name: '弓箭（灰）使用数量', exact: true })).toHaveValue('500');
+  await page.locator('[name="gear-shield"][value="木盾（灰）"]').check(); await page.locator('[name="gear-shield"][value="铁盾（蓝）"]').check();
+  await expect(page.locator('[name="gear-shield"]:checked')).toHaveCount(1);
+  await page.locator('[name="gear-armor"][value="皮甲（紫）"]').check();
+  await page.locator('#gear-primary').selectOption('大枪（紫）'); await page.locator('#gear-save').click();
+  await expect(page.locator('#gear-message')).toContainText('已保存');
+  await page.reload(); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click(); await page.locator('#cs-tabs').getByRole('button', { name: '装备', exact: true }).click();
+  await expect(page.locator('#gear-slot-count')).toContainText('9/9'); await expect(page.locator('#gear-primary')).toHaveValue('大枪（紫）');
+  await expect(page.locator('[name="gear-armor"]:checked')).toHaveValue('皮甲（紫）');
+  await expect(page.locator('[name="gear-shield"]:checked')).toHaveValue('铁盾（蓝）');
+});
+test('免疫矛盾正文自动重写一次，本回合武器和生效能力进入结算', async ({ page }) => {
+  await open(page, 'gear'); await page.getByRole('button', { name: '模拟无视免疫', exact: true }).click();
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '用大枪攻击守卫'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#log')).not.toContainText('鲜血流了下来');
+  await expect(page.locator('.turn-receipt')).toContainText('使用：大枪（紫）');
+  await expect(page.locator('.turn-receipt')).toContainText('天赋免疫已生效');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+});

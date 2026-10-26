@@ -36,5 +36,10 @@ export function finishTurn(plan, delta) {
   const before = plan.base.player.accounts || [];
   result.receipt.accounts = state.player.accounts.map(a => ({ ...a, before: before.find(b => b.id === a.id)?.copper || 0,
     change: a.copper - (before.find(b => b.id === a.id)?.copper || 0), after: a.copper })).filter(a => a.change);
+  result.receipt.health = { before: plan.base.player.body.health, after: state.player.body.health,
+    change: state.player.body.health - plan.base.player.body.health };
+  result.receipt.effects = [];
+  if (plan.judged.effects.weapon && ['combat', 'study'].includes(plan.judged.kind)) result.receipt.effects.push('使用：' + plan.judged.effects.weapon.label);
+  if (plan.judged.effects.blocked) result.receipt.effects.push('天赋免疫已生效，本次来袭效果未造成伤害或负面状态。');
   return { state, receipt: result.receipt };
 }

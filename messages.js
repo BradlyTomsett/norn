@@ -21,6 +21,8 @@ export function receiptText(receipt) {
   return [
     ...(receipt.accounts || []).map(a => `${a.name} ${a.change >= 0 ? '+' : '−'}${copperText(Math.abs(a.change))}；余额 ${copperText(a.after)}`),
     ...(receipt.items || []).map(i => `${i.name} ${i.change >= 0 ? '+' : '−'}${Math.abs(i.change)}`),
+    ...(receipt.health?.change ? [`健康 ${receipt.health.change >= 0 ? '+' : '−'}${Math.abs(receipt.health.change)}；当前 ${receipt.health.after}`] : []),
+    ...(receipt.effects || []),
   ].join('\n') || '本回合没有账户或物品变化。';
 }
 

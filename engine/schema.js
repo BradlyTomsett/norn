@@ -1,7 +1,8 @@
 import { removeRetiredPostalData } from './retired-prices.js';
 import { ensureAccounts } from './money.js';
 import { upgradeTasks } from './tasks.js';
-export const SCHEMA_VERSION = 4;
+import { ensureLoadout } from './equipment.js';
+export const SCHEMA_VERSION = 5;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
 export const absoluteMinute = (clock) => absoluteDay(clock) * 1440 + clock.hour * 60 + clock.minute;
@@ -54,6 +55,7 @@ export function upgradeState(state) {
   state.processedEvents ||= {};
   state.flags ||= {};
   upgradeTasks(state);
+  ensureLoadout(p);
   state.version = 'm2';
   state.schemaVersion = SCHEMA_VERSION;
   state.revision = Number(state.revision) || 0;

@@ -1,8 +1,12 @@
 import { splitDelta } from '../format.js';
 import { finishTurn } from './turn.js';
 import { AgencyError, assertPlayerAgency, approvedFinance } from './agency.js';
+import { NarrativeError, assertAbilityNarrative } from './narrative.js';
 
 const rows = value => value == null ? [] : Array.isArray(value) ? value : [value];
+const canonical = value => JSON.stringify(value, function (_key, row) {
+  return row && typeof row === 'object' && !Array.isArray(row) ? Object.fromEntries(Object.keys(row).sort().map(key => [key, row[key]])) : row;
+});
 
 /** Only an unambiguous existing identity may be converted from create to update. */
 export function normalizeNpcDelta(delta, state) {
@@ -37,21 +41,25 @@ function financeSignature(delta) {
 }
 
 /** Validation may request one data-only repair; neither attempt mutates the plan. */
-export async function settleReply(plan, raw, { repair, repairAgency } = {}) {
+export async function settleReply(plan, raw, { repair, repairAgency, repairNarrative } = {}) {
   const original = splitDelta(raw).delta;
   try {
     if (!original) throw new Error('回复缺少有效变化块');
     assertPlayerAgency(plan, raw, original);
+    assertAbilityNarrative(plan, raw);
     return { ...finishTurn(plan, normalizeNpcDelta(original, plan.state)), raw, repaired: false };
   } catch (error) {
     const agency = error instanceof AgencyError;
-    if (agency ? !repairAgency : !repair) throw error;
-    const repairedRaw = agency ? await repairAgency(raw, plan, error.message) : raw;
-    const repaired = agency ? splitDelta(repairedRaw).delta : await repair(raw, plan, error.message);
+    const fullRewrite = agency ? repairAgency : error instanceof NarrativeError ? repairNarrative : null;
+    if ((agency || error instanceof NarrativeError) ? !fullRewrite : !repair) throw error;
+    const repairedRaw = fullRewrite ? await fullRewrite(raw, plan, error.message) : raw;
+    const repaired = fullRewrite ? splitDelta(repairedRaw).delta : await repair(raw, plan, error.message);
     if (!repaired) throw new Error('修复后仍缺少有效变化数据，原进度已保留。');
     const originalFinance = agency ? approvedFinance(original, plan.text) : original;
     if (original && financeSignature(originalFinance) !== financeSignature(repaired)) throw new Error('回复修复改变了原有交易，请重试本回合，原进度已保留。');
+    if (error instanceof NarrativeError && canonical(original) !== canonical(repaired)) throw new Error('正文重写改变了原有变化数据，原进度已保留。');
     assertPlayerAgency(plan, repairedRaw, repaired);
+    assertAbilityNarrative(plan, repairedRaw);
     return { ...finishTurn(plan, normalizeNpcDelta(repaired, plan.state)), raw: repairedRaw, repaired: true };
   }
 }

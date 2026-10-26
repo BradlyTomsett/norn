@@ -131,6 +131,17 @@ body {
 #search-results .card { width: 100%; text-align: left; overflow-wrap: anywhere; }
 #search-results .card span { white-space: pre-line; }
 .history-focus { outline: 1px solid var(--ink-dim); outline-offset: 5px; }
+.loadout-section { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 14px 0; min-width: 0; }
+.loadout-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.loadout-row:last-child { border-bottom: 0; }
+.gear-pick { display: flex; align-items: center; gap: 10px; min-height: 44px; overflow-wrap: anywhere; }
+.gear-pick input { flex: 0 0 auto; width: 20px; height: 20px; accent-color: var(--accent); }
+.gear-pick small { display: block; color: var(--ink-dim); font-size: .8em; margin-top: 3px; }
+.gear-qty { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: var(--ink-dim); font-size: .85em; }
+.gear-qty input { width: 90px; min-height: 38px; padding: 6px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.gear-primary { display: grid; gap: 8px; }
+.gear-primary select { width: 100%; min-height: 44px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); padding: 8px; font: inherit; }
+#gear-slot-count { position: sticky; top: 0; z-index: 2; padding: 10px 4px; background: var(--bg2); border-bottom: 1px solid var(--line); }
 
 button.ghost {
   background: transparent; color: var(--ink-dim);

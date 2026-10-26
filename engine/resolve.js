@@ -1,8 +1,9 @@
 import { int } from './rng.js';
+import { actionAbilities, abilityBrief } from './abilities.js';
 
 const RULES = [
   ['labor', /打水|打饭|打酒|打柴|打扫|劈柴|挑水|喂|搬|挖|帮工|收拾|修屋|种田/],
-  ['combat', /攻击|砍|刺杀|刺向|刺一|刺深|揍|搏斗|动手|打他|打人|打死|打起来|拔刀|拔剑|杀/],
+  ['combat', /攻击|砍|刺杀|刺向|刺一|刺深|揍|搏斗|动手|打他|打人|打死|打起来|拔刀|拔剑|杀|抵挡|挡住|防御|招架|格挡|射击|射箭|投掷|掷出|投出/],
   ['stealth', /悄悄|偷偷|溜|躲|潜行|摸过去|不让人看见/],
   ['trade', /买|卖|交易|换钱|讲价|讨价|付钱|赊/],
   ['study', /学|读|练|背书|请教|研究|琢磨/],
@@ -107,13 +108,23 @@ function difficultyFor(state, text, kind, fallback) {
 export function judge(state, text, rng) {
   const kind = classify(text), prof = PROFILE[kind], p = state.player;
   const intent = currentAction(text);
+  const effects = actionAbilities(state, intent.text, kind);
   const minutes = actionMinutes(text, kind, int(rng, ...prof.minutes), state.clock);
-  const stat = p.stats[prof.stat] || 10;
-  const skill = p.skills.find(s => s.name === prof.skill)?.level ?? Math.max(0, (stat - 10) * 0.4);
+  const weaponStudy = kind === 'study' && effects.weapon;
+  const statName = weaponStudy ? 'body' : prof.stat, skillName = weaponStudy ? '武技' : prof.skill;
+  const stat = p.stats[statName] || 10;
+  const skill = p.skills.find(s => s.name === skillName)?.level ?? Math.max(0, (stat - 10) * 0.4);
   const mods = [];
   let ability = 15 + stat * 0.8 + skill * 1.5;
+  ability += effects.weaponBonus + effects.masteryBonus;
+  if (effects.weapon && ['combat', 'study'].includes(kind)) mods.push(`使用${effects.weapon.label}`);
+  if (effects.masteryBonus) mods.push('所有武器精通');
+  if (effects.rules.magicSense && kind === 'observe' && /魔法|魔力|灵气|法术/.test(intent.text)) { ability += 6; mods.push('魔法感知'); }
   if (p.body.health < 60) { ability -= 8; mods.push('健康欠佳'); }
-  if (state.clock.hour < 6 || state.clock.hour > 20) { ability -= ['observe', 'stealth'].includes(kind) ? 8 : 3; mods.push('天黑'); }
+  if (state.clock.hour < 6 || state.clock.hour > 20) {
+    if (effects.rules.nightSight && ['observe', 'stealth'].includes(kind)) mods.push('夜视');
+    else { ability -= ['observe', 'stealth'].includes(kind) ? 8 : 3; mods.push('天黑'); }
+  }
   if (['storm', 'snow'].includes(state.clock.weather)) { ability -= 5; mods.push('天气恶劣'); }
   if (p.age < 15) { ability -= 4; mods.push('年纪小'); }
   if (/提前准备|备好|侦察过|事先查清|设好埋伏/.test(intent.text)) { ability += 5; mods.push('准备充分'); }
@@ -122,10 +133,10 @@ export function judge(state, text, rng) {
   let outcome = OUTCOMES.find(o => score >= o.min);
   if (outcome.key === 'crush' && margin < 12) outcome = OUTCOMES[1];
   if (kind === 'rest' || kind === 'meta' || (kind === 'social' && !/说服|劝服|欺骗|威胁|撒谎|谈判|交涉|请求|劝|求/.test(intent.text))) outcome = OUTCOMES[2];
-  return { kind, label: prof.label, skill: prof.skill, statName: prof.stat, stat, skillLevel: Number(skill.toFixed(1)),
+  return { kind, label: prof.label, skill: skillName, statName, stat, skillLevel: Number(skill.toFixed(1)), effects,
     ability: Math.round(ability), difficulty: Math.round(difficulty), margin, score: Math.round(score),
     outcome: outcome.key, outcomeCn: outcome.cn, modifiers: mods, minutes, actionText: intent.text, futurePlans: intent.future };
 }
 export function judgeBrief(d) {
-  return `当前行动：${d.actionText || '只作计划，不执行未来行动'}\n判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n本回合耗时：${d.minutes} 分钟（由引擎统一推进）${d.futurePlans?.length ? `\n留待以后、这回合不得执行：${d.futurePlans.join('；')}` : ''}`;
+  return `当前行动：${d.actionText || '只作计划，不执行未来行动'}\n判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n${abilityBrief(d.effects)}\n本回合耗时：${d.minutes} 分钟（由引擎统一推进）${d.futurePlans?.length ? `\n留待以后、这回合不得执行：${d.futurePlans.join('；')}` : ''}`;
 }
