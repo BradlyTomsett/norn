@@ -163,6 +163,7 @@ test('没有回退快照的旧存档仍可保存事实纠正，不推进时间�
 
 test('旧纠正加载后写入持久存档，立即导出和刷新都保留纠正及冲突标记', async ({ page }) => {
   await open(page, 'context');
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '存档', exact: true }).click();
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: '导出', exact: true }).click();
   const payload = JSON.parse(await readFile(await (await download).path(), 'utf8'));
