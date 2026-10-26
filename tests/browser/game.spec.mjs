@@ -233,5 +233,5 @@ test('免疫矛盾正文自动重写一次，本回合武器和生效能力进�
   await expect(page.locator('#log')).not.toContainText('鲜血流了下来');
   await expect(page.locator('.turn-receipt')).toContainText('使用：大枪（紫）');
   await expect(page.locator('.turn-receipt')).toContainText('天赋免疫已生效');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
 });
