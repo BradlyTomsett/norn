@@ -1029,12 +1029,12 @@ document.addEventListener('click', async (e) => {
   if (pick) {
     const full = pick.dataset.name || '';
     const g = gradeOfName(full);
+    const sel = $('#it-grade');
     const input = $('#it-name');
     if (input) {
-      input.value = g ? stripGrade(full) : full;
+      input.value = g && sel ? stripGrade(full) : full;
       input.focus();
     }
-    const sel = $('#it-grade');
     if (sel) sel.value = g || '';
     return;
   }
