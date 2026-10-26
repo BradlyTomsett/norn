@@ -39,6 +39,8 @@ test('同名同品阶堆叠，箭矢匕首飞刀飞斧标枪分别一栏，颜�
   const inventory = gearInventory(s.player); assert.equal(inventory.find(item => item.key === '弓箭（灰）').qty, 501);
   const weapons = inventory.map(item => row(item.key, item.qty)); pick(s, weapons, weapons[0].key);
   assert.equal(gearState(s.player).slots, 6); assert.equal(s.player.equipment.length, 7);
+  const aliases = fresh(['灰色弓箭×30', '弓箭（灰）×20', '绿色弓箭×10']);
+  assert.equal(gearInventory(aliases.player).length, 2); assert.equal(gearInventory(aliases.player).find(item => item.grade === '灰').qty, 50);
 });
 test('非堆叠武器每件占一栏，第10栏拒绝；盾和护甲各只能一件', () => {
   const s = fresh(['长剑（金）×10', '木盾（灰）', '铁盾（蓝）', '皮甲（灰）', '板甲（紫）']);
@@ -81,6 +83,7 @@ test('相同名称不同颜色可明确选择，普通武器与传说武器产�
   assert.equal(roll(s, '用灰色弓箭攻击守卫').effects.weapon.key, '弓箭（灰）');
   assert.equal(roll(s, '用弓箭（绿）攻击守卫').effects.weapon.key, '弓箭（绿）');
   assert.ok(roll(s, '用长剑（金）攻击守卫').ability > roll(s, '用长剑（灰）攻击守卫').ability);
+  const throwing = fresh(['飞刀（灰）×20']); assert.equal(roll(throwing, '掷飞刀').kind, 'combat');
 });
 test('精通所有武器在换武器与练武时生效，读书和交易不受武器加成', () => {
   const s = fresh(['长剑（金）', '大枪（紫）']); s.player.talent = { effect: '精通所有武器' };

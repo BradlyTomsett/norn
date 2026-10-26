@@ -14,7 +14,8 @@ function entry(raw) {
   const text = String(raw || '').normalize('NFKC').replace(/\(([^)]*)\)/g, '（$1）')
     .replace(/（(普通|稀少|珍奇|史诗|传说)(?=[，,）])/g, (_, g) => '（' + grades[g]);
   const parsed = parseItemEntry(text); if (!parsed) return null;
-  const grade = parsed.grade || '灰', name = parsed.name.trim();
+  const prefix = parsed.name.match(/^([灰绿蓝紫金])色(.+)$/);
+  const grade = parsed.grade || prefix?.[1] || '灰', name = (prefix ? prefix[2] : parsed.name).trim();
   return { key: `${name}（${grade}）`, label: `${name}（${grade}）`, name, grade, qty: parsed.qty,
     kind: gearKind(name), stackable: stackable.test(name) };
 }
