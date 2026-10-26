@@ -282,11 +282,14 @@ function viewGear(u) {
 }
 
 function viewLoadout(player) {
-  const { inventory, loadout, slots } = player.gear || gearState(player);
+  const { inventory: owned, loadout, slots } = player.gear || gearState(player);
+  const rank = row => GRADE_ORDER.findIndex(([ch]) => ch === row.grade);
+  const inventory = [...owned].sort((a, b) => rank(a) - rank(b));
   const weapons = inventory.filter(row => row.kind === 'weapon');
+  const selectedWeapons = weapons.filter(row => loadout.weapons.some(selected => selected.key === row.key));
   const color = row => GRADE_ORDER.find(([ch]) => ch === row.grade)?.[2] || 'common';
-  const current = loadout.weapons.map(selected => {
-    const row = inventory.find(item => item.key === selected.key);
+  const current = selectedWeapons.map(row => {
+    const selected = loadout.weapons.find(item => item.key === row.key);
     return `<div class="item g-${color(row)}">${esc(baseName(row.label))} ×${selected.qty}${row.key === loadout.primary ? '<small class="in-use-primary">主用</small>' : ''}</div>`;
   }).join('');
   const worn = (kind, title) => {
@@ -298,7 +301,7 @@ function viewLoadout(player) {
     return `<div class="loadout-row"><label class="gear-pick"><input type="checkbox" data-gear-weapon="${esc(row.key)}" ${selected ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}<small>拥有 ${row.qty}</small></span></label><label class="gear-qty${selected && row.qty > 1 ? '' : ' hidden'}">数量<input type="number" data-gear-qty="${esc(row.key)}" aria-label="${esc(row.label)}使用数量" min="1" max="${row.qty}" value="${selected?.qty || (row.stackable ? row.qty : 1)}" inputmode="numeric"></label></div>`;
   }).join('');
   const single = (kind, title) => `<fieldset class="loadout-section"><legend>${title}（最多 1 件）</legend><div class="loadout-choices"><label class="gear-pick"><input type="radio" name="gear-${kind}" value="" ${loadout[kind] ? '' : 'checked'}>不使用</label>${inventory.filter(row => row.kind === kind).map(row => `<label class="gear-pick"><input type="radio" name="gear-${kind}" value="${esc(row.key)}" ${loadout[kind] === row.key ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}</span></label>`).join('')}</div></fieldset>`;
-  return `<section id="gear-in-use"><h3>使用中</h3><p class="hint">武器 ${slots}/9 栏 · 护甲 ${loadout.armor ? 1 : 0}/1 · 盾牌 ${loadout.shield ? 1 : 0}/1</p><div id="gear-current-weapons" class="two-col">${current || '<p class="hint">未使用武器</p>'}</div>${worn('armor', '护甲')}${worn('shield', '盾牌')}<details id="gear-edit"><summary>修改使用装备</summary><div id="loadout-editor"><p class="hint">勾选使用，取消勾选则不使用。同名同品阶的箭矢、投掷武器、匕首可堆叠占一栏；不同品阶分开计数。</p><p id="gear-slot-count" role="status">武器：${slots}/9 栏</p><fieldset class="loadout-section"><legend>武器</legend><div class="loadout-choices">${weaponRows || '<p class="hint">还没有可选择的武器。</p>'}</div></fieldset><label class="gear-primary">主用武器<select id="gear-primary"><option value="">徒手 / 未指定</option>${loadout.weapons.map(row => `<option value="${esc(row.key)}" ${loadout.primary === row.key ? 'selected' : ''}>${esc(row.key)}</option>`).join('')}</select></label>${single('armor', '护甲')}${single('shield', '盾牌')}<button id="gear-save" class="primary">保存常用装备</button></div></details><p id="gear-message" class="hint" role="status"></p></section>`;
+  return `<section id="gear-in-use"><h3>使用中</h3><p class="hint">武器 ${slots}/9 栏 · 护甲 ${loadout.armor ? 1 : 0}/1 · 盾牌 ${loadout.shield ? 1 : 0}/1</p><div id="gear-current-weapons" class="two-col">${current || '<p class="hint">未使用武器</p>'}</div>${worn('armor', '护甲')}${worn('shield', '盾牌')}<details id="gear-edit"><summary>修改使用装备</summary><div id="loadout-editor"><p class="hint">勾选使用，取消勾选则不使用。同名同品阶的箭矢、投掷武器、匕首可堆叠占一栏；不同品阶分开计数。</p><p id="gear-slot-count" role="status">武器：${slots}/9 栏</p><fieldset class="loadout-section"><legend>武器</legend><div class="loadout-choices">${weaponRows || '<p class="hint">还没有可选择的武器。</p>'}</div></fieldset><label class="gear-primary">主用武器<select id="gear-primary"><option value="">徒手 / 未指定</option>${selectedWeapons.map(row => `<option value="${esc(row.key)}" ${loadout.primary === row.key ? 'selected' : ''}>${esc(row.key)}</option>`).join('')}</select></label>${single('armor', '护甲')}${single('shield', '盾牌')}<button id="gear-save" class="primary">保存常用装备</button></div></details><p id="gear-message" class="hint" role="status"></p></section>`;
 }
 
 export function relationColor(value) {

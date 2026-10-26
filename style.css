@@ -119,9 +119,7 @@ body {
   font-family: var(--serif);
 }
 .send:disabled { opacity: .4; }
-.composer-tools { display: flex; flex-direction: column; gap: 3px; }
-.composer-tools .send { flex: 1; min-height: 44px; }
-.composer-tools .ghost { min-height: 32px; padding: 3px 8px; }
+#btn-search { min-height: 44px; }
 .action-choices { display: grid; gap: 8px; margin-top: 14px; }
 .action-choice { width: 100%; min-height: 44px; padding: 12px; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 8px; text-align: left; font: inherit; line-height: 1.6; }
 .action-choice:disabled { opacity: .45; }

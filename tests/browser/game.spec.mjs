@@ -39,6 +39,9 @@ test('同名人物在发请求前选身份，搜索定位完整历史', async ({
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
   await page.getByRole('button', { name: /^凯尔（30岁·佣兵/ }).click();
   await expect(page.locator('#input')).toHaveValue(/问候凯尔（30岁·佣兵/);
+  await expect(page.locator('#composer #btn-search')).toHaveCount(0);
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await expect(page.locator('#sheet .cs-top #btn-search')).toBeVisible();
   await page.getByRole('button', { name: '查找', exact: true }).click();
   await page.getByRole('searchbox', { name: '查找内容' }).fill('蓝色信物');
   await expect(page.locator('#search-count')).toContainText('找到 1 条');
