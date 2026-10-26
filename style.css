@@ -99,12 +99,13 @@ body {
 
 /* 输入 */
 .composer {
-  display: flex; gap: 8px; align-items: flex-end;
+  display: flex; flex-wrap:wrap; gap: 8px; align-items: flex-end;
   padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px);
   border-top: 1px solid var(--line);
   background: var(--bg2);
 }
 .composer.hidden { display: none; }
+#action-preview { flex-basis:100%; font-size:11px; line-height:1.4; }
 #input {
   flex: 1; resize: none;
   background: #100e0c; color: var(--ink);
@@ -406,6 +407,10 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 /* 设置里的物价表 */
 .price-list { display: grid; gap: 6px; margin-top: 8px; }
 .price-row { display: flex; gap: 8px; align-items: center; }
+.price-bounds { display:grid; grid-template-columns:minmax(90px,1fr) minmax(65px,90px) minmax(65px,90px); align-items:center; }
+.price-bounds label { min-width:0; color:var(--ink-dim); font-size:11px; }
+.price-row.price-bounds input { width:100%; min-width:0; box-sizing:border-box; }
+.price-bounds .nm { white-space:normal; }
 .price-row .nm { flex: 1; min-width: 0; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .price-row input {
   flex: 0 0 110px; background: #100e0c; color: var(--ink); border: 1px solid var(--line);

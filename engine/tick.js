@@ -9,10 +9,11 @@ import { decayRelations, decayReputation } from './progress.js';
 import { upgradeState, absoluteDay } from './schema.js';
 import { advanceNpcs, ensureNpcState } from './npcs.js';
 import { actionAbilities } from './abilities.js';
+import { expireEffects } from './effects.js';
 
 const DAY_EVENTS = [
   '路上过了一队收羊毛的商人，价压得很低',
-  '南边的车辙被雨水冲坏了一段，绕路要多走半个时辰',
+  '南边的车辙被雨水冲坏了一段，绕路要多走一个小时',
   '邻家丢了一只鸡，女人们在井台边说了半天',
   '管事的副手骑马经过，没停，溅了一路泥',
   '镇口来了两个不认识的年轻人，说是找活干',
@@ -22,10 +23,10 @@ const DAY_EVENTS = [
 
 const MONTH_EVENTS = [
   '面粉涨了一点，磨坊那边说是新麦还没下来',
-  '镇上的酒馆换了东家，价钱没变，量少了一点',
+  '镇上的酒馆换了店主，价钱没变，量少了一点',
   '教会的小堂修了屋顶，捐钱的是磨坊主',
   '南边林子又有人不敢进了，说是看见过火光',
-  '一队兵丁路过，住了一晚，吃了镇上不少东西',
+  '一队士兵路过，住了一晚，吃了镇上不少东西',
   '铁匠铺的火停了三天，说是煤没跟上',
   '有人在集上卖一张旧地图，标着林子深处的一条路',
 ];
@@ -57,6 +58,7 @@ export function advanceWorld(state, minutes, rng, judged) {
   const beforeDay = absoluteDay(state.clock);
   const { clock, crossed } = advanceClock(state.clock, minutes || 0, rng);
   state.clock = clock;
+  expireEffects(state);
   const events = [];
   ensureDebts(state);
   ensureWork(state);
@@ -111,7 +113,7 @@ export function advanceWorld(state, minutes, rng, judged) {
   }
 
   // 赶路：只算吃喝，1 天 2 铜的干粮钱
-  if (judged?.kind === 'travel') {
+  if (judged?.kind === 'travel' && ['journey', 'route'].includes(judged.travelScope)) {
     const fee = Math.max(1, Math.round((elapsed / 1440) * 2));
     const cash = state.player.accounts.find((a) => a.id === 'cash');
     if (cash && cash.copper >= fee) {
@@ -190,6 +192,7 @@ export function engineDelta(judgeResult, state) {
   const effects = judgeResult.effects || actionAbilities(state, judgeResult.actionText || '', judgeResult.kind);
   const immune = effects.blocked;
   const damage = judgeResult.kind === 'combat' && ['fail', 'disaster'].includes(judgeResult.outcome) && !immune ? -Math.max(1, 6 - (effects?.defenseBonus || 0)) : 0;
-  const recovery = judgeResult.kind === 'rest' && judgeResult.minutes >= 360 ? 10 : 0;
+  const restMinutes = judgeResult.segments ? judgeResult.segments.filter(s => s.kind === 'rest').reduce((sum, s) => sum + s.minutes, 0) : judgeResult.kind === 'rest' ? judgeResult.minutes : 0;
+  const recovery = restMinutes >= 360 ? 10 : 0;
   return { body: { health: damage + recovery } };
 }

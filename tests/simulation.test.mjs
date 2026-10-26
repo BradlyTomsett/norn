@@ -175,7 +175,8 @@ test('NPC目标跨回合和存档持续推进，玩家选择在指定日期产�
   assert.ok(apply(s, data).applied);
   s = JSON.parse(JSON.stringify(s));
   advanceWorld(s, 2 * 1440, makeRng(1), { kind: 'rest' });
-  assert.equal(s.npcs[0].goals.find(g => g.id === 'coal').progress, 25);
+  assert.equal(s.npcs[0].goals.find(g => g.id === 'coal').stepIndex, 1);
+  assert.equal(s.npcs[0].goals.find(g => g.id === 'coal').phase, 'acting');
   assert.equal(s.consequences[0].status, 'pending');
   advanceWorld(s, 1440, makeRng(1), { kind: 'rest' });
   assert.equal(s.consequences[0].status, 'resolved'); assert.equal(s.player.relations[0].closeness, before + 5);
@@ -183,7 +184,7 @@ test('NPC目标跨回合和存档持续推进，玩家选择在指定日期产�
   assert.equal(s.player.relations[0].closeness, before + 5);
   assert.equal(s.storyLog.filter(e => e.id === 'help-coal').length, 1);
   assert.match(VIEWS.clues(uiState(s)), /玩家答应帮忙/);
-  apply(s, { npcUpdates: [{ npcId: npc.id, goals: [{ id: 'coal', status: 'completed' }] }] }, 'goal:completed');
+  apply(s, { npcUpdates: [{ npcId: npc.id, memory: '煤炭已经送达', goals: [{ id: 'coal', status: 'completed', evidence: '煤炭已经送达' }] }] }, 'goal:completed');
   assert.equal(s.npcs[0].goals.find(g => g.id === 'coal').progress, 100);
 });
 

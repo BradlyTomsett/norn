@@ -4,6 +4,7 @@ import { isConsumable, isSharpeningStone } from './engine/items.js';
 import { CATS, gameReferenceRows, gamePriceEntry, priceEntryText } from './engine/economy.js';
 import { gearState } from './engine/equipment.js';
 import { copperText } from './engine/money.js';
+import { priceBounds } from './price-input.js';
 
 /* ---------------- 角色卡 ---------------- */
 
@@ -70,6 +71,7 @@ function viewOverview(u) {
   }
   out.push('<h3>状态</h3>');
   out.push(bar('健康', p.body.health, p.body.health < 50 ? 'warn' : 'good'));
+  for (const effect of p.effects || []) out.push(`<div class="item">${esc(effect.label)}<span class="hint"> · 药剂效果生效中</span></div>`);
   out.push('<h3>处境</h3><div class="rows">');
   out.push(`<div class="row"><span class="k">所在地</span><span class="v">${esc(p.location.siteName)}</span></div>`);
   out.push(`<div class="row"><span class="k">时间</span><span class="v">${esc(u.date)}</span></div>`);
@@ -119,9 +121,10 @@ function viewOverview(u) {
     </div>`);
   }
   if (p.goals?.length) {
-    out.push('<h3>当前目标</h3>');
+    out.push(`<h3>${p.goalsPending ? '旧目标 · 状态待核对' : '当前目标'}</h3>`);
     for (const g of p.goals) out.push(`<div class="item">${esc(g)}</div>`);
   }
+  if (p.principles?.length) out.push(`<details><summary>持续说明</summary>${p.principles.map(p => `<div class="item">${esc(p.text)}</div>`).join('')}</details>`);
   if (p.problems?.length) {
     out.push('<h3>当前问题</h3>');
     for (const x of p.problems) out.push(`<div class="item">${esc(x)}</div>`);
@@ -325,7 +328,7 @@ function viewPeople(u) {
       `<div class="person"><div class="nm">${esc(r.name)}<span>${esc(who)}</span></div>` +
         (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
         relationValue(r.closeness) +
-        ((r.goals || []).some(g => g.status === 'active') ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active').map(g => `${g.text}（进展 ${Number(g.progress) || 0}%）`).join('；'))}</div>` : '') +
+        ((r.goals || []).some(g => g.status === 'active' && !g.routine) ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active' && !g.routine).map(g => `${g.text}${g.blockedOn ? `（等待：${g.blockedOn}）` : ''}`).join('；'))}</div>` : '') +
         `<div class="ob">${esc(r.observable || '')}</div></div>`,
     );
   }
@@ -356,16 +359,6 @@ function viewPrices(u) {
   const supplements = map => Object.fromEntries(Object.entries(map || {}).filter(([name]) => gamePriceEntry(name) == null));
   const prices = supplements(u?.prices ?? u?.player?.prices);
   const rates = supplements(u?.rates ?? u?.player?.rates);
-  const text = (val) => {
-    if (typeof val === 'object' && val) {
-      const lo = val.min != null ? val.min : '';
-      const hi = val.max != null ? val.max : '';
-      if (lo !== '' && hi !== '') return `${lo}–${hi}`;
-      if (lo !== '') return `${lo} 起`;
-      return `${hi} 以内`;
-    }
-    return String(val ?? '');
-  };
   const list = (map, kind) => {
     const rows = Object.entries(map);
     if (!rows.length) return '<p class="hint">还没有条目。</p>';
@@ -373,9 +366,12 @@ function viewPrices(u) {
       '<div class="price-list">' +
       rows
         .map(
-          ([name, val]) =>
-            `<div class="price-row"><span class="nm">${esc(name)}</span>` +
-            `<input class="px-input" data-kind="${kind}" data-name="${esc(name)}" type="text" inputmode="text" value="${esc(text(val))}" /></div>`,
+          ([name, val]) => {
+            const bounds = priceBounds(val);
+            return `<div class="price-row price-bounds" data-price-row data-kind="${kind}" data-name="${esc(name)}"><span class="nm">${esc(name)}</span>`
+              + `<label>下限<input class="px-min" type="text" inputmode="numeric" aria-label="${esc(name)}下限（铜）" value="${esc(bounds.min)}" /></label>`
+              + `<label>上限<input class="px-max" type="text" inputmode="numeric" aria-label="${esc(name)}上限（铜）" value="${esc(bounds.max)}" /></label></div>`;
+          },
         )
         .join('') +
       '</div>'
@@ -386,16 +382,17 @@ function viewPrices(u) {
     `<details class="game-prices"><summary>游戏物价（内置参考，点击查看）</summary><div class="price-list">${gameReferenceRows().map(row => `<div class="game-price-row"><span>${esc(row.name)}</span><span>${esc(priceEntryText(row.entry))} 铜</span></div>`).join('')}</div>
     <h3>类目估价基准</h3><div class="price-list">${Object.values(CATS).map(row => `<div class="game-price-row"><span>${esc(row.name)} / ${esc(row.unit)}</span><span>${row.base} 铜</span></div>`).join('')}</div></details>`,
     '<h3>存档物价</h3>',
-    '<p class="hint">只补充游戏未收录的物件与服务。数字或范围均为参考：800-1500、800-、-1500；清空一行即删除。</p>',
+    '<p class="hint">金额单位为铜币。固定价把上下限填成同一个数；只填一边表示仅设下限或上限。两边都清空才会删除该条。</p>',
     '<h3>物品与服务</h3>',
     list(prices, 'prices'),
     '<h3 style="margin-top:18px">服务与活计参考</h3>',
     list(rates, 'rates'),
     '<div class="chips" style="margin-top:10px"><button id="px-save" class="chip">保存改动</button></div>',
     `<h3 style="margin-top:18px">新增一条</h3>
-    <div class="price-row" style="margin-top:8px">
-      <input id="px-name" class="name-input" style="flex:1" placeholder="物品或服务名" />
-      <input id="px-value" class="name-input" style="flex:0 0 120px" placeholder="价格或范围" />
+    <div class="price-row price-bounds" style="margin-top:8px">
+      <input id="px-name" class="name-input" placeholder="物品或服务名" aria-label="物品或服务名" />
+      <label>下限<input id="px-min" class="name-input" inputmode="numeric" aria-label="新增价格下限（铜）" /></label>
+      <label>上限<input id="px-max" class="name-input" inputmode="numeric" aria-label="新增价格上限（铜）" /></label>
     </div>
     <div class="chips" style="margin-top:8px">
       <select id="px-kind" class="it-grade" style="flex:0 0 110px">

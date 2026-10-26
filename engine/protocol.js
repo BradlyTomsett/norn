@@ -28,12 +28,14 @@ ${WESTERN_STYLE}
 钱的数量可以明确说出，所有机器金额都是正整数铜，1金=10000铜。钱没有重量、体积或运输费用。
 经济统一使用 transactions 数组，每笔有固定 id。一次业务只能记录一次，禁止同时输出 money/trade/earn/gift 等旧记账字段。
 交易 copper 是这一行的总金额，qty 是数量；不替玩家决定购买、分配或转账。
+严格核对玩家明确说出的金额、数量、对象、最高预算和本回合已批准交易条件，正文与JSON保持一致。数字错误不得靠余额足够来放行。已经有明确报价时引用原报价，不能重新猜价。
+NPC明确报价可登记 quotes:[{id:"quote_01",item:"药水",qty:2,copper:10,unitCopper:5,sellerId:"已有NPC编号",kind:"purchase"}]，只记录本次报价，不当作永久物价。总价必须等于单价乘数量；没有逐件报价可以省略unitCopper。玩家明确同意后才执行transactions。
 购买 {"id":"buy_01","kind":"purchase","name":"黑面包","qty":2,"copper":2,"account":"cash"}。
 出售 kind=sale；赠予 kind=gift、to=人物id；转账 kind=transfer、from/to=账户id。
 还债 kind=repay，带 debtId 或 to=债权人名称；借款 kind=borrow，from=债权人名称，months=期限月数，rate=月息小数（默认0.01）。两者带 copper 和 account。
 普通收支 kind=income/payment，带 copper、account、note；不能重复包含引擎已发的月钱、产业收益、工钱或生活费。
 委托接取用 bounty:{id,label,copper,tier}，只在玩家答应后登记。领取用 {id,kind:"reward",contractId,result:"完成",account:"cash"}；完成、一半、未完成分别全额、半额、零。不得把赏金当零工限价，不得把已付款委托再次当 income 发款。
-队友分成作为同一 transactions 数组中各自的 gift，不要重复用普通 payment 扣一次。接新委托不要覆盖旧委托。
+队友分成作为同一 transactions 数组中各自的 gift，note注明酬劳或分成，不视为额外送礼刷亲近；不要重复用普通 payment 扣一次。接新委托不要覆盖旧委托。
 账户为 cash/home/workshop。玩家明确分赏金120金、两人各5金、自己与第三人平分余款，应一次收入120金、支付5+5+55金，净增55金。
 物品获取与失去用 items/lose，真正收下带品阶武器护甲用 equipment；交易已经自动移动物品，不能再写 items/equipment/lose 重复移动。
 拥有装备数量不限，常用武器最多占9栏，护甲和盾牌各1件。同名同品阶的箭矢、投掷武器、匕首可以堆叠占1栏，不同品阶分别占栏。收藏不等于正在使用，不叠加整个武器库的效果；本次实际使用与天赋效果以程序判定为准，临时指定的收藏武器只替换本回合主用武器，不新增第10栏、不改变平时配置。
@@ -44,17 +46,20 @@ ${WESTERN_STYLE}
 移动后必须给 location:{siteId,siteName}，siteId 同一个地方始终不变；新地方可补 regionTitle/terrain/economy/politics/risk。同行伙伴用 npcUpdates 标明 following:true，留在别处的人 following:false 并记录 location。
 新人物用 npcs:[{id,name,race,age,profession,traits,obsession}] 登记，固定 id；后续更新用 npcUpdates。
 人物关系只有“亲近”一个数值，用 relations:[{npcId,closeness,observable}]，closeness 是增量，最终值限制在−100～100；只能引用已有或本回合新登记的人物。
-人物目标用 npcUpdates:[{npcId,goals:[{id,text,action,completion,days:7,status:"active",visible:true}],memory:"会记住的互动"}]；目标有具体事情、推进动作与完成结果。仅更新发生变化的目标，完成用相同id和status:"completed"。
+人物目标用 npcUpdates:[{npcId,goals:[{id,text,action,completion,days:7,status:"active",visible:true,steps:[{text:"实际采取的第一步"},{text:"需要条件的下一步",condition:{type:"memory",text:"必要事实"}}]}],memory:"会记住的互动",interacted:true}]。重要NPC只保持一到两个具体目标，结合已有动机选择行动、资源和阻碍，不重复抄职业模板。目标不因经过日期自动办妥；完成用相同id、status:"completed"并附evidence说明本回合已经发生的结果。遇到阻碍写obstacle，解决后用obstacle:""。只有确实交谈或交接时写interacted:true，不能把谈论一个人当作已联系他。
 持久选择后果用 consequences:[{id,cause:"玩家已做出的具体选择",text:"届时出现的结果",days:3,visible:false,effects:{relations:[{npcId,closeness:2,observable:"可见表现"}],reputation:[{place,change:2}]}}]。
 effects也可用npcUpdates改变人物职业、地点或同一id的目标状态。后果必须源于玩家已经做出的选择，不替玩家预订决定；不把未到时间的后果写成已发生。隐秘目标与后果不得提前透露给玩家。
+后果可加when、cancelWhen、discoverWhen条件，分别表示触发条件、补救后取消条件和玩家得知的条件。支持{type:"taskStatus",id,status}、{type:"contractStatus",id,status}、{type:"npcAlive",npcId}、{type:"npcAt",npcId,siteId}、{type:"playerAt",siteId}、{type:"knowledge",text}、{type:"memory",text}（人物目标）、{type:"all",conditions:[条件]}及any/not组合。只能引用已结算事实。取消已有后果用相同id,status:"cancelled",evidence；已经发生的秘密只能在实际获得消息后用相同id,discovered:true,evidence揭示，不能回滚已发生的事实。
+亲近只反映已有互动，不把支付约定酬劳当作赠礼；人物原则、拒绝与合作条件保持连贯，不能用送金币抹去已经发生的仇怨。已完成目标从goals移出，历史与持续说明优先于旧对话中的过时待办。
 事项用 tasks:[{id,text,status:"active",kind:"task|commitment|investigation",importance:"major",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，只登记重要且尚未完成、需要后续处理的任务、调查、交付与跨回合承诺。普通吃饭、问候、闲聊、逐个小问题、已经当场办完的安排不新增待办；永久保密和行动原则是说明，不是任务。已经登记的委托不再复制成同名任务。期限不明确就不填dueDays。与委托交付绑定可用completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用{type:"arrival",siteId}。
 每回合根据实际发生的结果，主动核对现有事项：完成或取消使用相同id和status:"completed"/"cancelled"。例如班次已定下，应立即关闭“定下三夜守夜班次”，不能继续列为未完成；排班完成不等于守夜任务已完成。已完成事项不得改写成新待办、也不得自动重开；相近表述沿用同一编号。没有完成依据的任务继续保留，不用单纯经过日期推定完成。未完成事项小节只列重要、尚需后续行动的新变化，不重复抄整张清单。
 knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 记玩家获得的事实，人物引用固定编号，同名人物按年龄、职业与地点区分，无法确定时先问一句。新技能只写名称，不写等级。声望 reputation:[{place,change}]。
+只有本回合实际完成侦察、备好工具、布置埋伏等准备，才可在该knowledge里加preparation:{kinds:["combat"],target:"明确对象或地点",days:3}，供后续相应行动读取；不能仅凭玩家自称“准备过”新增既成事实。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。
 json 中不要加入未定义字段。所有变动必须有叙事和玩家行动依据；游戏会验证并生成实际结算回执。`;
 
 export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', chronicleDue = false, recall = '' } = {}) {
-  return [rules, worldbook, state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
+  return [rules, worldContext(worldbook, state, query), state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
     '【当前状态】', stateBlock(state, query), '【当前相关人物】', npcCards(state, query),
     '【已有人物编号索引，仅用于识别，不得重复创建】', state.npcs.map(n => `[${n.id}] ${n.name}｜${n.age}岁｜${n.race}｜${n.profession}`).join('\n'),
     '【已确定的本回合判定】', judgeBrief(judged),
@@ -63,7 +68,21 @@ export function buildPrompt(state, judged, events, { rules = '', worldbook = '',
     `姓名始终为${state.player.name}。叙事体现“${judged.outcomeCn}”，耗时严格为${judged.minutes}分钟。`,
     /详细|详写|展开|细说/.test(query) || judged.kind === 'combat'
       ? '这是需要展开的场景，可以详细描写动作与后果，重要选择仍停下来等玩家。'
-      : '普通交流、查看和生活行动以1—3个自然段为主，尽量不超过300个汉字；只有新增事实才加小节，不重复面板或未完成事项。重要谈话可以适当展开。',
+      : '普通交流、查看和生活行动以1—3个自然段为主，尽量不超过300个汉字；直接回答问题，能当场完成的交流当场完成，不反复要求确认同一安排。场景只写变化，只有新增事实才加小节，不重复面板或未完成事项。重要谈话可以适当展开。选项提供不同目的与取舍，不全是继续追问细节。',
     chronicleDue ? '本回合在结尾 JSON 前输出【编年】，以“· ”列出影响未来的重要事实，勿重复旧条目。' : '',
     '最后必须输出 json 变化块；没有变化输出 ```json\n{}\n```。'].filter(Boolean).join('\n\n');
+}
+
+export function worldContext(worldbook, state, query) {
+  if (!query || !worldbook.includes('## 一、')) return worldbook;
+  const sections = worldbook.split(/(?=^## )/m), context = `${query} ${state.player.location.siteName}`;
+  return sections.filter(section => {
+    if (/^## (?:一、|五、|六、|十、)/.test(section) || !section.startsWith('## ')) return true;
+    if (/^## 二、/.test(section)) return /历史|联邦|纪元|遗迹|灾厄/.test(context);
+    if (/^## 三、/.test(section)) return /王国|六国|海|大陆|旅行|远行|地图|城际|森岭|矮人|龙岛|高原|联邦/.test(context);
+    if (/^## 四、/.test(section)) return /种族|精灵|兽人|矮人|龙裔|地穴|高原/.test(context);
+    if (/^## 七、/.test(section)) return /战斗|攻击|制伏|怪物|恶魔|深渊|亡灵|公会|委托|任务/.test(context);
+    if (/^## 八、/.test(section)) return /教会|宗教|神|祭司|教团|祈祷/.test(context);
+    return /社会|贵族|城主|税|法庭|治安|行会|公会/.test(context);
+  }).join('\n\n');
 }

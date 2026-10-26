@@ -1,6 +1,7 @@
 import { absoluteDay, absoluteMinute, bounded, cleanText, list, closenessOf } from './schema.js';
 import { applyTasks } from './tasks.js';
 import { entityRefs } from './entities.js';
+import { conditionMet, validCondition } from './conditions.js';
 
 const PURPOSES = [
   [/铁匠|锻|矿/, '备齐下一批原料，维持工坊开工', '联系原料商并整理订单', '原料和订单已经安排妥当'],
@@ -19,17 +20,42 @@ export function ensureNpcState(state) {
         progress: 0, status: 'active', nextDay: absoluteDay(state.clock) + 7, intervalDays: 7, visible: true }];
     }
     npc.memories ||= list(npc.memory).map(row => typeof row === 'string' ? { text: row } : row);
+    for (const goal of npc.goals) {
+      if (goal.id === `${npc.id}:daily`) goal.routine = true;
+      goal.phase ||= goal.routine ? 'ongoing' : 'waiting';
+      goal.steps ||= [{ text: goal.action || '安排下一步行动' }, { text: '落实所需条件', condition: { type: 'memory', text: goal.completion || '事情已经办妥' } }, { text: goal.completion || '核对完成结果' }];
+      goal.stepIndex ??= Math.min(goal.steps.length, Math.floor((goal.progress || 0) / 100 * goal.steps.length));
+    }
+    const important = npc.following || npc.memories.length > 0 || state.player.relations.some(r => r.npcId === npc.id && r.closeness >= 40);
+    if (important && npc.obsession && !npc.goals.some(g => !g.routine && ['active', 'blocked'].includes(g.status)) && !npc.goals.some(g => g.id === `${npc.id}:personal`)) {
+      const promotion = /晋级|爬一级|换.*牌子|凑够单数/.test(npc.obsession);
+      npc.goals.push({ id: `${npc.id}:personal`, text: cleanText(npc.obsession), action: promotion ? '核对晋级条件并寻找合适的职责' : '核对眼前安排，寻找可行的下一步',
+        completion: promotion ? '晋级所需成果已经得到确认' : `与“${cleanText(npc.obsession, 60)}”有关的安排已经办妥`,
+        source: '人物既有动机', progress: 0, phase: 'waiting', status: 'active', nextDay: absoluteDay(state.clock) + 1, intervalDays: 1, visible: true,
+        steps: [{ text: promotion ? '核对晋级条件' : '安排下一步' },
+          { text: promotion ? '积累能证明能力的实际成果' : '落实所需条件', condition: { type: 'memory', text: promotion ? '完成委托' : '安排已经落实' } },
+          { text: promotion ? '取得晋级确认' : '核对完成结果', condition: { type: 'memory', text: promotion ? '晋级通过' : '事情已经办妥' } }], stepIndex: 0 });
+    }
   }
 }
 
-function relationEffect(state, effect, cause) {
+function relationEffect(state, effect, cause, visible = true, eventId = '') {
   const r = state.player.relations.find(r => r.npcId === effect.npcId);
   if (!r) return;
   r.closeness = bounded(r.closeness + closenessOf(effect), -100, 100);
-  if (effect.observable) r.observable = cleanText(effect.observable);
-  r.lastTouch = absoluteDay(state.clock);
+  if (effect.observable && visible) r.observable = cleanText(effect.observable);
+  if (visible) r.lastTouch = absoluteDay(state.clock);
   const npc = state.npcs.find(n => n.id === effect.npcId);
-  if (npc) npc.memories.push({ cause, text: cleanText(effect.observable || cause), day: absoluteDay(state.clock) });
+  if (npc) npc.memories.push({ cause, eventId, text: cleanText(effect.observable || cause), day: absoluteDay(state.clock), visible });
+}
+function revealEvent(state, event, evidence = '') {
+  event.discovered = true;
+  const entry = state.storyLog.find(e => e.id === event.id); if (entry) { entry.discovered = true; if (evidence) entry.discovery = cleanText(evidence); }
+  for (const npc of state.npcs) for (const memory of npc.memories) if (memory.eventId === event.id || memory.cause === event.id) memory.visible = true;
+  for (const effect of event.effects.relations || []) {
+    const relation = state.player.relations.find(r => r.npcId === effect.npcId);
+    if (relation && effect.observable) relation.observable = cleanText(effect.observable);
+  }
 }
 
 export function applyStoryDelta(state, delta, rejected, eventId) {
@@ -74,26 +100,60 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
       if (!old && !raw.text) { rejected.push('新目标需要内容'); continue; }
       const goal = old || { id, progress: 0, status: 'active', intervalDays: 7, nextDay: absoluteDay(state.clock) + 7, visible: true };
       for (const field of ['text', 'action', 'completion']) if (raw[field]) goal[field] = cleanText(raw[field]);
+      if (raw.requires != null && !validCondition(raw.requires)) { rejected.push('人物目标的前置条件无效'); continue; }
+      if (raw.requires != null) goal.requires = structuredClone(raw.requires);
+      if (raw.steps != null) {
+        if (!Array.isArray(raw.steps) || !raw.steps.length || raw.steps.some(s => !s.text || (s.condition && !validCondition(s.condition)))) { rejected.push('目标步骤需要内容与有效条件'); continue; }
+        goal.steps = raw.steps.map(s => ({ text: cleanText(s.text), ...(s.condition ? { condition: structuredClone(s.condition) } : {}) }));
+        goal.stepIndex = Math.min(goal.stepIndex || 0, goal.steps.length);
+      }
+      if (raw.status === 'completed' && !raw.evidence && !row.memory && !conditionMet(state, goal.completionCondition || { type: 'memory', text: goal.completion || '事情已经办妥' }, npc)) { rejected.push('人物目标完成需要本回合结果或既有事实依据'); continue; }
       if (['active', 'completed', 'failed', 'cancelled'].includes(raw.status)) goal.status = raw.status;
+      if (raw.evidence) goal.evidence = cleanText(raw.evidence, 300);
+      if (raw.completionCondition != null) {
+        if (!validCondition(raw.completionCondition)) { rejected.push('人物目标完成条件无效'); continue; }
+        goal.completionCondition = structuredClone(raw.completionCondition);
+      }
+      if (raw.obstacle) { goal.obstacle = cleanText(raw.obstacle); goal.phase = 'blocked'; }
+      if (raw.obstacle === '') { delete goal.obstacle; goal.phase = 'waiting'; }
       if (goal.status === 'completed') goal.progress = 100;
       if (raw.visible === false) goal.visible = false;
       if (raw.days != null) { goal.intervalDays = bounded(raw.days, 1, 365); goal.nextDay = absoluteDay(state.clock) + goal.intervalDays; }
       if (!old) npc.goals.push(goal);
     }
-    if (row.memory) npc.memories.push({ cause: eventId, text: cleanText(row.memory), day: absoluteDay(state.clock) });
+    if (row.memory) npc.memories.push({ cause: eventId, text: cleanText(row.memory), day: absoluteDay(state.clock),
+      ...(state.consequences.some(e => e.id === eventId && e.visible === false && !e.discovered) ? { visible: false } : {}) });
+    if (row.interacted === true && !state.consequences.some(e => e.id === eventId)) {
+      const relation = state.player.relations.find(r => r.npcId === npc.id);
+      if (relation) relation.lastTouch = absoluteDay(state.clock);
+    }
   }
   for (const row of list(delta.consequences)) {
     const id = cleanText(row?.id, 100), cause = cleanText(row?.cause), text = cleanText(row?.text);
+    const existing = state.consequences.find(e => e.id === id);
+    if (existing) {
+      if (row.status === 'cancelled' && existing.status === 'pending' && row.evidence) { existing.status = 'cancelled'; existing.cancelEvidence = cleanText(row.evidence); }
+      if (row.discovered === true && existing.status === 'resolved' && row.evidence) {
+        revealEvent(state, existing, row.evidence);
+      }
+      continue;
+    }
     if (!id || !cause || !text) { rejected.push('后果需要 id、原因与结果'); continue; }
-    if (state.consequences.some(e => e.id === id)) continue;
+    for (const key of ['when', 'cancelWhen', 'discoverWhen']) if (row[key] && !validCondition(row[key])) rejected.push(`后果的${key}条件无效`);
     const effects = row.effects || {};
     for (const r of list(effects.relations)) if (!state.npcs.some(n => n.id === r.npcId)) rejected.push(`后果引用未知人物：${r.npcId}`);
     for (const update of list(effects.npcUpdates)) {
       if (!state.npcs.some(n => n.id === update.npcId)) rejected.push(`后果引用未知人物：${update.npcId}`);
-      for (const goal of list(update.goals)) if (!goal?.id) rejected.push('后果中的人物目标需要固定 id');
+      for (const goal of list(update.goals)) {
+        if (!goal?.id) rejected.push('后果中的人物目标需要固定 id');
+        for (const key of ['requires', 'completionCondition']) if (goal[key] && !validCondition(goal[key])) rejected.push('后果中的目标条件无效');
+        if (goal.steps && (!Array.isArray(goal.steps) || !goal.steps.length || goal.steps.some(s => !s.text || (s.condition && !validCondition(s.condition))))) rejected.push('后果中的目标步骤无效');
+      }
     }
     state.consequences.push({ id, cause, text, due: absoluteMinute(state.clock) + Math.round(bounded(row.days ?? 1, 0, 3650) * 1440),
-      status: 'pending', visible: row.visible !== false,
+      status: 'pending', visible: row.visible !== false, discovered: row.visible !== false,
+      ...(row.when ? { when: structuredClone(row.when) } : {}), ...(row.cancelWhen ? { cancelWhen: structuredClone(row.cancelWhen) } : {}),
+      ...(row.discoverWhen ? { discoverWhen: structuredClone(row.discoverWhen) } : {}),
       effects: { relations: list(effects.relations).map(r => ({ npcId: r.npcId, closeness: closenessOf(r), observable: r.observable })),
         reputation: list(effects.reputation), npcUpdates: list(effects.npcUpdates) } });
   }
@@ -112,24 +172,43 @@ export function advanceNpcs(state) {
     if (npc.dead) continue;
     for (const goal of npc.goals) {
       if (goal.status !== 'active' || day < goal.nextDay) continue;
-      const steps = Math.min(Math.ceil((100 - goal.progress) / 25), 1 + Math.floor((day - goal.nextDay) / Math.max(1, goal.intervalDays)));
-      goal.progress = Math.min(100, goal.progress + steps * 25);
-      goal.nextDay += steps * Math.max(1, goal.intervalDays);
-      if (goal.progress >= 100) goal.status = 'completed';
-      const text = `${npc.name}：${goal.status === 'completed' ? goal.completion || `完成了“${goal.text}”` : goal.action || `正在推进“${goal.text}”`}`;
-      npc.memories.push({ cause: goal.id, text, day });
+      goal.nextDay = day + Math.max(1, goal.intervalDays);
+      if (goal.routine) continue;
+      const step = goal.steps[goal.stepIndex || 0];
+      if (!conditionMet(state, goal.requires, npc) || (step?.condition && !conditionMet(state, step.condition, npc)) || goal.obstacle) {
+        goal.phase = 'blocked'; goal.blockedOn = goal.obstacle || step?.text || '等待前置条件'; continue;
+      }
+      if (step) goal.stepIndex = (goal.stepIndex || 0) + 1;
+      goal.progress = Math.min(95, Math.round(goal.stepIndex / goal.steps.length * 100));
+      goal.phase = 'acting'; delete goal.blockedOn;
+      if (goal.stepIndex >= goal.steps.length) {
+        const proven = goal.evidence || (goal.completionCondition && conditionMet(state, goal.completionCondition, npc))
+          || goal.steps.some(s => s.condition && conditionMet(state, s.condition, npc));
+        if (proven) { goal.status = 'completed'; goal.progress = 100; goal.phase = 'completed'; }
+        else { goal.phase = 'blocked'; goal.blockedOn = '等待完成结果的实际依据'; }
+      }
+      const text = `${npc.name}：${goal.status === 'completed' ? goal.completion || `完成了“${goal.text}”` : step?.text || goal.action}`;
+      npc.memories.push({ cause: goal.id, text, day, visible: goal.visible !== false && Boolean(knownHere(state, npc)) });
       if (goal.visible !== false && knownHere(state, npc)) events.push({ level: 'local', text, cause: goal.id });
     }
   }
   for (const event of state.consequences) {
+    if (event.cancelWhen && event.status === 'pending' && conditionMet(state, event.cancelWhen)) { event.status = 'cancelled'; event.cancelEvidence = '既定补救条件已达成'; continue; }
+    if (event.status === 'resolved' && !event.discovered && event.discoverWhen && conditionMet(state, event.discoverWhen)) {
+      revealEvent(state, event, '发现条件已由既有事实达成');
+      events.push({ level: 'local', text: event.text, cause: event.id });
+    }
     if (event.status !== 'pending' || event.due > absoluteMinute(state.clock)) continue;
+    if (event.when && !conditionMet(state, event.when)) continue;
     event.status = 'resolved'; event.resolvedDay = day;
-    for (const r of event.effects.relations) relationEffect(state, r, event.cause);
+    for (const r of event.effects.relations) relationEffect(state, r, event.cause, event.visible !== false, event.id);
     for (const r of event.effects.reputation) if (r.place) state.player.reputation[r.place] = bounded((state.player.reputation[r.place] || 0) + bounded(r.change, -100, 100), -100, 100);
-    applyStoryDelta(state, { npcUpdates: event.effects.npcUpdates || [] }, [], event.id);
-    const entry = { id: event.id, day, text: event.text, cause: event.cause };
+    applyStoryDelta(state, { npcUpdates: (event.effects.npcUpdates || []).map(update => ({ ...update,
+      goals: list(update.goals).map(g => g.status === 'completed' ? { ...g, evidence: g.evidence || event.text } : g) })) }, [], event.id);
+    const entry = { id: event.id, day, text: event.text, cause: event.cause, visible: event.visible, discovered: event.visible !== false };
     state.storyLog.push(entry);
-    events.push({ level: 'local', text: `${event.text}（起因：${event.cause}）`, cause: event.id });
+    event.discovered = entry.discovered;
+    if (entry.discovered) events.push({ level: 'local', text: `${event.text}（起因：${event.cause}）`, cause: event.id });
   }
   return events;
 }
