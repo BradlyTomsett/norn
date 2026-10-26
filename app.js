@@ -261,8 +261,14 @@ async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {})
   await store.loadMessages(id);
   const state = store.getSave(id);
   if (!state) return openWizard();
+  const messages = store.getMessages(id);
+  const memoryBefore = JSON.stringify([state.continuity, state.knowledge, state.player.unfinished, state.player.taskHistory]);
+  rememberCorrections(state, messages);
+  if (!store.getPending(id) && memoryBefore !== JSON.stringify([state.continuity, state.knowledge, state.player.unfinished, state.player.taskHistory])) {
+    await store.putSaveAsync(state, undefined, { expectedRevision: state.revision });
+  }
   app.saveId = id; app.loadedRevision = state.revision;
-  app.messages = store.getMessages(id); rememberCorrections(state, app.messages);
+  app.messages = messages;
   app.ui = uiState(state);
   for (const panel of ['#menu', '#wizard', '#custom', '#saves', '#restore', '#settings', '#sheet', '#search']) $(panel).classList.add('hidden');
   $('#menu-load').disabled = false; $('#menu-load').style.opacity = '1';

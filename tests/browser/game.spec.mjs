@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 const open = async (page, scenario = 'legacy') => {
   await page.goto('/?reset=1&scenario=' + scenario);
   await expect(page.locator('#input')).toBeVisible();
@@ -158,6 +159,20 @@ test('没有回退快照的旧存档仍可保存事实纠正，不推进时间�
   await expect(page.locator('#log')).toContainText('已保存这条纠正');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：0');
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
+});
+
+test('旧纠正加载后写入持久存档，立即导出和刷新都保留纠正及冲突标记', async ({ page }) => {
+  await open(page, 'context');
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '存档', exact: true }).click();
+  const download = page.waitForEvent('download'); await page.getByRole('button', { name: '导出', exact: true }).click();
+  const payload = JSON.parse(await readFile(await (await download).path(), 'utf8'));
+  expect(payload.state.continuity.corrections).toHaveLength(1);
+  expect(payload.state.continuity.corrections[0].text).toContain('瑟拉一直是我的搭档');
+  expect(payload.state.knowledge.find(k => k.id === 'old-membership').status).toBe('disputed');
+  expect(payload.state.player.unfinished).toHaveLength(0); expect(payload.state.turn).toBe(0); expect(payload.messages).toHaveLength(24);
+  await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click();
+  await expect(page.locator('#cs-body')).not.toContainText('定下瑟拉是否加入');
 });
 test('擅自台词与承诺重写一次，诊断包含用量且不含原文或密钥', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '模拟擅自承诺', exact: true }).click();
