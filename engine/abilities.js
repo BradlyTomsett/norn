@@ -1,4 +1,5 @@
 import { gearState, chooseWeapon, GRADE_BONUS } from './equipment.js';
+import { activeEffects } from './effects.js';
 
 export function talentRules(player) {
   const text = String(player.talent?.effect || '');
@@ -41,18 +42,22 @@ function incomingTypes(state, action) {
 }
 export function actionAbilities(state, action, kind) {
   const player = state.player, { inventory, loadout } = gearState(player), chosen = chooseWeapon(player, action, kind);
-  const rules = talentRules(player), armor = inventory.find(row => row.key === loadout.armor), shield = inventory.find(row => row.key === loadout.shield);
+  const rules = talentRules(player), effects = activeEffects(state), armor = inventory.find(row => row.key === loadout.armor), shield = inventory.find(row => row.key === loadout.shield);
+  if (effects.some(e => e.key === 'nightSight')) rules.nightSight = true;
+  rules.waterFloat = effects.some(e => e.key === 'waterFloat');
   const combat = kind === 'combat', weaponAction = combat || (kind === 'study' && chosen.weapon);
   const attackTypes = combat ? incomingTypes(state, action) : [];
   const blocked = attackTypes.length > 0 && ((attackTypes.includes('magic') && rules.immunity.includes('magic')) || attackTypes.every(type => rules.immunity.includes(type)));
   const weaponBonus = weaponAction && chosen.weapon ? GRADE_BONUS[chosen.weapon.grade] : 0;
   const masteryBonus = weaponAction && chosen.weapon && rules.allWeapons ? 6 : 0;
   return { ...chosen, armor: armor || null, shield: shield || null, rules, incomingTypes: attackTypes, blocked,
+    activeEffects: effects, strengthBonus: effects.some(e => e.key === 'strength') && ['combat', 'labor', 'travel'].includes(kind) ? 4 : 0,
     weaponBonus, masteryBonus, defenseBonus: combat && attackTypes.every(type => type === 'physical') ? Math.min(5, Math.ceil((GRADE_BONUS[armor?.grade] || 0) / 3) + (shield ? 1 : 0)) : 0 };
 }
 export function abilityBrief(context) {
   if (!context) return '';
   return [context.weapon ? `本次使用：${context.weapon.label}${context.temporary ? '（本回合临时替换主用武器，不增加常用栏位）' : ''}；只计算这一件武器的作用，其他武器不叠加。` : '本次没有使用武器。',
+    context.activeEffects?.length ? `正在生效：${context.activeEffects.map(e => e.label).join('、')}。浮水只帮助漂浮，不自动通过水上危险。` : '',
     context.armor ? `护甲：${context.armor.label}` : '', context.shield ? `盾牌：${context.shield.label}` : '',
     context.blocked ? `本次来袭的${context.incomingTypes.map(type => TYPE_CN[type]).join('、')}被免疫，不造成伤害或负面状态。行动目标的成败另按判定，不把免伤写成自动获胜。` : '',
     context.rules.allWeapons && context.weapon ? '所有武器精通已生效，不得把角色写成不会使用该武器。' : '',

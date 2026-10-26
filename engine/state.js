@@ -26,6 +26,9 @@ import { npcLabel } from './entities.js';
 import { gearState } from './equipment.js';
 import { talentRuleText } from './abilities.js';
 import { isRetiredPostalQuote } from './retired-prices.js';
+import { applyQuotes } from './finance.js';
+import { addEffect, activeEffects } from './effects.js';
+import { activePrinciples, knownStory } from './facts.js';
 
 export {
   accountOf,
@@ -238,7 +241,7 @@ function settleBounty(state, bounty, rng, judged, rejected) {
 
 /* The actual quote settles this job; it does not become a permanent reference. */
 function settleEarn(state, earn, rng, rejected) {
-  for (const e of toList(earn).slice(0, 2)) {
+  for (const e of toList(earn)) {
     const label = String(e?.label || '帮工').trim().slice(0, 100);
     if (!label) continue;
     if (isRetiredPostalQuote(label, e?.copper ?? e?.amount)) { rejected.push('错误邮资不能作为报酬引用'); continue; }
@@ -252,21 +255,26 @@ function settleEarn(state, earn, rng, rejected) {
 
 /** 人情：给钱的收益按"相当于对方几个月收入"折算，送穷人比送富人有用。 */
 function settleGift(state, gift, rejected) {
-  for (const g of toList(gift).slice(0, 3)) {
+  for (const g of toList(gift)) {
     const amount = Math.round(n(g?.copper));
     if (amount <= 0) continue;
     if (!state.npcs.some(npc => npc.id === g?.to)) { rejected.push('赠予需要已知人物'); continue; }
     const acc = accountOf(state, g?.account || 'cash');
     if (!acc || acc.copper < amount) { rejected.push('赠予金额超过可用余额'); continue; }
-    addCopper(state, acc.id, -amount);
     const npc = state.npcs.find((x) => x.id === g?.to);
+    const paidWork = /酬劳|工钱|分成|分赏|报酬|尾款|雇佣/.test(g.note || g.reason || '');
+    const accepts = !/不收赠礼|不接受赠款|拒绝金钱赠礼/.test([...(npc?.traits || []), npc?.giftPolicy || ''].join('；'));
+    if (!paidWork && !accepts) { logLedger(state, `${npc.name}没有收下赠礼，未转出金钱`); continue; }
+    addCopper(state, acc.id, -amount);
     const rel = state.player.relations.find((x) => x.npcId === g?.to);
     if (rel) {
       const income = Math.max(1, (workOf(npc?.profession || '', 'journeyman').daily || 120) * 30);
       const months = amount / income;
-      const gain = (Math.round(Math.log2(1 + months) * 6) + Math.round(Math.log2(1 + months) * 3)) / 2;
+      const day = absoluteDay(state.clock), recent = (rel.gifts || []).filter(g => day - g.day < 30);
+      const gain = paidWork || !accepts || rel.closeness < 0 ? 0 : Math.min(3, Math.log2(1 + months) * 2) / (1 + recent.length * 2);
+      rel.gifts = [...recent, { day, copper: amount }];
       rel.closeness = clamp(rel.closeness + gain, -100, 100);
-      rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
+      rel.lastTouch = day;
     }
     logLedger(state, `送了${npc?.name || '人'}一份人情，${copperText(amount)}`);
   }
@@ -293,7 +301,7 @@ function settleDebts(state, delta, rejected) {
     }
   }
   if (delta?.borrow) {
-    for (const b of toList(delta.borrow).slice(0, 1)) {
+    for (const b of toList(delta.borrow)) {
       if (!accountOf(state, b?.account || 'cash')) { rejected.push('借款收款账户不存在'); continue; }
       const amount = Math.round(n(b?.copper));
       if (amount <= 0) continue;
@@ -313,7 +321,7 @@ function settleDebts(state, delta, rejected) {
 }
 
 function settleItems(state, items) {
-  for (const it of toList(items).slice(0, 8)) {
+  for (const it of toList(items)) {
     const raw = typeof it === 'string' ? it : it?.name;
     if (!raw) continue;
     if (isContainer(raw)) {
@@ -329,7 +337,7 @@ function settleItems(state, items) {
 
 /** 用药/用道具：只扣数量，效果落到数值上（没有数值效果的只记账）。 */
 function settleUse(state, use, rejected) {
-  for (const it of toList(use).slice(0, 3)) {
+  for (const it of toList(use)) {
     const name = String(it?.name || it || '').trim();
     const qty = Math.max(1, Math.round(n(it?.qty) || 1));
     if (!name) continue;
@@ -343,13 +351,14 @@ function settleUse(state, use, rejected) {
       continue;
     }
     if (eff.health) state.player.body.health = clamp(state.player.body.health + eff.health * qty, 0, 100);
+    if (eff.effect) addEffect(state, eff.effect, name);
     logLedger(state, `${eff.text}（${name}×${qty}）`);
   }
 }
 
 /** 丢东西：被偷、送人、掉了、上交——从袋子/装备/存货/交通工具里扣。 */
 function settleLose(state, lose, rejected) {
-  for (const it of toList(lose).slice(0, 8)) {
+  for (const it of toList(lose)) {
     const raw = typeof it === 'string' ? it : it?.name;
     if (!raw) continue;
     const name = String(raw).trim();
@@ -365,7 +374,7 @@ function settleLose(state, lose, rejected) {
 
 /** 模型直接记的一笔钱的进出（买卖、打赏、路费、罚金都走这里）。 */
 function settleMoneyChange(state, change, rejected) {
-  for (const m of toList(change).slice(0, 8)) {
+  for (const m of toList(change)) {
     const acc = accountOf(state, m?.account || 'cash');
     const want = Math.round(n(m?.copper ?? m?.amount));
     if (isRetiredPostalQuote(m?.note || m?.label, Math.abs(want))) { rejected.push('这条寄信金额已确认为错误，不予结算'); continue; }
@@ -430,7 +439,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
   if (delta?.earn) settleEarn(state, delta.earn, rng, rejected);
   if (delta?.money?.change) settleMoneyChange(state, delta.money.change, rejected);
   if (Array.isArray(delta?.prices)) {
-    for (const pr of delta.prices.slice(0, 8)) {
+    for (const pr of delta.prices) {
       const nm = String(pr?.name || '').trim();
       const entry = parsePriceEntry(pr?.copper ?? pr?.price);
       const v = priceEntryValue(entry);
@@ -461,7 +470,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
 
   // 技能：数值只由引擎涨（见 progress.js）。模型最多只能开一个新技能的名字。
   if (Array.isArray(delta?.skills)) {
-    for (const s of delta.skills.slice(0, 3)) {
+    for (const s of delta.skills) {
       const name = typeof s === 'string' ? s : s?.name;
       if (!name || typeof name !== 'string' || !name.trim()) continue;
       const key = name.trim().slice(0, 12);
@@ -473,7 +482,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
 
   // 关系（只允许已存在的 NPC）
   if (Array.isArray(delta?.relations)) {
-    for (const r of delta.relations.slice(0, 6)) {
+    for (const r of delta.relations) {
       const npc = state.npcs.find((x) => x.id === r?.npcId);
       if (!npc) {
         rejected.push(`未知 NPC：${r?.npcId}`);
@@ -486,7 +495,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
       const obsOk = Boolean(obs) && !/^[（(]?\s*(无变化|没有变化|无|未变|不变|同上|略)\s*[）)]?$/.test(obs);
       if (!dClose && !obsOk) continue; // 整条都是「无变化」，直接跳过
       rel.closeness = clamp(rel.closeness + dClose, -100, 100);
-      rel.lastTouch = (state.clock.year || 0) * 365 + (state.clock.doy || 0);
+      rel.lastTouch = absoluteDay(state.clock);
       if (obsOk) rel.observable = obs.slice(0, 60);
       if (obsOk) npc.memories.push({ cause: opts.eventId || `turn:${state.turn}`, text: obs.slice(0, 160), day: absoluteDay(state.clock) });
     }
@@ -509,14 +518,24 @@ function applyUnsafe(state, delta, rng, opts = {}) {
 
   // 知识与未完成
   const pushKnowledge = (list) => {
-    for (const k of (Array.isArray(list) ? list : []).slice(0, 4)) {
+    for (const k of (Array.isArray(list) ? list : [])) {
       const text = typeof k === 'string' ? k : k?.text;
       if (!text) continue;
       const clean = String(text).trim();
       if (!clean || /^[（(]?\s*(无变化|没有变化|无|同上|略)\s*[）)]?$/.test(clean)) continue;
+      let preparation;
+      if (k?.preparation) {
+        const judged = opts.judged;
+        if (!judged || ![judged.kind, ...(judged.segments || []).map(s => s.kind)].some(kind => ['observe', 'labor', 'study', 'stealth'].includes(kind))
+          || !/备好|侦察|布置|准备|查清/.test(judged.actionText || '') || ['fail', 'disaster'].includes(judged.outcome)) { rejected.push('准备记录需要本回合实际完成相应行动'); continue; }
+        preparation = { status: 'ready', kinds: toList(k.preparation.kinds).filter(kind => ['combat', 'stealth', 'trade', 'study', 'social', 'observe', 'travel', 'labor'].includes(kind)),
+          target: String(k.preparation.target || '').slice(0, 80), expiresDay: absoluteDay(state.clock) + Math.min(30, Math.max(1, Math.round(Number(k.preparation.days) || 7))) };
+        if (!preparation.kinds.length || !preparation.target) { rejected.push('准备记录需要适用行动与对象'); continue; }
+      }
       state.knowledge.push(linkKnowledge(state, {
         ...(typeof k === 'object' ? k : {}),
-        text: clean.slice(0, 80),
+        text: clean.slice(0, 500),
+        ...(preparation ? { preparation } : {}),
         source: typeof k === 'object' && k.source ? String(k.source).slice(0, 20) : '亲历',
         day: state.clock.doy,
       }, opts.eventId));
@@ -526,7 +545,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
   pushKnowledge(delta?.newInfo);
 
   if (Array.isArray(delta?.unfinished)) {
-    for (const u of delta.unfinished.slice(0, 3)) {
+    for (const u of delta.unfinished) {
       const text = typeof u === 'string' ? u : u?.text;
       if (text) applyTasks(state, [{ id: `task:${textId(text)}`, text: String(text).slice(0, 160) }], rejected, opts.eventId);
     }
@@ -534,7 +553,9 @@ function applyUnsafe(state, delta, rng, opts = {}) {
 
   if (Array.isArray(delta?.goals)) {
     const g = delta.goals.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.slice(0, 60));
+    for (const text of state.player.goals) if (!g.includes(text) && !state.player.goalHistory.some(row => row.text === text)) state.player.goalHistory.push({ text, status: 'replaced', sourceEvent: opts.eventId, closedTurn: state.turn + 1 });
     state.player.goals = g.slice(0, 10);
+    state.player.goalReviewPending = false;
   }
   if (Array.isArray(delta?.problems)) {
     const p = delta.problems.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.slice(0, 60));
@@ -545,7 +566,7 @@ function applyUnsafe(state, delta, rng, opts = {}) {
   return { rejected };
 }
 
-const DELTA_FIELDS = new Set(['time', 'money', 'trade', 'bounty', 'earn', 'prices', 'payDebt', 'borrow', 'profession', 'items', 'use', 'lose', 'gift', 'body', 'mind', 'skills', 'relations', 'equipment', 'knowledge', 'newInfo', 'unfinished', 'goals', 'problems', 'location', 'npcs', 'npcUpdates', 'consequences', 'reputation', 'tasks', 'transactions', 'eventId']);
+const DELTA_FIELDS = new Set(['time', 'money', 'trade', 'bounty', 'earn', 'prices', 'payDebt', 'borrow', 'profession', 'items', 'use', 'lose', 'gift', 'body', 'mind', 'skills', 'relations', 'equipment', 'knowledge', 'newInfo', 'unfinished', 'goals', 'problems', 'location', 'npcs', 'npcUpdates', 'consequences', 'reputation', 'tasks', 'transactions', 'eventId', 'quotes']);
 function validateTree(value, path = '') {
   if (typeof value === 'number' && !Number.isFinite(value)) throw new Error(`无效数值：${path}`);
   if (value && typeof value === 'object') for (const [key, child] of Object.entries(value)) {
@@ -587,6 +608,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
   const before = Object.fromEntries(draft.player.accounts.map(a => [a.id, a.copper]));
   const changes = { ...delta }; delete changes.transactions; delete changes.eventId;
   applyStoryDelta(draft, changes, rejected, id || `turn:${state.turn}`);
+  if (changes.quotes) applyQuotes(draft, changes.quotes, rejected);
   const txs = Array.isArray(delta.transactions) ? delta.transactions : [];
   if (delta.transactions && !Array.isArray(delta.transactions)) rejected.push('transactions 必须是数组');
   for (let index = 0; index < txs.length; index++) {
@@ -612,7 +634,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
       part = { bounty: { id: tx.contractId, result: tx.result || '完成', account } };
     } else if (tx.kind === 'gift') {
       if (!draft.npcs.some(npc => npc.id === tx.to)) { rejected.push('赠予需要已知人物'); continue; }
-      part = { gift: { to: tx.to, copper: amount, account } };
+      part = { gift: { to: tx.to, copper: amount, account, note: tx.note, reason: tx.reason } };
     } else if (tx.kind === 'transfer') part = { money: { transfer: [{ from: tx.from, to: tx.to, copper: amount }] } };
     else if (tx.kind === 'repay') part = { payDebt: { id: tx.debtId, to: tx.to, copper: amount, account } };
     else if (tx.kind === 'borrow') {
@@ -685,7 +707,12 @@ export function stateBlock(state, query = '') {
   if (assetsAll) lines.push(`【资产】${assetsAll}`);
   const gear = gearState(p);
   lines.push(`【常用武器 ${gear.slots}/9 栏】${gear.loadout.weapons.map(row => `${row.key}×${row.qty}`).join('、') || '无'}；主用：${gear.loadout.primary || '徒手'}；护甲：${gear.loadout.armor || '无'}；盾牌：${gear.loadout.shield || '无'}`);
-  if (p.equipment?.length) lines.push(`【拥有的装备，仅为收藏，不叠加判定】${p.equipment.join('、')}`);
+  if (p.equipment?.length) {
+    const counts = new Map();
+    for (const raw of p.equipment) { const item = parseItemEntry(raw); counts.set(item.label, (counts.get(item.label) || 0) + item.qty); }
+    lines.push(`【拥有的装备，仅为收藏，不叠加判定】${[...counts].map(([name, qty]) => qty > 1 ? `${name}×${qty}` : name).join('、')}`);
+  }
+  if (activeEffects(state).length) lines.push('【正在生效的药剂】' + activeEffects(state).map(e => `${e.label}（到绝对分钟${e.expiresAt}）`).join('；'));
   if (p.talent) lines.push('【已明确的天赋规则】' + talentRuleText(p).join('；'));
   if (p.skills.length) lines.push(`【技能】${p.skills.map((s) => `${s.name} ${s.level}`).join('、')}`);
   lines.push(`【身份】${p.socialClass}｜声誉：${repText(p.reputation)}`);
@@ -696,11 +723,13 @@ export function stateBlock(state, query = '') {
       lines.push(`  · ${npc?.name || r.npcId}（${npc?.profession || ''}）：亲近 ${r.closeness}；${r.observable || '点头之交'}`);
     }
   }
-  if (p.goals.length) lines.push(`【当前目标】${p.goals.join('；')}`);
+  if (p.goals.length) lines.push(`${p.goalReviewPending ? '【旧目标，需结合已完成事项核对，勿直接当作现在要做的事】' : '【当前目标】'}${p.goals.join('；')}`);
+  if (activePrinciples(state).length) lines.push('【持续有效的原则与说明】', ...activePrinciples(state).map(p => p.text));
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push('【未完成事项，完成后按相同编号关闭】', ...p.unfinished.map(u => `[${u.id}] ${u.text}${u.dueDay != null ? `｜截止绝对日${u.dueDay}` : ''}${u.needsReview ? '｜旧事项，状态待核对' : ''}`));
   if (p.taskHistory?.length) lines.push('【相关已结束事项，不得当成仍未完成】', ...selectRelevant(p.taskHistory, query, 5, row => row.text, context).map(row => `[${row.id}] ${row.text}｜${row.status}`));
-  lines.push(builtinReferenceText());
+  lines.push(builtinReferenceText(query));
+  for (const quote of selectRelevant(state.quotes.filter(q => state.turn - q.turn <= 12), query, 4, q => q.item)) lines.push(`【报价 ${quote.id}】${quote.item}×${quote.qty}，总价${quote.copper}铜${quote.unitCopper ? `，单价${quote.unitCopper}铜` : ''}${quote.sellerId ? `，报价人${quote.sellerId}` : ''}。只有玩家明确同意才结算。`);
   const priceRows = selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]);
   if (priceRows.length) {
     lines.push('【存档物价·物品与服务】（补充游戏物价未收录的条目，供 AI 报价参考，不锁定成交金额）');
@@ -721,7 +750,8 @@ export function stateBlock(state, query = '') {
     lines.push('【玩家已知】（只能用这些）');
     for (const k of selectRelevant(state.knowledge.map(row => linkKnowledge(state, row)), query, 18, row => row.text, context)) lines.push(`  · [${k.id}] ${k.text}（${k.source}${k.sourceTurn != null ? `；来源回合${k.sourceTurn}` : ''}）`);
   }
-  if (state.storyLog.length) lines.push('【已经发生的后果】', ...selectRelevant(state.storyLog, query, 6).map(e => `  · ${e.text}${e.cause ? `（起因：${e.cause}）` : ''}`));
+  const knownEvents = state.storyLog.filter(e => knownStory(state, e));
+  if (knownEvents.length) lines.push('【已知的既往事件与后果】', ...selectRelevant(knownEvents, query, 6).map(e => `  · ${e.text}${e.cause ? `（起因：${e.cause}）` : ''}`));
   for (const e of state.consequences.filter(e => e.status === 'pending' && e.visible)) lines.push(`【待发生 ${e.id}】${e.text}；起因：${e.cause}`);
   return lines.join('\n');
 }
@@ -737,8 +767,8 @@ export function npcCards(state, query = '') {
         `  说话：词汇 ${v.vocabulary || 2}/5，${v.sentence || 'short'} 句，礼貌 ${v.politeness ?? 1}/3，口癖「${(v.tics || []).join('、') || '无'}」，比喻取自${v.metaphor || '日常'}`,
         `  在意：${npc.obsession || '无'}｜性格：${(npc.traits || []).join('、') || '普通'}`,
         npc.loadout?.length ? `  惯用：${npc.loadout.join('、')}` : null,
-        `  目标：${npc.goals.filter(g => g.visible !== false).map(g => `[${g.id}] ${g.text}（${g.status}，进展 ${g.progress}%）`).join('；') || '尚未得知'}`,
-        `  记得：${selectRelevant(npc.memories, query, 3).map(m => m.text).join('；') || '初次相识'}`,
+        `  目标：${npc.goals.filter(g => g.visible !== false && !g.routine).map(g => `[${g.id}] ${g.text}（${g.status}；${g.blockedOn ? `受阻：${g.blockedOn}` : `下一步：${g.steps[g.stepIndex || 0]?.text || g.action}`}）`).join('；') || '照常安排自己的生活'}`,
+        `  记得：${selectRelevant(npc.memories.filter(m => m.visible !== false), query, 3).map(m => m.text).join('；') || '没有新的互动记录'}`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -776,6 +806,8 @@ export function uiState(state) {
       stats: p.stats,
       body: p.body,
       mind: p.mind,
+      effects: activeEffects(state),
+      principles: activePrinciples(state),
       money: moneyText(p.wallet),
       accounts: (p.accounts || []).map((a) => ({
         id: a.id,
@@ -830,6 +862,7 @@ export function uiState(state) {
       incomeMonthly: p.incomeMonthly || 0,
       location: p.location,
       goals: p.goals,
+      goalsPending: p.goalReviewPending === true,
       problems: p.problems,
       unfinished: p.unfinished,
       taskHistory: p.taskHistory,
@@ -844,14 +877,14 @@ export function uiState(state) {
           observable: r.observable,
           closeness: r.closeness,
           goals: (npc?.goals || []).filter(g => g.visible !== false),
-          memories: (npc?.memories || []).slice(-3),
+          memories: (npc?.memories || []).filter(m => m.visible !== false).slice(-3),
         };
       }),
     },
     knowledge: state.knowledge.slice(-10),
     ledgerLog: (state.ledgerLog || []).slice(-6),
     worldLog: (state.worldLog || []).slice(-8),
-    storyLog: state.storyLog.slice(-10),
+    storyLog: state.storyLog.filter(e => knownStory(state, e)).slice(-10),
     prices: state.prices || {},
     rates: state.rates || {},
     priceIndex: state.world.priceIndex || 1,

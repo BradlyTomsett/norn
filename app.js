@@ -3,9 +3,10 @@ import * as llm from './llm.js';
 import * as sync from './sync.js';
 import { REGIONS, generateWorld, openingText } from './engine/worldgen.js';
 import { stateBlock, npcCards, uiState, transferCopper, copperText } from './engine/state.js';
-import { isCorrection } from './engine/resolve.js';
+import { isCorrection, judge } from './engine/resolve.js';
+import { makeRng } from './engine/rng.js';
 import { prepareTurn } from './engine/turn.js';
-import { extractChoices } from './engine/actions.js';
+import { extractChoices, resolveAction } from './engine/actions.js';
 import { settleReply } from './engine/reply.js';
 import { buildPrompt } from './engine/protocol.js';
 import { esc, format, splitDelta } from './format.js';
@@ -23,6 +24,7 @@ import { applyTasks } from './engine/tasks.js';
 import { maintainTasks, taskReviewKey, taskReviewInput, applyTaskReview, TASK_REVIEW_SYSTEM } from './engine/task-review.js';
 import { searchArchive } from './search.js';
 import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
+import { readPriceBounds } from './price-input.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
 const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl = $('#composer'), dateEl = $('#date');
@@ -583,6 +585,16 @@ async function recoverAbilityNarrative(raw, plan, error) {
   for await (const chunk of trackedChat({ system, messages: [{ role: 'user', content: `本次行动：${plan.text}\n待核对回复：\n${raw}` }], temperature: 0.2, signal: app.controller.signal })) out += chunk;
   return out;
 }
+async function recoverFinance(raw, plan, error) {
+  if (app.metrics) app.metrics.repairs++;
+  turnStatus('金额、数量或对象与约定不一致，正在核对…');
+  const system = buildSystem(plan.state, plan.judged, plan.events, { query: plan.text })
+    + '\n你现在只修复本次交易与玩家明确约定的矛盾，重写完整正文与JSON。严格遵守以下已批准条件：' + JSON.stringify(plan.finance)
+    + '\n只可纠正这些业务的金额、数量与对象，不增删交易，不改变其他剧情数据。无法确定时不要猜。问题：' + error;
+  let out = '';
+  for await (const chunk of trackedChat({ system, messages: [{ role: 'user', content: `本次行动：${plan.text}\n待核对回复：\n${raw}` }], temperature: 0.1, signal: app.controller.signal })) out += chunk;
+  return out;
+}
 async function send(options = {}) {
   if (busy() || !app.saveId) return;
   app.preparing = true; sendEl.disabled = true;
@@ -656,6 +668,7 @@ async function sendTurn(options = {}) {
   try { await store.putPendingAsync(app.saveId, { ...draft, raw: '' }); }
   catch (error) { addMessage('error', '无法保存待处理回合：' + error.message + '。原进度已保留。'); return; }
   inputEl.value = ''; inputEl.style.height = 'auto';
+  $('#action-preview').textContent = ''; $('#action-preview').classList.add('hidden');
   app.streaming = true; app.controller = new AbortController(); sendEl.disabled = true;
   $('#cancel-turn').classList.remove('hidden');
   const playerText = draft.input !== draft.text ? `${draft.input}\n${draft.text}` : draft.text;
@@ -667,6 +680,7 @@ async function sendTurn(options = {}) {
   try {
     const system = buildSystem(plan.state, plan.judged, plan.events,
       { query: draft.text, chronicleDue: chronicleDue(plan.state, draft.text), recall: recallHistory(plan.state, history, draft.text) }) +
+      (plan.finance.length ? '\n【本回合已批准交易条件】金额单位为铜，严格按这些条件核对正文和JSON：' + JSON.stringify(plan.finance) : '') +
       (draft.correction ? `\n【纠正原回合】${draft.correction}\n这是原回合的替换，已经回到原结算前；只完成原行动，不额外耗时。` : '');
     for await (const chunk of trackedChat({ system, messages: [...history.slice(-14).map(m => ({ role: m.role, content: m.role === 'assistant' ? narrationText(m.content) : m.content })).filter(m => m.content.trim()),
       { role: 'user', content: draft.text }], signal: app.controller.signal })) {
@@ -677,7 +691,7 @@ async function sendTurn(options = {}) {
     }
     clearTimeout(timer); timer = null;
     category = 'validation';
-    const result = await settleReply(plan, raw, { repairAgency: recoverAgency, repairNarrative: recoverAbilityNarrative, repair: async (...args) => {
+    const result = await settleReply(plan, raw, { repairAgency: recoverAgency, repairNarrative: recoverAbilityNarrative, repairFinance: recoverFinance, repair: async (...args) => {
       turnStatus('正在核对回复，完成后保存…'); return recoverDelta(...args);
     } });
     const clean = narrationText(result.raw) || '这一回合的行动已经记下。';
@@ -721,7 +735,22 @@ sendEl.onclick = () => send();
 inputEl.addEventListener('input', () => {
   inputEl.style.height = 'auto';
   inputEl.style.height = Math.min(inputEl.scrollHeight, window.innerHeight * 0.4) + 'px';
+  clearTimeout(actionPreviewTimer);
+  actionPreviewTimer = setTimeout(updateActionPreview, 300);
 });
+let actionPreviewTimer;
+function updateActionPreview() {
+  const node = $('#action-preview'), text = inputEl.value.trim();
+  node.textContent = ''; node.classList.add('hidden');
+  if (!text || !app.saveId || busy() || text.startsWith('/')) return;
+  try {
+    const source = store.getSave(app.saveId), action = resolveAction(text, app.messages);
+    const result = judge(source, action.text, makeRng((source.seed || 1) + (source.turn || 0) * 7919 + 13));
+    const duration = result.minutes >= 60 ? `${Math.floor(result.minutes / 60)}小时${result.minutes % 60 ? result.minutes % 60 + '分钟' : ''}` : `${result.minutes}分钟`;
+    node.textContent = `预计：${result.label} · ${duration}${result.segments.length > 1 ? ' · 按顺序执行' : ''}${result.minutes >= 1440 ? '；会跨越日期，可在发送前改短时间' : ''}`;
+    node.classList.remove('hidden');
+  } catch { /* Incomplete typing is not a failed action. */ }
+}
 
 function renderSheet(tab = app.tab) {
   const u = app.ui;
@@ -758,7 +787,7 @@ async function autoMaintainTasks() {
     const key = taskReviewKey(state, messages);
     if (state.taskMaintenance?.key === key) { taskNotice('事项已自动整理。'); return; }
     const input = taskReviewInput(state, messages);
-    if ((!input.tasks.length && !input.contracts.length) || !input.sources.length || !llm.hasKey() || busy() || app.saveId !== id) return;
+    if ((!input.tasks.length && !input.contracts.length && !input.goals.length) || !input.sources.length || !llm.hasKey() || busy() || app.saveId !== id) return;
     taskNotice('正在核对历史，自动整理重要事项…');
     let raw = '';
     for await (const chunk of llm.streamChat({ system: TASK_REVIEW_SYSTEM,
@@ -873,21 +902,6 @@ $('#search-more').onclick = () => { searchLimit += 50; runAction(renderSearch); 
 
 /* ---------------- 物价表（状态页） ---------------- */
 
-function parsePriceInput(str) {
-  const s = String(str || '').trim().replace(/[,，]/g, '');
-  if (!s) return null;
-  if (/^\d+$/.test(s)) return Number(s) > 0 ? Number(s) : null;
-  const m = s.match(/^(\d*)\s*[-~～至到]\s*(\d*)$/);
-  if (m) {
-    const min = m[1] ? Number(m[1]) : null;
-    const max = m[2] ? Number(m[2]) : null;
-    if ((min == null || min > 0) && (max == null || max > 0) && (min != null || max != null)) return { min, max };
-    return null;
-  }
-  const v = Math.round(Number(s));
-  return Number.isFinite(v) && v > 0 ? v : null;
-}
-
 document.addEventListener('click', async (e) => {
   const save = e.target.closest('#px-save');
   const add = e.target.closest('#px-add');
@@ -900,10 +914,17 @@ document.addEventListener('click', async (e) => {
 
   if (save) {
     let n = 0;
-    for (const el of document.querySelectorAll('#cs-body .px-input')) {
-      const name = el.dataset.name;
-      const target = el.dataset.kind === 'rates' ? state.rates : state.prices;
-      const v = parsePriceInput(el.value);
+    const changes = [];
+    for (const row of document.querySelectorAll('#cs-body [data-price-row]')) {
+      const name = row.dataset.name;
+      let value;
+      try { value = readPriceBounds(row.querySelector('.px-min').value, row.querySelector('.px-max').value); }
+      catch (error) { $('#px-msg').textContent = `${name}：${error.message}。原价格已保留。`; return; }
+      if (isRetiredPostalQuote(name, value)) { $('#px-msg').textContent = `${name}：这条错误邮资已经废弃。`; return; }
+      changes.push({ name, kind: row.dataset.kind, value });
+    }
+    for (const { name, kind, value: v } of changes) {
+      const target = kind === 'rates' ? state.rates : state.prices;
       if (v == null) {
         if (target[name] !== undefined) {
           delete target[name];
@@ -923,10 +944,12 @@ document.addEventListener('click', async (e) => {
   }
 
   const name = $('#px-name')?.value.trim();
-  const v = parsePriceInput($('#px-value')?.value);
   const m2 = document.querySelector('#px-msg');
+  let v;
+  try { v = readPriceBounds($('#px-min')?.value, $('#px-max')?.value); }
+  catch (error) { if (m2) m2.textContent = error.message; return; }
   if (!name || v == null) {
-    if (m2) m2.textContent = '名字和价格都要填（价格可写 800-1500）。';
+    if (m2) m2.textContent = '请填写名称，并至少填写一个价格下限或上限。';
     return;
   }
   if (gamePriceEntry(name) != null) {

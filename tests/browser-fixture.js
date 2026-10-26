@@ -51,7 +51,7 @@ if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
-for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫']]) {
+for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['finance', '模拟金额放大'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫']]) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => { mode = value; }; controls.append(b);
 }
 const hide = document.createElement('button'); hide.textContent = '隐藏测试工具'; hide.onclick = () => { controls.hidden = true; }; controls.append(hide);
@@ -85,6 +85,10 @@ window.fetch = async (url, options = {}) => {
     return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
   let delta = {}, text = '【本次行动】\n你等了一阵，街上的人继续忙着各自的事。';
+  if (mode === 'finance') {
+    text = '你交给老杜五枚金币。';
+    delta = { transactions: [{ id: 'gift', kind: 'gift', to: state.npcs[0].id, account: 'cash', copper: system.includes('你现在只修复本次交易') ? 50000 : 500000 }] };
+  }
   if (/领取|赏金|分钱/.test(input)) {
     delta = { transactions: [{ id: 'reward', kind: 'reward', contractId: 'nightcart' }], location: { siteId: 'galon', siteName: '加隆城 · 公会' } };
     if (!system.includes('不用分钱')) delta.transactions.push(...[50000, 50000, 550000].map((copper, i) => ({ id: `share${i}`, kind: 'gift', to: state.npcs[i].id, copper })));

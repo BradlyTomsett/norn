@@ -3,7 +3,8 @@ import { ensureAccounts } from './money.js';
 import { upgradeTasks } from './tasks.js';
 import { ensureLoadout } from './equipment.js';
 import { normalizeToolItems } from './items.js';
-export const SCHEMA_VERSION = 5;
+import { ensureFacts, reconcileGoals } from './facts.js';
+export const SCHEMA_VERSION = 6;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
 export const absoluteMinute = (clock) => absoluteDay(clock) * 1440 + clock.hour * 60 + clock.minute;
@@ -24,6 +25,7 @@ function upgradeRelation(row) {
 export function upgradeState(state) {
   if (!state?.player || !state.clock) throw new Error('存档缺少人物或日历');
   const p = state.player;
+  if (state.schemaVersion && state.schemaVersion < 6 && state.turn > 0 && p.goals?.length) p.goalReviewPending = true;
   removeRetiredPostalData(state);
   p.body = { health: bounded(p.body?.health ?? 100, 0, 100) };
   p.mind = { mood: cleanText(p.mind?.mood || '平静', 80) };
@@ -56,6 +58,9 @@ export function upgradeState(state) {
   state.processedEvents ||= {};
   state.flags ||= {};
   upgradeTasks(state);
+  ensureFacts(state); reconcileGoals(state);
+  p.effects = Array.isArray(p.effects) ? p.effects.filter(e => typeof e.key === 'string' && Number.isFinite(e.expiresAt)) : [];
+  state.quotes = Array.isArray(state.quotes) ? state.quotes : [];
   normalizeToolItems(state);
   ensureLoadout(p);
   state.version = 'm2';

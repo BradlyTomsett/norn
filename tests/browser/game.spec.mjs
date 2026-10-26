@@ -22,6 +22,50 @@ test('手机选择按钮直接执行一次，刷新后历史和回合仍在', as
   await act(page, '/撤回');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：0');
 });
+
+test('物价上下限不改直接保存、固定与单边价格刷新保留，非法边界不删除', async ({ page }) => {
+  await open(page); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '物价', exact: true }).click();
+  const lower = page.getByRole('textbox', { name: '针线包（一套）下限（铜）', exact: true });
+  const upper = page.getByRole('textbox', { name: '针线包（一套）上限（铜）', exact: true });
+  await expect(lower).toHaveValue('10'); await expect(upper).toHaveValue('40');
+  await page.getByRole('button', { name: '保存改动', exact: true }).click();
+  await expect(page.locator('#px-msg')).toContainText('已保存 0 处改动');
+  await lower.fill('90'); await page.getByRole('button', { name: '保存改动', exact: true }).click();
+  await expect(page.locator('#px-msg')).toContainText('针线包（一套）：下限不能高于上限');
+  await page.getByRole('button', { name: '概览', exact: true }).click(); await page.getByRole('button', { name: '物价', exact: true }).click();
+  await expect(lower).toHaveValue('10'); await expect(upper).toHaveValue('40');
+  await page.getByRole('textbox', { name: '物品或服务名', exact: true }).fill('测试茶匙');
+  await page.getByRole('textbox', { name: '新增价格下限（铜）', exact: true }).fill('1200');
+  await page.getByRole('textbox', { name: '新增价格上限（铜）', exact: true }).fill('1200');
+  await page.getByRole('button', { name: '＋ 加进物价表', exact: true }).click();
+  await expect(page.locator('#px-msg')).toContainText('已加入物价');
+  await upper.fill(''); await page.getByRole('button', { name: '保存改动', exact: true }).click();
+  await expect(page.locator('#px-msg')).toContainText('已保存');
+  await page.reload(); await page.locator('#input').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click(); await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '物价', exact: true }).click();
+  await expect(lower).toHaveValue('10'); await expect(upper).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: '测试茶匙下限（铜）', exact: true })).toHaveValue('1200');
+  await expect(page.getByRole('textbox', { name: '测试茶匙上限（铜）', exact: true })).toHaveValue('1200');
+  await lower.fill(''); await page.getByRole('button', { name: '保存改动', exact: true }).click(); await expect(lower).toHaveCount(0);
+});
+
+test('输入前可查看预计动作，近距离移动不跳过半天', async ({ page }) => {
+  await open(page); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.locator('#input').fill('走到柜台前'); await expect(page.locator('#action-preview')).toContainText('分钟');
+  await expect(page.locator('#action-preview')).not.toContainText('小时');
+  await page.locator('#input').fill('抓住窃贼'); await expect(page.locator('#action-preview')).toContainText('动手');
+});
+
+test('五金被写成五十金会自动修复一次，按明确金额扣款', async ({ page }) => {
+  await open(page); await page.getByRole('button', { name: '模拟金额放大', exact: true }).click();
+  await act(page, '给老杜5金币'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：950000 铜');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('.turn-receipt')).toContainText('5 金');
+});
 test('旧事项去重、归档、重新打开并在刷新后保留', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '状态', exact: true }).click();
   await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();

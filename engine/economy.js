@@ -314,13 +314,20 @@ export function setPrice(state, name, copper) {
 /* ---------------- 给 AI 看的自带价参考 ---------------- */
 
 /** 引擎自带价 + 类目基准，塞进提示词让 AI 报价时有个准头。 */
-export function builtinReferenceText() {
+export function builtinReferenceText(query = '') {
   const cats = Object.values(CATS)
     .map((c) => `${c.name} ${c.base}/${c.unit}`)
     .join(' ');
+  let references = gameReferenceRows();
+  if (query) {
+    const words = new Set(String(query).match(/[A-Za-z0-9]+|[\u4e00-\u9fff]{2}/g) || []);
+    for (const run of String(query).match(/[\u4e00-\u9fff]+/g) || []) for (let i = 0; i < run.length - 1; i++) words.add(run.slice(i, i + 2));
+    const ranked = references.map(row => ({ row, score: [...words].reduce((n, word) => n + (row.name.includes(word) ? 1 : 0), 0) })).filter(r => r.score > 0).sort((a, b) => b.score - a.score);
+    references = [...new Map([...references.filter(r => /黑面包|熟食|单间|通铺|干粮/.test(r.name)), ...ranked.slice(0, 16).map(r => r.row)].map(row => [row.name, row])).values()];
+  }
   return [
     '【游戏物价】（来自 economy.js，供 AI 生成价格参考；不重复写入存档。以下均为铜。）',
-    ...gameReferenceRows().map(row => `  · ${row.kind}：${row.name} ${priceEntryText(row.entry)} 铜`),
+    ...references.map(row => `  · ${row.kind}：${row.name} ${priceEntryText(row.entry)} 铜`),
     `【类目基准】（没有具体条目时估价，按所列单位，再参考材质与品阶）${cats}`,
     `【材质倍率】${MATERIAL_MUL.map(([re, value]) => `${re.source.replaceAll('|', '/')}×${value}`).join('；')}`,
     `【特殊名号倍率】${SPECIAL_MUL.map(([re, value]) => `${re.source.replaceAll('|', '/')}×${value}`).join('；')}`,

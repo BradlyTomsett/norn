@@ -67,9 +67,9 @@ export const CONSUMABLES = {
   回血药水: { health: 25, text: '灌下回血药水，脸色回来了些' },
   回血: { health: 25, text: '灌下回血药水，脸色回来了些' },
   清醒药: { text: '清醒药的苦味从舌根压下去，脑子清亮了' },
-  气力: { text: '气力药下肚，胳膊又有了劲' },
-  浮水: { text: '浮水药生效，可以在水面漂浮' },
-  夜眼: { text: '夜眼药下去，暗处的轮廓清楚了些' },
+  气力: { text: '气力药生效，身体行动更有力', effect: { key: 'strength', label: '气力', minutes: 60 } },
+  浮水: { text: '浮水药生效，可以在水面漂浮', effect: { key: 'waterFloat', label: '浮水', minutes: 60 } },
+  夜眼: { text: '夜眼药生效，暗处的轮廓清楚了些', effect: { key: 'nightSight', label: '夜视', minutes: 240 } },
 };
 
 export function effectOf(name) {
