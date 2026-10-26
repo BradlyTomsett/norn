@@ -5,6 +5,8 @@ import { CATS, gameReferenceRows, gamePriceEntry, priceEntryText } from './engin
 import { gearState } from './engine/equipment.js';
 import { copperText } from './engine/money.js';
 import { priceBounds } from './price-input.js';
+import { fixedSkills } from './engine/skills.js';
+import { incidentalTask } from './engine/tasks.js';
 
 /* ---------------- 角色卡 ---------------- */
 
@@ -65,10 +67,9 @@ function viewOverview(u) {
     out.push(`<div class="stat-cell"><div class="k">${label}</div><div class="v">${v}</div><div class="t">${tierOf(v)}</div></div>`);
   }
   out.push('</div>');
-  if (p.skills?.length) {
-    out.push('<h3>技能</h3>');
-    for (const s of p.skills) out.push(bar(s.name, s.level));
-  }
+  out.push('<h3>技能</h3><div class="skill-list">');
+  for (const s of fixedSkills(p.skills)) out.push(bar(s.name, s.level));
+  out.push('</div>');
   out.push('<h3>状态</h3>');
   out.push(bar('健康', p.body.health, p.body.health < 50 ? 'warn' : 'good'));
   for (const effect of p.effects || []) out.push(`<div class="item">${esc(effect.label)}<span class="hint"> · 药剂效果生效中</span></div>`);
@@ -131,7 +132,7 @@ function viewOverview(u) {
   }
   if (p.unfinished?.length) {
     out.push('<h3>未完成</h3>');
-    for (const x of p.unfinished) out.push(`<div class="item">${esc(x.text || x)}</div>`);
+    for (const x of p.unfinished.filter(x => !incidentalTask(typeof x === 'string' ? { text: x } : x))) out.push(`<div class="item">${esc(x.text || x)}</div>`);
   }
   return out.join('');
 }
@@ -409,12 +410,12 @@ function viewTasks(u) {
   const p = u.player, contracts = p.contracts || [], status = { completed: '已完成', cancelled: '已取消', expired: '已过期', archived: '已归档' };
   const contractRow = contract => `<article class="task-entry" data-contract-id="${esc(contract.id)}"><p>${esc(contract.label)}</p><p class="hint">${contract.workStatus === 'completed' ? '已完成，待领酬' : '进行中'} · 约定酬劳 ${esc(copperText(contract.copper))}</p><details><summary>调整酬劳</summary><div class="price-row"><label>铜币<input type="number" min="1" step="1" inputmode="numeric" data-contract-pay="${esc(contract.id)}" aria-label="${esc(contract.label)}酬劳（铜）" value="${Math.round(contract.copper)}"></label><button class="chip" data-contract-save="${esc(contract.id)}">保存酬劳</button></div></details></article>`;
   const active = contracts.filter(row => row.status === 'active' && row.workStatus !== 'completed'), unpaid = contracts.filter(row => row.status === 'active' && row.workStatus === 'completed');
-  const row = (task, active) => `<article class="task-entry"><p>${esc(task.text)}</p><p class="hint">${active ? '进行中' : status[task.status] || task.status}${task.dueDay != null ? ` · 截止：${Math.floor(task.dueDay / 365)}年 第${task.dueDay % 365 + 1}天` : ''}${task.completionText ? ` · ${esc(task.completionText)}` : ''}${!active && task.reason ? ` · ${esc(task.reason)}` : ''}</p><div class="chips">${active ? `<button class="chip" data-task="${esc(task.id)}" data-status="completed">标记完成</button><button class="chip" data-task="${esc(task.id)}" data-status="cancelled">取消事项</button>` : `<button class="chip" data-task="${esc(task.id)}" data-status="active">重新打开</button>`}</div></article>`;
+  const row = (task, active) => `<article class="task-entry"><p>${esc(task.text)}</p><p class="hint">${active ? '进行中' : status[task.status] || task.status}${task.dueDay != null ? ` · 截止：${Math.floor(task.dueDay / 365)}年 第${task.dueDay % 365 + 1}天` : ''}${task.completionText ? ` · ${esc(task.completionText)}` : ''}${!active && task.reason ? ` · ${esc(task.reason)}` : ''}</p><div class="chips">${active ? `<button class="chip" data-task="${esc(task.id)}" data-status="completed">标记完成</button><button class="chip" data-task="${esc(task.id)}" data-status="cancelled">取消事项</button>` : incidentalTask(task) ? '' : `<button class="chip" data-task="${esc(task.id)}" data-status="active">重新打开</button>`}</div></article>`;
   const past = contracts.filter(row => row.status !== 'active');
-  return '<p class="hint">只保留重要任务、承诺和需要后续处理的事；明确完成的自动移入历史。</p><p id="task-maintenance-status" class="hint" role="status"></p><section id="current-contracts"><h3>当前委托</h3>'
+  return '<p class="hint">只保留主要任务、重要调查和关键承诺。碰头、问话、排班等小步骤收进历史，不代表已完成。</p><p id="task-maintenance-status" class="hint" role="status"></p><section id="current-contracts"><h3>当前委托</h3>'
     + (active.map(contractRow).join('') || '<p class="hint">没有进行中的委托。</p>') + '</section>'
     + (unpaid.length ? `<section id="unpaid-contracts"><h3>已完成，待领酬</h3>${unpaid.map(contractRow).join('')}</section>` : '')
-    + '<section id="active-tasks"><h3>其他进行中的事项</h3>' + (p.unfinished.map(task => row(task, true)).join('') || '<p class="hint">没有其他待办事项。</p>') + '</section>'
+    + '<section id="active-tasks"><h3>其他进行中的事项</h3>' + (p.unfinished.filter(task => !incidentalTask(task)).map(task => row(task, true)).join('') || '<p class="hint">没有其他待办事项。</p>') + '</section>'
     + `<details><summary>历史事项（${p.taskHistory.length}）</summary>${[...p.taskHistory].reverse().map(task => row(task, false)).join('')}</details>`
     + (past.length ? `<details><summary>委托记录（${past.length}）</summary>${past.map(contract => `<article class="task-entry"><p>${esc(contract.label)}</p><p class="hint">${contract.status === 'paid' ? '已完成、已结算' : '已结束'}${contract.paidCopper != null ? ` · 实收 ${esc(copperText(contract.paidCopper))}` : ''}</p></article>`).join('')}</details>` : '');
 }

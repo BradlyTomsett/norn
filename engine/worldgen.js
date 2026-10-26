@@ -2,6 +2,7 @@
 import { makeRng, pick, int, chance } from './rng.js';
 import { rollWeather } from './clock.js';
 import { defaultBills, workOf } from './ledger.js';
+import { fixedSkills } from './skills.js';
 
 export const REGIONS = [
   {
@@ -265,7 +266,7 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
       work: { ...workOf('孩子', 'none'), profession: '孩子', state: 'none' },
       debts,
       assets: isOrphan ? ['一件旧外套'] : ['一间土屋的居住权'],
-      skills: [{ name: '干杂活', level: 3 }, { name: '认路', level: 4 }],
+      skills: fixedSkills([]),
       relations: npcs.map((n) => ({
         npcId: n.id,
         closeness: n.id === 'npc_mother' ? 81.5 : n.id === 'npc_father' ? 52.5 : n.id === 'npc_sibling' ? 65 : 7.5,

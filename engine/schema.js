@@ -4,7 +4,8 @@ import { upgradeTasks } from './tasks.js';
 import { ensureLoadout } from './equipment.js';
 import { normalizeToolItems } from './items.js';
 import { ensureFacts, reconcileGoals } from './facts.js';
-export const SCHEMA_VERSION = 6;
+import { fixedSkills } from './skills.js';
+export const SCHEMA_VERSION = 7;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
 export const absoluteMinute = (clock) => absoluteDay(clock) * 1440 + clock.hour * 60 + clock.minute;
@@ -36,7 +37,7 @@ export function upgradeState(state) {
   for (const key of ['body', 'agility', 'wisdom', 'spirit', 'trainingCap']) {
     if (key in p.stats) p.stats[key] = Math.max(0, Number.isFinite(Number(p.stats[key])) ? Number(p.stats[key]) : 0);
   }
-  for (const skill of p.skills) { skill.level = Math.max(0, Number(skill.level) || 0); skill.xp = Math.max(0, Number(skill.xp) || 0); }
+  p.skills = fixedSkills(p.skills);
   for (const key of ['bag', 'stock', 'vehicles']) for (const row of p[key] || []) row.qty = Math.max(0, Math.round(Number(row.qty) || 0));
   p.reputation ||= {};
   p.location ||= { siteId: state.world?.id || 'unknown', siteName: state.world?.name || '无名之地' };

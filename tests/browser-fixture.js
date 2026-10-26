@@ -45,6 +45,19 @@ if (scenario === 'tasks') {
   state.player.unfinished = [{ id: 'roster', text: '定下三夜守夜的班次，谁头半夜谁后半夜' }, { id: 'investigation', text: '查清西门仓库失窃原因' }, { id: 'promise', text: '明晚日落前后到北关第三座仓门口碰头' }, { id: 'food', text: '吃饭' }, { id: 'secret', text: '传说级天赋严格保密' }];
   initial = [{ role: 'assistant', content: '三夜的班定下来了：头两夜你带塔姆守头半夜，老杜带凯尔守后半夜，第三夜对调。\n西门仓库失窃原因已经调查清楚，西门仓库调查已经完成，证物交给治安官。' }];
 }
+if (scenario === 'skills') {
+  state.schemaVersion = 6;
+  state.player.skills = [{ name: '武技', level: 130, xp: 0 }, { name: '察觉', level: 71.1, xp: 0.405 }, { name: '交涉', level: 55.3, xp: 0.401 },
+    { name: '药材', level: 20, xp: 0 }, { name: '干杂活', level: 5, xp: 0.69 }, { name: '识路', level: 2, xp: 0.92 }];
+  state.player.contracts = [{ id: 'warehouse', label: '北仓清点', copper: 2400000, status: 'active' }];
+  state.player.unfinished = [
+    '去北门老驿道那头摸底', '明晚日落前后到北关第三座仓门口碰头',
+    '明天问凯尔：北关第三座仓里有没有狗、几条、夜里拴在哪',
+    '守夜时盯账房小窗：灯何时灭、谁进去过、出来带没带东西',
+    '定下明晚若仓里真动起来，四个半人怎么站、谁喊、谁堵门',
+  ].map((text, i) => ({ id: `small:${i}`, text, kind: 'commitment', importance: 'major' }));
+  initial = [{ role: 'assistant', content: '这是独立测试存档，展示固定六项技能和精简后的事项。' }];
+}
 if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
 await store.initStorage();
 if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);

@@ -1,5 +1,6 @@
 // 成长与衰减：技能只由引擎涨；关系与声望会随时间回落。
 // 原则：数字不给模型，模型只写"他练了很久"这类话。
+import { canonicalSkill, fixedSkills } from './skills.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -12,12 +13,11 @@ export function skillCap(state) {
   return 100;
 }
 
-/** 这次行动用到哪个技能，由判定给出；没有技能名就用动作标签。 */
+/** 只训练判定所用的固定技能，不根据动作标签创建新类型。 */
 export function skillNameFor(judged) {
   if (!judged) return '';
   if (judged.kind === 'rest' || judged.kind === 'meta') return '';
-  const s = judged.skill && judged.skill !== '—' ? judged.skill : judged.label;
-  return String(s || '').slice(0, 12);
+  return canonicalSkill(judged.skill);
 }
 
 /**
@@ -30,11 +30,8 @@ export function trainSkill(state, judged) {
   const p = state.player;
   if (!name || !p.skills) return 0;
 
-  let sk = p.skills.find((x) => x.name === name);
-  if (!sk) {
-    sk = { name, level: 1, xp: 0 };
-    p.skills.push(sk);
-  }
+  p.skills = fixedSkills(p.skills);
+  const sk = p.skills.find((x) => x.name === name);
 
   const minutes = Math.max(1, Number(judged.minutes) || 10);
   const margin = Number(judged.margin) || 0;

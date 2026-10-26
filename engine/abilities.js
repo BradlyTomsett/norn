@@ -1,5 +1,6 @@
 import { gearState, chooseWeapon, GRADE_BONUS } from './equipment.js';
 import { activeEffects } from './effects.js';
+import { actionSkill } from './skills.js';
 
 export function talentRules(player) {
   const text = String(player.talent?.effect || '');
@@ -41,7 +42,9 @@ function incomingTypes(state, action) {
   return valid.length ? valid : ['physical'];
 }
 export function actionAbilities(state, action, kind) {
-  const player = state.player, { inventory, loadout } = gearState(player), chosen = chooseWeapon(player, action, kind);
+  const player = state.player, { inventory, loadout } = gearState(player);
+  const magical = actionSkill(kind, action) === '魔法';
+  const chosen = magical ? { weapon: null, temporary: false } : chooseWeapon(player, action, kind);
   const rules = talentRules(player), effects = activeEffects(state), armor = inventory.find(row => row.key === loadout.armor), shield = inventory.find(row => row.key === loadout.shield);
   if (effects.some(e => e.key === 'nightSight')) rules.nightSight = true;
   rules.waterFloat = effects.some(e => e.key === 'waterFloat');
@@ -51,7 +54,7 @@ export function actionAbilities(state, action, kind) {
   const weaponBonus = weaponAction && chosen.weapon ? GRADE_BONUS[chosen.weapon.grade] : 0;
   const masteryBonus = weaponAction && chosen.weapon && rules.allWeapons ? 6 : 0;
   return { ...chosen, armor: armor || null, shield: shield || null, rules, incomingTypes: attackTypes, blocked,
-    activeEffects: effects, strengthBonus: effects.some(e => e.key === 'strength') && ['combat', 'labor', 'travel'].includes(kind) ? 4 : 0,
+    activeEffects: effects, strengthBonus: !magical && effects.some(e => e.key === 'strength') && ['combat', 'labor', 'travel'].includes(kind) ? 4 : 0,
     weaponBonus, masteryBonus, defenseBonus: combat && attackTypes.every(type => type === 'physical') ? Math.min(5, Math.ceil((GRADE_BONUS[armor?.grade] || 0) / 3) + (shield ? 1 : 0)) : 0 };
 }
 export function abilityBrief(context) {

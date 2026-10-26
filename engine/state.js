@@ -29,6 +29,7 @@ import { isRetiredPostalQuote } from './retired-prices.js';
 import { applyQuotes } from './finance.js';
 import { addEffect, activeEffects } from './effects.js';
 import { activePrinciples, knownStory } from './facts.js';
+import { fixedSkills } from './skills.js';
 
 export {
   accountOf,
@@ -468,17 +469,8 @@ function applyUnsafe(state, delta, rng, opts = {}) {
   }
 
 
-  // 技能：数值只由引擎涨（见 progress.js）。模型最多只能开一个新技能的名字。
-  if (Array.isArray(delta?.skills)) {
-    for (const s of delta.skills) {
-      const name = typeof s === 'string' ? s : s?.name;
-      if (!name || typeof name !== 'string' || !name.trim()) continue;
-      const key = name.trim().slice(0, 12);
-      if (!state.player.skills.some((x) => x.name === key)) {
-        state.player.skills.push({ name: key, level: 1, xp: 0 });
-      }
-    }
-  }
+  // 模型的旧 skills 字段只兼容读取，不新增类型或改数值；成长只由引擎处理。
+  state.player.skills = fixedSkills(state.player.skills);
 
   // 关系（只允许已存在的 NPC）
   if (Array.isArray(delta?.relations)) {
@@ -714,7 +706,7 @@ export function stateBlock(state, query = '') {
   }
   if (activeEffects(state).length) lines.push('【正在生效的药剂】' + activeEffects(state).map(e => `${e.label}（到绝对分钟${e.expiresAt}）`).join('；'));
   if (p.talent) lines.push('【已明确的天赋规则】' + talentRuleText(p).join('；'));
-  if (p.skills.length) lines.push(`【技能】${p.skills.map((s) => `${s.name} ${s.level}`).join('、')}`);
+  lines.push(`【技能，固定六项】${fixedSkills(p.skills).map((s) => `${s.name} ${s.level}`).join('、')}`);
   lines.push(`【身份】${p.socialClass}｜声誉：${repText(p.reputation)}`);
   if (p.relations.length) {
     lines.push('【关系】');
@@ -727,7 +719,7 @@ export function stateBlock(state, query = '') {
   if (activePrinciples(state).length) lines.push('【持续有效的原则与说明】', ...activePrinciples(state).map(p => p.text));
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push('【未完成事项，完成后按相同编号关闭】', ...p.unfinished.map(u => `[${u.id}] ${u.text}${u.dueDay != null ? `｜截止绝对日${u.dueDay}` : ''}${u.needsReview ? '｜旧事项，状态待核对' : ''}`));
-  if (p.taskHistory?.length) lines.push('【相关已结束事项，不得当成仍未完成】', ...selectRelevant(p.taskHistory, query, 5, row => row.text, context).map(row => `[${row.id}] ${row.text}｜${row.status}`));
+  if (p.taskHistory?.length) lines.push('【相关历史事项，已归档的小步骤仅从清单收起，不表示已完成或取消；不得重新登记】', ...selectRelevant(p.taskHistory, query, 5, row => row.text, context).map(row => `[${row.id}] ${row.text}｜${row.status}`));
   lines.push(builtinReferenceText(query));
   for (const quote of selectRelevant(state.quotes.filter(q => state.turn - q.turn <= 12), query, 4, q => q.item)) lines.push(`【报价 ${quote.id}】${quote.item}×${quote.qty}，总价${quote.copper}铜${quote.unitCopper ? `，单价${quote.unitCopper}铜` : ''}${quote.sellerId ? `，报价人${quote.sellerId}` : ''}。只有玩家明确同意才结算。`);
   const priceRows = selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]);
@@ -851,7 +843,7 @@ export function uiState(state) {
       livestock: p.livestock,
       vehicles: p.vehicles,
       stock: p.stock,
-      skills: p.skills,
+      skills: fixedSkills(p.skills),
       socialClass: p.socialClass,
       reputation: p.reputation,
       reputationText: repText(p.reputation),

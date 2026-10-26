@@ -787,7 +787,8 @@ async function autoMaintainTasks() {
     const key = taskReviewKey(state, messages);
     if (state.taskMaintenance?.key === key) { taskNotice('事项已自动整理。'); return; }
     const input = taskReviewInput(state, messages);
-    if ((!input.tasks.length && !input.contracts.length && !input.goals.length) || !input.sources.length || !llm.hasKey() || busy() || app.saveId !== id) return;
+    if ((!input.tasks.length && !input.contracts.length && !input.goals.length) || !input.sources.length) { taskNotice('事项已自动整理。'); return; }
+    if (!llm.hasKey() || busy() || app.saveId !== id) return;
     taskNotice('正在核对历史，自动整理重要事项…');
     let raw = '';
     for await (const chunk of llm.streamChat({ system: TASK_REVIEW_SYSTEM,
