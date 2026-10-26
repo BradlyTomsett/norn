@@ -11,7 +11,7 @@ import { prepareTurn, finishTurn } from '../engine/turn.js';
 import { settleReply } from '../engine/reply.js';
 import { assertAbilityNarrative } from '../engine/narrative.js';
 import { applyDelta, uiState, stateBlock } from '../engine/state.js';
-import { removeItem } from '../engine/items.js';
+import { removeItem, addItem } from '../engine/items.js';
 import { receiptText } from '../messages.js';
 import { VIEWS } from '../views.js';
 import { decodeSave, savePackage } from '../store.js';
@@ -128,6 +128,19 @@ test('减少堆叠数量与失去武器后，使用配置按实际拥有量同�
   assert.equal(removeItem(s, '飞刀（蓝）', 20).count, 20); ensureLoadout(s.player); assert.equal(s.player.loadout.weapons[0].qty, 10);
   removeItem(s, '飞刀（蓝）', 10); ensureLoadout(s.player); assert.equal(s.player.loadout.primary, '长剑（金）');
   assert.equal(gearState(s.player).slots, 1);
+});
+test('磨刀石从旧装备迁入其他物品，数量不丢失、不重复，也不能作为武器使用', () => {
+  const s = fresh(['磨刀石（灰）×3', '磨刀石', '磨刀石', '长剑（金）']);
+  assert.equal(s.player.bag.find(row => row.name === '磨刀石（灰）').qty, 3);
+  assert.equal(s.player.bag.find(row => row.name === '磨刀石').qty, 2);
+  assert.deepEqual(gearInventory(s.player).map(row => row.key), ['长剑（金）']);
+  const before = structuredClone(s.player.bag); upgradeState(s); assert.deepEqual(s.player.bag, before);
+  addItem(s, '磨刀石（绿）', 4); assert.equal(s.player.bag.find(row => row.name === '磨刀石（绿）').qty, 4);
+  assert.throws(() => pick(s, [row('磨刀石（绿）')], '磨刀石（绿）'), /收藏中已有的武器/);
+  const ui = uiState(s); assert.match(VIEWS.items(ui), /其他物品[\s\S]*磨刀石/); assert.ok(!VIEWS.gear(ui).includes('磨刀石'));
+  const result = applyDelta(s, { equipment: ['磨刀石（蓝）'] }, makeRng(1), { eventId: 'turn:stone' });
+  assert.equal(result.applied, true); assert.ok(s.player.bag.some(row => row.name === '磨刀石（蓝）'));
+  assert.ok(!s.player.equipment.some(name => name.includes('磨刀石')));
 });
 test('新获得大量装备不被截断，也不自动穿上或因同名丢数量', () => {
   const s = fresh(['长剑（金）']), before = structuredClone(s.player.loadout);

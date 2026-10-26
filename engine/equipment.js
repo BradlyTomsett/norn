@@ -1,10 +1,11 @@
-import { parseItemEntry } from './items.js';
+import { parseItemEntry, isSharpeningStone } from './items.js';
 
 export const GEAR_LIMITS = { weapons: 9, shield: 1, armor: 1 };
 export const GRADE_BONUS = { 灰: 0, 绿: 2, 蓝: 4, 紫: 7, 金: 11 };
 const grades = { 普通: '灰', 稀少: '绿', 珍奇: '蓝', 史诗: '紫', 传说: '金' };
 const stackable = /飞刀|匕首|飞斧|投斧|投矛|标枪|飞镖|手里剑|箭|弩矢|弹丸/;
 export function gearKind(name) {
+  if (isSharpeningStone(name)) return 'other';
   if (/盾/.test(name)) return 'shield';
   if (/护甲|皮甲|轻甲|重甲|锁甲|链甲|板甲|鳞甲|铠|盔甲|法袍|战袍|胸甲/.test(name)) return 'armor';
   if (/剑|刀|斧|矛|枪|戟|锤|棍|棒|杖|弓|弩|箭|镖|铁尺|拳套|匕首|弩矢|弹丸/.test(name)) return 'weapon';

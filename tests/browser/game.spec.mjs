@@ -87,6 +87,7 @@ test('手机常用装备最多9栏，箭矢分颜色堆叠，护甲盾牌单选�
   await page.getByRole('button', { name: '状态', exact: true }).click();
   await page.locator('#cs-tabs').getByRole('button', { name: '装备', exact: true }).click();
   await expect(page.locator('#cs-body > .gear-group').first()).toBeVisible();
+  await expect(page.locator('#cs-body')).not.toContainText('磨刀石');
   await expect(page.locator('#loadout-editor')).toBeHidden();
   await expect(page.locator('#gear-current-weapons')).toContainText('长剑');
   await page.locator('#gear-edit > summary').click();
@@ -110,6 +111,8 @@ test('手机常用装备最多9栏，箭矢分颜色堆叠，护甲盾牌单选�
   await expect(page.locator('#gear-slot-count')).toContainText('9/9'); await expect(page.locator('#gear-primary')).toHaveValue('大枪（紫）');
   await expect(page.locator('[name="gear-armor"]:checked')).toHaveValue('皮甲（紫）');
   await expect(page.locator('[name="gear-shield"]:checked')).toHaveValue('铁盾（蓝）');
+  await page.locator('#cs-tabs').getByRole('button', { name: '物品', exact: true }).click();
+  await expect(page.locator('#cs-body').getByText('磨刀石（绿） ×3', { exact: true })).toBeVisible();
 });
 test('免疫矛盾正文自动重写一次，本回合武器和生效能力进入结算', async ({ page }) => {
   await open(page, 'gear'); await page.getByRole('button', { name: '模拟无视免疫', exact: true }).click();

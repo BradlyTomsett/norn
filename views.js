@@ -1,6 +1,6 @@
 // 角色卡各标签页的渲染：纯字符串拼接，不碰 DOM，方便单独测试。
 import { esc } from './format.js';
-import { isConsumable } from './engine/items.js';
+import { isConsumable, isSharpeningStone } from './engine/items.js';
 import { CATS, gameReferenceRows, gamePriceEntry, priceEntryText } from './engine/economy.js';
 import { gearState } from './engine/equipment.js';
 
@@ -192,11 +192,11 @@ function viewItems(u) {
 
   if (!out.length) out.push('<p class="hint">身上没带什么东西。</p>');
 
-  const bagUngraded = (p.bag || []).filter((b) => !gradeOf(b.name));
+  const bagUngraded = (p.bag || []).filter((b) => !gradeOf(b.name) || isSharpeningStone(b.name));
   const medNames = bagUngraded.filter((b) => isConsumable(b.name)).map((b) => b.name);
   const otherNames = [
     ...bagUngraded.filter((b) => !isConsumable(b.name)).map((b) => b.name),
-    ...(p.equipment || []).filter((e) => !gradeOf(e)),
+    ...(p.equipment || []).filter((e) => !gradeOf(e) || isSharpeningStone(e)),
   ];
   out.push(
     itemTool(
@@ -225,8 +225,8 @@ function gradedLines(p) {
 
 function ungradedLines(p) {
   const lines = [];
-  for (const e of p.equipment || []) if (!gradeOf(e)) lines.push(e);
-  for (const b of p.bag || []) if (!gradeOf(b.name)) lines.push(bagLabel(b));
+  for (const e of p.equipment || []) if (!gradeOf(e) || isSharpeningStone(e)) lines.push(e);
+  for (const b of p.bag || []) if (!gradeOf(b.name) || isSharpeningStone(b.name)) lines.push(bagLabel(b));
   return lines;
 }
 
@@ -238,14 +238,14 @@ function viewGear(u) {
   // 同名（含同品阶）合并成一条，后面写数量
   const counts = new Map();
   for (const e of p.equipment || []) {
-    if (!gradeOf(e)) continue;
+    if (!gradeOf(e) || isSharpeningStone(e)) continue;
     const m = String(e).match(/[×xX]\s*(\d+)\s*$/);
     const qty = m ? parseInt(m[1], 10) || 1 : 1;
     const name = m ? String(e).replace(/[×xX]\s*\d+\s*$/, '').trim() : e;
     counts.set(name, (counts.get(name) || 0) + qty);
   }
   for (const b of p.bag || []) {
-    if (!gradeOf(b.name)) continue;
+    if (!gradeOf(b.name) || isSharpeningStone(b.name)) continue;
     counts.set(b.name, (counts.get(b.name) || 0) + b.qty);
   }
 
@@ -298,7 +298,7 @@ function viewLoadout(player) {
   };
   const weaponRows = weapons.map(row => {
     const selected = loadout.weapons.find(item => item.key === row.key);
-    return `<div class="loadout-row"><label class="gear-pick"><input type="checkbox" data-gear-weapon="${esc(row.key)}" ${selected ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}<small>拥有 ${row.qty}</small></span></label><label class="gear-qty${selected && row.qty > 1 ? '' : ' hidden'}">数量<input type="number" data-gear-qty="${esc(row.key)}" aria-label="${esc(row.label)}使用数量" min="1" max="${row.qty}" value="${selected?.qty || (row.stackable ? row.qty : 1)}" inputmode="numeric"></label></div>`;
+    return `<div class="loadout-row"><label class="gear-pick"><input type="checkbox" data-gear-weapon="${esc(row.key)}" ${selected ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}<small>×${row.qty}</small></span></label><label class="gear-qty${selected && row.qty > 1 ? '' : ' hidden'}"><input type="number" data-gear-qty="${esc(row.key)}" aria-label="${esc(row.label)}使用数量" min="1" max="${row.qty}" value="${selected?.qty || (row.stackable ? row.qty : 1)}" inputmode="numeric"></label></div>`;
   }).join('');
   const single = (kind, title) => `<fieldset class="loadout-section"><legend>${title}（最多 1 件）</legend><div class="loadout-choices"><label class="gear-pick"><input type="radio" name="gear-${kind}" value="" ${loadout[kind] ? '' : 'checked'}>不使用</label>${inventory.filter(row => row.kind === kind).map(row => `<label class="gear-pick"><input type="radio" name="gear-${kind}" value="${esc(row.key)}" ${loadout[kind] === row.key ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}</span></label>`).join('')}</div></fieldset>`;
   return `<section id="gear-in-use"><h3>使用中</h3><p class="hint">武器 ${slots}/9 栏 · 护甲 ${loadout.armor ? 1 : 0}/1 · 盾牌 ${loadout.shield ? 1 : 0}/1</p><div id="gear-current-weapons" class="two-col">${current || '<p class="hint">未使用武器</p>'}</div>${worn('armor', '护甲')}${worn('shield', '盾牌')}<details id="gear-edit"><summary>修改使用装备</summary><div id="loadout-editor"><p class="hint">勾选使用，取消勾选则不使用。同名同品阶的箭矢、投掷武器、匕首可堆叠占一栏；不同品阶分开计数。</p><p id="gear-slot-count" role="status">武器：${slots}/9 栏</p><fieldset class="loadout-section"><legend>武器</legend><div class="loadout-choices">${weaponRows || '<p class="hint">还没有可选择的武器。</p>'}</div></fieldset><label class="gear-primary">主用武器<select id="gear-primary"><option value="">徒手 / 未指定</option>${selectedWeapons.map(row => `<option value="${esc(row.key)}" ${loadout.primary === row.key ? 'selected' : ''}>${esc(row.key)}</option>`).join('')}</select></label>${single('armor', '护甲')}${single('shield', '盾牌')}<button id="gear-save" class="primary">保存常用装备</button></div></details><p id="gear-message" class="hint" role="status"></p></section>`;

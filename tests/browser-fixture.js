@@ -30,6 +30,7 @@ state.player.unfinished = [{ text: '到公会领取柳洼调查的报酬' }, { t
 let initial = [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。\n【你现在可以做什么】\n① 睡觉八小时\n② 领取赏金并按约定分钱' }];
 if (scenario === 'gear') {
   state.player.equipment = ['长剑（金）', '大枪（紫）', '长弓（紫）', '弓箭（灰）×500', '弓箭（绿）×30', '飞刀（蓝）×20', '匕首（紫）×20', '飞斧（灰）×10', '标枪（绿）×20', '战斧（紫）', '木盾（灰）', '铁盾（蓝）', '皮甲（紫）', '板甲（金）'];
+  state.player.equipment.push('磨刀石（绿）×3');
   state.player.talent = { name: '暗金剑纹', grade: '传说', effect: '精通所有武器；免疫不利魔法与物理攻击；免疫冰、火、电、毒', secret: true };
   delete state.player.loadout; upgradeState(state);
 }

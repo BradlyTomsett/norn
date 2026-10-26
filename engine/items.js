@@ -83,9 +83,27 @@ export function effectOf(name) {
 export function isConsumable(name) {
   const s = String(name || '');
   if (!s) return false;
+  if (isSharpeningStone(s)) return false;
   if (CONSUMABLES[s]) return true;
   if (Object.keys(CONSUMABLES).some((k) => s.includes(k))) return true;
   return /药|丹|膏|汤|散|丸|瓶|罐|烟|酸|清醒|气力|夜眼|回血|浮水/.test(s);
+}
+
+export const isSharpeningStone = name => /磨刀石/.test(String(name || ''));
+
+/** Move old tool entries without changing their names or losing quantities. */
+export function normalizeToolItems(state) {
+  const player = state.player;
+  player.bag ||= [];
+  player.equipment = (player.equipment || []).filter(raw => {
+    if (!isSharpeningStone(raw)) return true;
+    const parsed = parseItemEntry(raw);
+    const label = String(raw).replace(/[×xX*]\s*\d+\s*$/, '').trim();
+    const quantity = parsed?.qty || 1;
+    const old = player.bag.find(row => row.name === label);
+    if (old) old.qty += quantity; else player.bag.push({ name: label, qty: quantity });
+    return false;
+  });
 }
 
 /* ---------------- 手动增减物品 ---------------- */
@@ -134,6 +152,7 @@ function dedupe(list) {
  */
 export function normalizeItems(state) {
   const p = state.player;
+  normalizeToolItems(state);
   if (!Array.isArray(p.bag)) p.bag = [];
   if (!Array.isArray(p.stock)) p.stock = [];
   if (!Array.isArray(p.vehicles)) p.vehicles = [];
@@ -158,7 +177,7 @@ export function addItem(state, name, qty = 1) {
   if (!n) return { ok: false, reason: '名称是空的' };
   const count = Math.max(1, Math.round(Number(qty) || 1));
 
-  if (gradeOfName(n)) {
+  if (gradeOfName(n) && !isSharpeningStone(n)) {
     if (!Array.isArray(p.equipment)) p.equipment = [];
     for (let i = 0; i < count; i++) p.equipment.push(n);
     return { ok: true, where: 'equipment', count };
