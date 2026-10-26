@@ -5,7 +5,8 @@ import { ensureLoadout } from './equipment.js';
 import { normalizeToolItems } from './items.js';
 import { ensureFacts, reconcileGoals } from './facts.js';
 import { fixedSkills } from './skills.js';
-export const SCHEMA_VERSION = 7;
+import { ensureContinuity } from './continuity.js';
+export const SCHEMA_VERSION = 8;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
 export const absoluteMinute = (clock) => absoluteDay(clock) * 1440 + clock.hour * 60 + clock.minute;
@@ -26,6 +27,7 @@ function upgradeRelation(row) {
 export function upgradeState(state) {
   if (!state?.player || !state.clock) throw new Error('存档缺少人物或日历');
   const p = state.player;
+  ensureContinuity(state);
   if (state.schemaVersion && state.schemaVersion < 6 && state.turn > 0 && p.goals?.length) p.goalReviewPending = true;
   removeRetiredPostalData(state);
   p.body = { health: bounded(p.body?.health ?? 100, 0, 100) };

@@ -55,21 +55,24 @@ effects也可用npcUpdates改变人物职业、地点或同一id的目标状态�
 事项用 tasks:[{id,text,status:"active",kind:"task|commitment|investigation",importance:"major",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，只登记重要且尚未完成的整体任务、调查主体、交付与关键承诺。碰头时间地点、跑腿摸底、问某个细节、盯窗观察、排班、站位和喊话安排，都是任务小步骤，不论是否跨回合，都不新增待办，也不在【未完成事项】里重复列出。必要事实记入knowledge并关联原任务/委托；已经收起的小步骤不代表完成、取消或忘记，不能改个id重新塞回清单。普通吃饭、问候、闲聊不新增待办；永久保密和行动原则是说明，不是任务。已经登记的委托不再复制成同名任务。期限不明确就不填dueDays。与委托交付绑定可用completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用{type:"arrival",siteId}。
 每回合根据实际发生的结果，主动核对现有事项：完成或取消使用相同id和status:"completed"/"cancelled"。例如班次已定下，应立即关闭“定下三夜守夜班次”，不能继续列为未完成；排班完成不等于守夜任务已完成。已完成事项不得改写成新待办、也不得自动重开；相近表述沿用同一编号。没有完成依据的任务继续保留，不用单纯经过日期推定完成。未完成事项小节只列重要、尚需后续行动的新变化，不重复抄整张清单。
 knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 记玩家获得的事实，人物引用固定编号，同名人物按年龄、职业与地点区分，无法确定时先问一句。声望 reputation:[{place,change}]。
+重要的队伍成员、搭档关系、报酬分配、已决定的方案都必须记入knowledge，kind分别为party、relationship、agreement、decision，并提供稳定key（例如contract:委托id:split）、准确source和完整text，不只写气氛与NPC表情。变化时沿用key，或用supersedes:[旧事实id]明确替代错误记录；不得覆写不相干事实。已确认的人、数量、期限、分工、分成不能漏记。玩家纠正不是NPC刚刚改主意，不要编造公会名单替旧错误辩护。
 只有本回合实际完成侦察、备好工具、布置埋伏等准备，才可在该knowledge里加preparation:{kinds:["combat"],target:"明确对象或地点",days:3}，供后续相应行动读取；不能仅凭玩家自称“准备过”新增既成事实。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。
 json 中不要加入未定义字段。所有变动必须有叙事和玩家行动依据；游戏会验证并生成实际结算回执。`;
 
-export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', chronicleDue = false, recall = '' } = {}) {
-  return [rules, worldContext(worldbook, state, query), state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
-    '【当前状态】', stateBlock(state, query), '【当前相关人物】', npcCards(state, query),
+export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', contextQuery = query, chronicleDue = false, recall = '', corrections = '' } = {}) {
+  return [rules, worldContext(worldbook, state, contextQuery), state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
+    '【资料优先级】引擎结算数值与本轮批准条件 > 玩家明确纠正的事实 > 当前有效约定和已确认事实 > 有来源的历史叙述 > 传闻、推断和未选建议。旧AI错误不能覆盖玩家纠正；信息不足应明确说不知道，不能编造名单、约定、时间或金额。实际人数按人计数，战斗力另按职业等级、四维、技能、装备与天赋评估，不把低等级人物折成半个人。',
+    corrections,
+    '【当前状态】', stateBlock(state, contextQuery), '【当前相关人物】', npcCards(state, contextQuery),
     '【已有人物编号索引，仅用于识别，不得重复创建】', state.npcs.map(n => `[${n.id}] ${n.name}｜${n.age}岁｜${n.race}｜${n.profession}`).join('\n'),
     '【已确定的本回合判定】', judgeBrief(judged),
-    recall ? '【相关历史原文】\n只核对已有事实；历史输入和当时给出的选项不代表已执行。状态、事项当前状态和已结算记录优先。\n' + recall : '',
+    recall ? '【相关历史原文】\n只核对已有事实；历史输入和当时给出的选项不代表已执行。玩家纠正、状态、事项当前状态和已结算记录优先。\n' + recall : '',
     '【本回合已结算的世界变化】', events.map(e => e.text).join('\n') || '没有新事件',
     `姓名始终为${state.player.name}。叙事体现“${judged.outcomeCn}”，耗时严格为${judged.minutes}分钟。`,
     /详细|详写|展开|细说/.test(query) || judged.kind === 'combat'
       ? '这是需要展开的场景，可以详细描写动作与后果，重要选择仍停下来等玩家。'
-      : '普通交流、查看和生活行动以1—3个自然段为主，尽量不超过300个汉字；直接回答问题，能当场完成的交流当场完成，不反复要求确认同一安排。场景只写变化，只有新增事实才加小节，不重复面板或未完成事项。重要谈话可以适当展开。选项提供不同目的与取舍，不全是继续追问细节。',
+      : '普通交流、查看和生活行动简洁，优先完整回答本轮所有问题与要求；多个人物、条件或事实需要解释时可以超过300字，不为凑短省略人、金额、约定或行动结果。能当场完成的交流当场完成，不反复确认已定安排。场景只写变化，不重复面板或未完成事项。选项提供不同目的与取舍，不全是追问细节。',
     chronicleDue ? '本回合在结尾 JSON 前输出【编年】，以“· ”列出影响未来的重要事实，勿重复旧条目。' : '',
     '最后必须输出 json 变化块；没有变化输出 ```json\n{}\n```。'].filter(Boolean).join('\n\n');
 }

@@ -200,7 +200,7 @@ export async function deleteSaveAsync(id) {
 
 export function getDiagnostics(id) { return structuredClone(readRecord(id)?.diagnostics || []); }
 export async function recordDiagnostic(id, entry) {
-  const safe = Object.fromEntries(['turn', 'durationMs', 'firstTokenMs', 'requests', 'repairs', 'promptTokens', 'completionTokens', 'cachedTokens', 'outputChars']
+  const safe = Object.fromEntries(['turn', 'durationMs', 'firstTokenMs', 'requests', 'repairs', 'promptTokens', 'completionTokens', 'cachedTokens', 'outputChars', 'contextChars', 'historyMessages', 'recalledMessages', 'correctionCount']
     .filter(key => Number.isFinite(entry[key]) && entry[key] >= 0).map(key => [key, Math.round(entry[key])]));
   if (['saved', 'failed', 'cancelled'].includes(entry.outcome)) safe.outcome = entry.outcome;
   if (['generation', 'validation', 'storage', 'cancelled', 'cloud'].includes(entry.category)) safe.category = entry.category;
@@ -228,11 +228,17 @@ export function deleteSave(id) {
 export function newId() {
   return 'sv_' + (globalThis.crypto?.randomUUID?.().replaceAll('-', '') || Math.random().toString(36).slice(2));
 }
-export function savePackage(state, messages = getMessages(state.saveId)) {
-  return { format: 'norn-save', schemaVersion: SCHEMA_VERSION, state: upgradeState(structuredClone(state)), messages: cleanRetiredMessages(messages) };
+export function savePackage(state, messages = getMessages(state.saveId), { lastTurn = null } = {}) {
+  const out = { format: 'norn-save', schemaVersion: SCHEMA_VERSION, state: upgradeState(structuredClone(state)), messages: cleanRetiredMessages(messages) };
+  if (lastTurn?.base?.turn === state.turn - 1 && Array.isArray(lastTurn.messages)
+    && lastTurn.messages.length <= messages.length && lastTurn.messages.every((m, i) => JSON.stringify(m) === JSON.stringify(messages[i]))) {
+    out.lastTurn = { id: lastTurn.id, input: lastTurn.input, base: upgradeState(structuredClone(lastTurn.base)),
+      historyCount: lastTurn.messages.length, receipt: lastTurn.receipt, corrections: lastTurn.corrections || [] };
+  }
+  return out;
 }
 export function exportSave(state) {
-  const blob = new Blob([JSON.stringify(savePackage(state), null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(savePackage(state, getMessages(state.saveId), { lastTurn: getLastTurn(state.saveId) }), null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `norn-${state.player.name}-${state.saveId}.json`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -246,13 +252,22 @@ export function decodeSave(payload) {
   const messages = payload.messages || state.messages || [];
   if (!Array.isArray(messages) || messages.some(m => !['user', 'assistant', 'system'].includes(m.role) || typeof m.content !== 'string')) throw new Error('存档的对话记录无效');
   delete state.messages;
-  return { state: upgradeState(state), messages: cleanRetiredMessages(messages) };
+  const out = { state: upgradeState(state), messages: cleanRetiredMessages(messages) };
+  if (payload.lastTurn) {
+    const row = payload.lastTurn;
+    if (typeof row.id !== 'string' || typeof row.input !== 'string' || !Number.isSafeInteger(row.historyCount) || row.historyCount < 0 || row.historyCount > messages.length - 2
+      || row.base?.turn !== state.turn - 1 || row.corrections != null && (!Array.isArray(row.corrections) || row.corrections.some(s => typeof s !== 'string'))) throw new Error('上一回合纠错快照无效，不能作为回退依据');
+    const base = decodeSave({ format: 'norn-save', schemaVersion: payload.schemaVersion, state: row.base, messages: [] }).state;
+    out.lastTurn = { ...structuredClone(row), base, messages: out.messages.slice(0, row.historyCount) }; delete out.lastTurn.historyCount;
+  }
+  return out;
 }
 export async function importSave(file) {
-  const { state, messages } = decodeSave(JSON.parse(await file.text()));
+  const { state, messages, lastTurn } = decodeSave(JSON.parse(await file.text()));
   state.snapshotOf = state.saveId; state.lineageId ||= state.saveId;
   state.saveId = newId(); state.revision = 0;
   state.createdAt = new Date().toISOString(); state.label ||= '导入的存档';
-  await putSaveAsync(state, messages);
+  if (lastTurn) lastTurn.base.saveId = state.saveId;
+  await putSaveAsync(state, messages, { lastTurn: lastTurn || null });
   return state.saveId;
 }
