@@ -256,7 +256,7 @@ function viewGear(u) {
     groups.get(ch).push({ name, qty });
   }
 
-  const out = [viewLoadout(p), '<h3>拥有的装备（数量不限）</h3>'];
+  const out = [];
   for (const [ch, label, cls] of GRADE_ORDER) {
     const list = groups.get(ch);
     if (!list?.length) continue;
@@ -277,18 +277,28 @@ function viewGear(u) {
     names: [...counts.keys()].filter((n) => gradeOf(n) === ch),
   }));
   out.push(itemTool('gear', gearGroups, '带品阶的装备，同名再加大一次就是多一件；没品阶的会进物品页。'));
+  out.push(viewLoadout(p));
   return out.join('');
 }
 
 function viewLoadout(player) {
   const { inventory, loadout, slots } = player.gear || gearState(player);
   const weapons = inventory.filter(row => row.kind === 'weapon');
+  const color = row => GRADE_ORDER.find(([ch]) => ch === row.grade)?.[2] || 'common';
+  const current = loadout.weapons.map(selected => {
+    const row = inventory.find(item => item.key === selected.key);
+    return `<div class="item g-${color(row)}">${esc(baseName(row.label))} ×${selected.qty}${row.key === loadout.primary ? '<small class="in-use-primary">主用</small>' : ''}</div>`;
+  }).join('');
+  const worn = (kind, title) => {
+    const row = inventory.find(item => item.key === loadout[kind]);
+    return `<div class="in-use-worn"><span class="hint">${title}</span>${row ? `<span class="item g-${color(row)}">${esc(baseName(row.label))}</span>` : '<span class="hint">未使用</span>'}</div>`;
+  };
   const weaponRows = weapons.map(row => {
     const selected = loadout.weapons.find(item => item.key === row.key);
-    return `<div class="loadout-row"><label class="gear-pick"><input type="checkbox" data-gear-weapon="${esc(row.key)}" ${selected ? 'checked' : ''}><span>${esc(row.label)}<small>拥有 ${row.qty}${row.stackable ? ' · 同组堆叠占 1 栏' : ' · 每件占 1 栏'}</small></span></label><label class="gear-qty">使用数量<input type="number" data-gear-qty="${esc(row.key)}" aria-label="${esc(row.label)}使用数量" min="1" max="${row.qty}" value="${selected?.qty || (row.stackable ? row.qty : 1)}" inputmode="numeric"></label></div>`;
+    return `<div class="loadout-row"><label class="gear-pick"><input type="checkbox" data-gear-weapon="${esc(row.key)}" ${selected ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}<small>拥有 ${row.qty}</small></span></label><label class="gear-qty${selected && row.qty > 1 ? '' : ' hidden'}">数量<input type="number" data-gear-qty="${esc(row.key)}" aria-label="${esc(row.label)}使用数量" min="1" max="${row.qty}" value="${selected?.qty || (row.stackable ? row.qty : 1)}" inputmode="numeric"></label></div>`;
   }).join('');
-  const single = (kind, title) => `<fieldset class="loadout-section"><legend>${title}（最多 1 件）</legend><label class="gear-pick"><input type="radio" name="gear-${kind}" value="" ${loadout[kind] ? '' : 'checked'}>不使用${title}</label>${inventory.filter(row => row.kind === kind).map(row => `<label class="gear-pick"><input type="radio" name="gear-${kind}" value="${esc(row.key)}" ${loadout[kind] === row.key ? 'checked' : ''}>${esc(row.label)} · 拥有 ${row.qty}</label>`).join('')}</fieldset>`;
-  return `<section id="loadout-editor"><h3>正在使用</h3><p class="hint">武器最多 9 栏，护甲和盾牌各 1 件。同名同品阶的箭矢、投掷武器、匕首可堆叠；不同品阶分开占栏。每次行动只计算实际使用的武器。</p>${loadout.needsReview ? '<p class="hint">旧收藏完整保留，已按品阶选出一套初始配置，请按习惯调整。</p>' : ''}<p id="gear-slot-count" role="status">武器：${slots}/9 栏</p><fieldset class="loadout-section"><legend>常用武器</legend>${weaponRows || '<p class="hint">还没有可选择的武器。</p>'}</fieldset><label class="gear-primary">主用武器<select id="gear-primary"><option value="">徒手 / 未指定</option>${loadout.weapons.map(row => `<option value="${esc(row.key)}" ${loadout.primary === row.key ? 'selected' : ''}>${esc(row.key)}</option>`).join('')}</select></label>${single('armor', '护甲')}${single('shield', '盾牌')}<button id="gear-save" class="primary">保存常用装备</button><p id="gear-message" class="hint" role="status"></p><p class="hint">在行动中明确指定其他已拥有的武器，可在本回合替换主用武器；平时的配置保持不变。</p></section>`;
+  const single = (kind, title) => `<fieldset class="loadout-section"><legend>${title}（最多 1 件）</legend><div class="loadout-choices"><label class="gear-pick"><input type="radio" name="gear-${kind}" value="" ${loadout[kind] ? '' : 'checked'}>不使用</label>${inventory.filter(row => row.kind === kind).map(row => `<label class="gear-pick"><input type="radio" name="gear-${kind}" value="${esc(row.key)}" ${loadout[kind] === row.key ? 'checked' : ''}><span class="g-${color(row)}">${esc(baseName(row.label))}</span></label>`).join('')}</div></fieldset>`;
+  return `<section id="gear-in-use"><h3>使用中</h3><p class="hint">武器 ${slots}/9 栏 · 护甲 ${loadout.armor ? 1 : 0}/1 · 盾牌 ${loadout.shield ? 1 : 0}/1</p><div id="gear-current-weapons" class="two-col">${current || '<p class="hint">未使用武器</p>'}</div>${worn('armor', '护甲')}${worn('shield', '盾牌')}<details id="gear-edit"><summary>修改使用装备</summary><div id="loadout-editor"><p class="hint">勾选使用，取消勾选则不使用。同名同品阶的箭矢、投掷武器、匕首可堆叠占一栏；不同品阶分开计数。</p><p id="gear-slot-count" role="status">武器：${slots}/9 栏</p><fieldset class="loadout-section"><legend>武器</legend><div class="loadout-choices">${weaponRows || '<p class="hint">还没有可选择的武器。</p>'}</div></fieldset><label class="gear-primary">主用武器<select id="gear-primary"><option value="">徒手 / 未指定</option>${loadout.weapons.map(row => `<option value="${esc(row.key)}" ${loadout.primary === row.key ? 'selected' : ''}>${esc(row.key)}</option>`).join('')}</select></label>${single('armor', '护甲')}${single('shield', '盾牌')}<button id="gear-save" class="primary">保存常用装备</button></div></details><p id="gear-message" class="hint" role="status"></p></section>`;
 }
 
 export function relationColor(value) {

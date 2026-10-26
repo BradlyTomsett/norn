@@ -83,6 +83,10 @@ test('手机常用装备最多9栏，箭矢分颜色堆叠，护甲盾牌单选�
   await open(page, 'gear'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '状态', exact: true }).click();
   await page.locator('#cs-tabs').getByRole('button', { name: '装备', exact: true }).click();
+  await expect(page.locator('#cs-body > .gear-group').first()).toBeVisible();
+  await expect(page.locator('#loadout-editor')).toBeHidden();
+  await expect(page.locator('#gear-current-weapons')).toContainText('长剑');
+  await page.locator('#gear-edit > summary').click();
   await expect(page.locator('#gear-slot-count')).toContainText('1/9');
   const choices = page.locator('[data-gear-weapon]'); await expect(choices).toHaveCount(10);
   for (let i = 0; i < 9; i++) await choices.nth(i).check();
@@ -95,8 +99,11 @@ test('手机常用装备最多9栏，箭矢分颜色堆叠，护甲盾牌单选�
   await page.locator('[name="gear-armor"][value="皮甲（紫）"]').check();
   await page.locator('#gear-primary').selectOption('大枪（紫）'); await page.locator('#gear-save').click();
   await expect(page.locator('#gear-message')).toContainText('已保存');
+  await expect(page.locator('#loadout-editor')).toBeHidden();
+  await expect(page.locator('#gear-current-weapons')).toContainText('弓箭 ×500');
   await page.reload(); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '状态', exact: true }).click(); await page.locator('#cs-tabs').getByRole('button', { name: '装备', exact: true }).click();
+  await page.locator('#gear-edit > summary').click();
   await expect(page.locator('#gear-slot-count')).toContainText('9/9'); await expect(page.locator('#gear-primary')).toHaveValue('大枪（紫）');
   await expect(page.locator('[name="gear-armor"]:checked')).toHaveValue('皮甲（紫）');
   await expect(page.locator('[name="gear-shield"]:checked')).toHaveValue('铁盾（蓝）');

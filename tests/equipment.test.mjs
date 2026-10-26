@@ -150,7 +150,7 @@ test('正文中的免疫伤害与错误武器可重写一次，不能改交易�
 test('能力配置随完整导出导入保留，装备页可操作，提示明确收藏不叠加', () => {
   const s = fresh(['长剑（金）', '飞刀（蓝）×30', '木盾（灰）', '皮甲（紫）']); pick(s, [row('长剑（金）'), row('飞刀（蓝）', 30)], '长剑（金）', { shield: '木盾（灰）', armor: '皮甲（紫）' });
   const imported = decodeSave(JSON.parse(JSON.stringify(savePackage(s, [])))); assert.deepEqual(imported.state.player.loadout, s.player.loadout);
-  const html = VIEWS.gear(uiState(s)); assert.match(html, /gear-save/); assert.match(html, /2\/9/); assert.match(html, /拥有的装备（数量不限）/);
+  const html = VIEWS.gear(uiState(s)); assert.match(html, /gear-save/); assert.match(html, /2\/9/);
   assert.match(stateBlock(s), /拥有的装备，仅为收藏/);
   assert.equal(s.player.body.fatigue, undefined); assert.equal(s.player.body.durability, undefined);
 });

@@ -785,6 +785,10 @@ function readLoadoutForm() {
 $('#cs-body').addEventListener('change', event => {
   if (!event.target.closest('#loadout-editor')) return;
   const draft = readLoadoutForm(), primary = $('#gear-primary'), previous = primary.value;
+  for (const input of document.querySelectorAll('[data-gear-weapon]')) {
+    const quantity = input.closest('.loadout-row').querySelector('.gear-qty');
+    const field = quantity.querySelector('input'); quantity.classList.toggle('hidden', !input.checked || Number(field.max) <= 1);
+  }
   primary.replaceChildren();
   const empty = document.createElement('option'); empty.value = ''; empty.textContent = '徒手 / 未指定'; primary.append(empty);
   for (const row of draft.weapons) { const option = document.createElement('option'); option.value = row.key; option.textContent = row.key; primary.append(option); }
