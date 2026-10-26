@@ -1,5 +1,6 @@
 import { entityRefs, textId } from './entities.js';
 import { narrationText } from '../messages.js';
+import { contradictedByCorrection } from './continuity.js';
 
 /** Local relevance retrieval: retain the source history, budget only the prompt. */
 export function selectRelevant(rows, query = '', limit = 16, textOf = x => typeof x === 'string' ? x : x.text || '', context = {}) {
@@ -32,15 +33,29 @@ export function memoryContext(state, query) {
   return context;
 }
 
-export function recallHistory(state, messages, query, limit = 5) {
+export function recallHistory(state, messages, query, limit = 5, { before = Math.max(0, messages.length - 14), budget = 14000 } = {}) {
   const context = memoryContext(state, query);
-  const candidates = messages.slice(0, -14).map((message, index) => {
+  const candidates = messages.slice(0, before).map((message, index) => {
     const text = (message.role === 'assistant' ? narrationText(message.content) : message.content)
       .split(/【(?:你现在可以做什么|行动方向|可选行动)】/)[0].trim();
     return { text, index, role: message.role, turn: message.sourceTurn, ...entityRefs(state, text, message.entities || {}) };
-  }).filter(row => row.text && !/^(?:\/纠错|我的钱数没有增加|光支出了)/.test(row.text));
+  }).filter(row => row.text && !contradictedByCorrection(state, row.text) && !/^(?:\/纠错|我的钱数没有增加|光支出了)/.test(row.text));
   const selected = selectRelevant(candidates, query, limit, row => row.text, context)
     .filter(row => row.npcIds.some(id => context.npcIds.includes(id)) || row.siteIds.some(id => context.siteIds.includes(id))
       || (String(query).match(/[\u4e00-\u9fff]+/g) || []).some(word => [...word].some((_, i) => i < word.length - 1 && row.text.includes(word.slice(i, i + 2)))));
-  return selected.map(row => `第${row.turn ?? row.index + 1}条${row.role === 'user' ? '玩家输入' : '历史叙述'}：${row.text.slice(0, 1100)}`).join('\n\n');
+  const paired = new Map();
+  for (const row of selected) {
+    paired.set(row.index, row);
+    const other = row.role === 'assistant' ? row.index - 1 : row.index + 1;
+    const partner = candidates.find(candidate => candidate.index === other && candidate.role !== row.role);
+    if (partner && !partner.npcIds.some(id => context.excludeNpcIds.includes(id))) paired.set(other, partner);
+  }
+  const included = []; let chars = 0;
+  // Preserve complete source passages. An oversized optional source is omitted, never silently cut in half.
+  for (const row of [...paired.values()].sort((a, b) => b.index - a.index)) {
+    const text = `[history:${row.index}] ${row.turn != null ? `第${row.turn}回合` : `原记录${row.index + 1}`} ${row.role === 'user' ? '玩家输入（不自动代表已执行）' : '历史叙述'}：${row.text}`;
+    if (chars + text.length > budget) continue;
+    included.unshift(text); chars += text.length;
+  }
+  return included.join('\n\n');
 }

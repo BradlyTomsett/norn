@@ -9,16 +9,18 @@ import { advanceTasks } from './tasks.js';
 import { financeTerms, assertFinance } from './finance.js';
 import { entityRefs } from './entities.js';
 import { absoluteDay } from './schema.js';
+import { rememberCorrections } from './continuity.js';
 
-export function prepareTurn(source, input, id, { messages = [] } = {}) {
+export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '' } = {}) {
   const action = resolveAction(input, messages), text = action.text;
   const base = upgradeState(structuredClone(source));
+  rememberCorrections(base, messages, corrections);
   const state = structuredClone(base);
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
   const events = advanceWorld(state, judged.minutes, rng, judged);
   advanceTasks(state);
-  const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, rng, history: messages };
+  const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, rng, history: messages, corrections, rejectedReply };
   plan.finance = financeTerms(plan);
   return plan;
 }

@@ -63,7 +63,7 @@ test('五金被写成五十金会自动修复一次，按明确金额扣款', as
   await open(page); await page.getByRole('button', { name: '模拟金额放大', exact: true }).click();
   await act(page, '给老杜5金币'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#fixture-monitor')).toContainText('随身：950000 铜');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
   await expect(page.locator('.turn-receipt')).toContainText('5 金');
 });
 test('旧事项去重、归档、重新打开并在刷新后保留', async ({ page }) => {
@@ -137,16 +137,38 @@ test('同名人物在发请求前选身份，搜索定位完整历史', async ({
   await page.getByRole('button', { name: '回到最新记录', exact: true }).click();
   await expect(page.locator('#input')).toBeVisible();
 });
+
+test('完整上下文含旧约定，事实冲突自动重写；连续纠错保留全部要求且不多走回合', async ({ page }) => {
+  await open(page, 'context'); await page.getByRole('button', { name: '模拟事实冲突', exact: true }).click();
+  await act(page, '说清今晚队伍和分配约定'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-agreement', 'true');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-correction', 'true');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-context-reviews', '1');
+  await expect(page.locator('#log')).toContainText('六名成员都在'); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await act(page, '/纠错 不要出现巡锁2个字！'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await act(page, '/纠错 不要出现查锁2个字！'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-both-corrections', 'true');
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await page.reload(); await act(page, '继续说明安排'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-correction', 'true');
+});
+
+test('没有回退快照的旧存档仍可保存事实纠正，不推进时间或请求生成', async ({ page }) => {
+  await open(page, 'context'); await act(page, '/纠错 瑟拉一直是我的搭档');
+  await expect(page.locator('#log')).toContainText('已保存这条纠正');
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：0');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
+});
 test('擅自台词与承诺重写一次，诊断包含用量且不含原文或密钥', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '模拟擅自承诺', exact: true }).click();
   await act(page, '问店主面包多少钱'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#log')).toContainText('等你决定是否购买');
   await expect(page.locator('#log')).not.toContainText('这笔钱我来付');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
   await page.getByRole('button', { name: '存档', exact: true }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '复制诊断信息', exact: true }).click();
-  await expect(page.locator('#diag-out')).toContainText('"promptTokens":240');
+  await expect(page.locator('#diag-out')).toContainText('"promptTokens":360');
   await expect(page.locator('#diag-out')).not.toContainText('fixture-key');
   await expect(page.locator('#diag-out')).not.toContainText('问店主');
 });
@@ -211,5 +233,5 @@ test('免疫矛盾正文自动重写一次，本回合武器和生效能力进�
   await expect(page.locator('#log')).not.toContainText('鲜血流了下来');
   await expect(page.locator('.turn-receipt')).toContainText('使用：大枪（紫）');
   await expect(page.locator('.turn-receipt')).toContainText('天赋免疫已生效');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
 });

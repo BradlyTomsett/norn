@@ -58,13 +58,24 @@ if (scenario === 'skills') {
   ].map((text, i) => ({ id: `small:${i}`, text, kind: 'commitment', importance: 'major' }));
   initial = [{ role: 'assistant', content: '这是独立测试存档，展示固定六项技能和精简后的事项。' }];
 }
+if (scenario === 'context') {
+  state.npcs = [{ id: 'sera', name: '瑟拉', age: 20, race: 'human', profession: '冒险者（B级）', attitude: '玩家的搭档', traits: [] }];
+  state.player.relations = [{ npcId: 'sera', closeness: 50 }];
+  state.knowledge = [{ id: 'old-membership', text: '瑟拉不在这单名单上', source: '旧叙述' }];
+  state.player.unfinished = [{ id: 'sera-decision', text: '定下瑟拉是否加入这单' }];
+  initial = [{ role: 'user', content: '搭档分成确认：给其他人结工钱后，剩余赏金与瑟拉平分。' },
+    { role: 'assistant', content: '这项约定已确认。' },
+    ...Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `普通交流${i}。` })),
+    { role: 'user', content: '重新说清人数\n（本回合纠正：/纠错 瑟拉一直是我的搭档，我们明明是6个人。）' },
+    { role: 'assistant', content: '你们继续谈论今晚的安排。' }];
+}
 if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
 await store.initStorage();
 if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
-for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['finance', '模拟金额放大'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫']]) {
+for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['finance', '模拟金额放大'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫'], ['continuity', '模拟事实冲突']]) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => { mode = value; }; controls.append(b);
 }
 const hide = document.createElement('button'); hide.textContent = '隐藏测试工具'; hide.onclick = () => { controls.hidden = true; }; controls.append(hide);
@@ -81,7 +92,18 @@ window.fetch = async (url, options = {}) => {
   if (!String(url).startsWith('https://api.deepseek.com')) return original(url, options);
   const request = JSON.parse(options.body), system = request.messages[0].content;
   requests++; controls.dataset.requests = requests;
-  const input = request.messages.at(-1).content;
+  if (scenario === 'context') {
+    controls.dataset.hasAgreement = String(request.messages.some(m => m.content.includes('剩余赏金与瑟拉平分')) || system.includes('剩余赏金与瑟拉平分'));
+    controls.dataset.hasCorrection = String(system.includes('瑟拉一直是我的搭档'));
+    controls.dataset.hasBothCorrections = String(system.includes('不要出现巡锁2个字') && system.includes('不要出现查锁2个字'));
+  }
+  const input = [...request.messages].reverse().find(m => m.role === 'user' && m.content.includes('【本轮实际行动】'))?.content || request.messages.at(-1).content;
+  if (system.includes('你现在只核对回复的一致性与完整性')) {
+    controls.dataset.contextReviews = String(Number(controls.dataset.contextReviews || 0) + 1);
+    const output = '```json\n' + JSON.stringify({ ok: true, issues: [] }) + '\n```';
+    const usage = { choices: [], usage: { prompt_tokens: 120, completion_tokens: 40, prompt_cache_hit_tokens: 50 } };
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: ${JSON.stringify(usage)}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
   const repairing = system.includes('你现在只修复变化数据');
   const reviewing = system.includes('你只整理这份游戏存档的事项');
   if (reviewing) {
@@ -117,6 +139,11 @@ window.fetch = async (url, options = {}) => {
   }
   if (mode === 'ability') {
     delta = {}; text = system.includes('你现在只修复本回合叙事与能力结果的矛盾') ? '你用大枪抵开攻击，身体没有受伤。守卫后退了一步。' : '你被守卫砍伤了，鲜血流了下来。';
+  }
+  if (mode === 'continuity') {
+    text = system.includes('你现在只修复回复的事实一致性与完整性')
+      ? '瑟拉一直与你同行。六名成员都在，战力按各自等级评估。按既定约定，结清其他人的工钱后，你与瑟拉平分剩余赏金。'
+      : '瑟拉不在这次任务名单里，你们只有五个半人。';
   }
   if (/睡|歇|休息/.test(input) && !repairing) text = '【生活变化】\n你在旅店休息，醒来后仍留在原处。\n【你现在可以做什么】\n① 问候老杜\n② 等一会';
   const output = `${text}\n\n【实际结算】\n模型写的错误余额999金币，不应显示。\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;

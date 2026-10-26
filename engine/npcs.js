@@ -215,8 +215,10 @@ export function advanceNpcs(state) {
 
 export function relevantNpcs(state, text = '') {
   const refs = entityRefs(state, text);
-  return state.npcs.filter(n => !n.dead).map((n, index) => ({ n, index, score:
+  const ranked = state.npcs.filter(n => !n.dead).map((n, index) => ({ n, index, score:
     (refs.npcIds.includes(n.id) ? 200 : text.includes(n.name) ? 100 : 0) + (n.following ? 60 : 0) + (n.location?.siteId === state.player.location.siteId ? 40 : 0)
     + Math.max(0, state.player.relations.find(r => r.npcId === n.id)?.closeness || 0) / 10 }))
-    .sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 8).map(x => x.n);
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const required = ranked.filter(({ n }) => refs.npcIds.includes(n.id) || n.following || n.location?.siteId === state.player.location.siteId);
+  return [...required, ...ranked.filter(row => !required.includes(row)).slice(0, Math.max(0, 8 - required.length))].map(row => row.n);
 }
