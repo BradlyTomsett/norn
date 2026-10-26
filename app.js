@@ -783,7 +783,7 @@ $('#cs-body').addEventListener('click', event => {
     contract.copper = amount;
     if (state.player.contract?.id === contract.id) state.player.contract.copper = amount;
     await store.putSaveAsync(state); refreshTasks(state, '委托酬劳已保存。');
-    if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
+    if (sync.ghReady()) sync.backupSave(state, store.getMessages(state.saveId)).catch(() => {});
   });
 });
 
