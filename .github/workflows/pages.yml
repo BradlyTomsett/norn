@@ -25,8 +25,11 @@ jobs:
           node-version: '22'
       - run: npm ci
       - run: npm test
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+        env:
+          # The hosted Ubuntu image already supplies Chrome and its libraries.
+          # Avoid an additional browser download blocking the release checks.
+          NORN_TEST_CHANNEL: chrome
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
