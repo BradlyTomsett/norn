@@ -4,6 +4,8 @@ import { AgencyError, assertPlayerAgency, approvedFinance } from './agency.js';
 import { NarrativeError, assertAbilityNarrative } from './narrative.js';
 import { FinanceError, assertFinance, assertFinanceRepair } from './finance.js';
 import { ContinuityError, assertContinuity } from './continuity.js';
+import { validateFactChanges } from './fact-validation.js';
+import { missingSceneLocation, rememberSceneEvidence } from './scene.js';
 
 const rows = value => value == null ? [] : Array.isArray(value) ? value : [value];
 const canonical = value => JSON.stringify(value, function (_key, row) {
@@ -51,8 +53,11 @@ export async function settleReply(plan, raw, { repair, repairAgency, repairNarra
     assertFinance(plan, raw, original);
     assertAbilityNarrative(plan, raw);
     assertContinuity(plan, raw);
+    if (missingSceneLocation(plan, raw, original)) throw new ContinuityError('正文已进入新地点，但地点记录未同步；请按实际场景补充location，不增加额外移动。');
     if (reviewContinuity) await reviewContinuity(raw, plan);
-    return { ...finishTurn(plan, normalizeNpcDelta(original, plan.state)), raw, repaired: false };
+    const result = finishTurn(plan, validateFactChanges(plan, normalizeNpcDelta(original, plan.state), raw));
+    rememberSceneEvidence(result.state, plan);
+    return { ...result, raw, repaired: false };
   } catch (error) {
     if (error.contextReviewFailed) throw error;
     const agency = error instanceof AgencyError;
@@ -75,7 +80,10 @@ export async function settleReply(plan, raw, { repair, repairAgency, repairNarra
     assertFinance(plan, repairedRaw, repaired);
     assertAbilityNarrative(plan, repairedRaw);
     assertContinuity(plan, repairedRaw);
+    if (missingSceneLocation(plan, repairedRaw, repaired)) throw new ContinuityError('正文与地点记录仍不一致，请重试本回合。');
     if (reviewContinuity) await reviewContinuity(repairedRaw, plan);
-    return { ...finishTurn(plan, normalizeNpcDelta(repaired, plan.state)), raw: repairedRaw, repaired: true };
+    const result = finishTurn(plan, validateFactChanges(plan, normalizeNpcDelta(repaired, plan.state), repairedRaw));
+    rememberSceneEvidence(result.state, plan);
+    return { ...result, raw: repairedRaw, repaired: true };
   }
 }

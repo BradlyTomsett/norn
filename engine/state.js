@@ -30,7 +30,7 @@ import { applyQuotes } from './finance.js';
 import { addEffect, activeEffects } from './effects.js';
 import { activePrinciples, knownStory } from './facts.js';
 import { fixedSkills } from './skills.js';
-import { contradictedByCorrection } from './continuity.js';
+import { contradictedByCorrection, correctionContaminates } from './continuity.js';
 
 export {
   accountOf,
@@ -534,6 +534,8 @@ function applyUnsafe(state, delta, rng, opts = {}) {
         day: state.clock.doy,
       }, opts.eventId));
       const added = state.knowledge.at(-1);
+      if (state.knowledge.slice(0, -1).some(row => row.id === added.id)) added.id += ':' + textId(`${opts.eventId || ''}|${state.knowledge.length}`);
+      if (added.status === 'unverified') continue;
       for (const old of state.knowledge.slice(0, -1)) {
         if ((k.key && old.key === k.key) || (Array.isArray(k.supersedes) && k.supersedes.includes(old.id))) {
           old.status = 'superseded'; old.supersededBy = added.id;
@@ -664,7 +666,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
 }
 
 /** 给模型的紧凑状态块（也是 UI 的数据源之一）。 */
-export function stateBlock(state, query = '') {
+export function stateBlock(state, query = '', { guards = [], locationUncertain = false, identityHints = new Map() } = {}) {
   upgradeState(state);
   ensureNpcState(state);
   ensureAssets(state);
@@ -673,7 +675,7 @@ export function stateBlock(state, query = '') {
   const lines = [];
   const context = memoryContext(state, query);
   lines.push(`【时间】${formatDate(state.clock)}`);
-  lines.push(`【地点】${p.location.siteName}（${state.world.regionTitle}）｜物价指数 ${(state.world.priceIndex || 1).toFixed(2)}`);
+  lines.push(`【${locationUncertain ? '地点记录可能过时，参照最近场景核对' : '地点'}】${p.location.siteName}（${state.world.regionTitle}）｜物价指数 ${(state.world.priceIndex || 1).toFixed(2)}`);
   lines.push(
     `【角色】${p.name}｜${p.age} 岁｜${RACE_CN[p.race] || p.race}｜${p.profession}（${p.professionState}）`,
   );
@@ -741,18 +743,24 @@ export function stateBlock(state, query = '') {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
   }
-  const chronRows = state.chronicle.map(row => linkKnowledge(state, row)).filter(row => !contradictedByCorrection(state, row));
+  const chronRows = state.chronicle.map(row => linkKnowledge(state, row)).filter(row => !contradictedByCorrection(state, row) && !correctionContaminates(row, guards));
   const chron = selectRelevant(chronRows, query, chronRows.reduce((sum, row) => sum + row.text.length, 0) <= 8000 ? chronRows.length : 24, row => row.text, context).map(row => row.text).join('\n');
   if (chron) {
     lines.push('【编年】（更早发生的事，回忆优先按这个来）');
     for (const l of chron.split('\n')) lines.push(`  · ${l}`);
   }
   if (state.knowledge.length) {
-    const facts = state.knowledge.map(row => linkKnowledge(state, row)).filter(row => !contradictedByCorrection(state, row));
-    const pinned = facts.filter(row => row.permanent || ['agreement', 'party', 'relationship', 'decision'].includes(row.kind));
-    const selected = selectRelevant(facts, query, facts.reduce((sum, row) => sum + row.text.length, 0) <= 18000 ? facts.length : 36, row => row.text, context);
+    const facts = state.knowledge.map(row => {
+      const base = linkKnowledge(state, row), hint = identityHints.get(base.id);
+      return hint ? linkKnowledge(state, { ...base, ...hint }) : base;
+    }).filter(row => !contradictedByCorrection(state, row) && !correctionContaminates(row, guards));
+    const confirmed = facts.filter(row => row.status !== 'unverified');
+    const pinned = confirmed.filter(row => row.permanent || ['agreement', 'party', 'relationship', 'decision'].includes(row.kind));
+    const selected = selectRelevant(confirmed, query, confirmed.reduce((sum, row) => sum + row.text.length, 0) <= 18000 ? confirmed.length : 36, row => row.text, context);
     lines.push('【已记录的事实、约定与线索】（结合完整对话使用；玩家最新纠正优先。传闻和推断保留来源，不冒充亲历。）');
-    for (const k of [...new Map([...pinned, ...selected].map(k => [k.id, k])).values()]) lines.push(`  · [${k.id}] ${k.text}（${k.source}${k.kind ? `；${k.kind}` : ''}${k.key ? `；约定键${k.key}` : ''}${k.sourceTurn != null ? `；来源回合${k.sourceTurn}` : ''}）`);
+    for (const k of [...new Map([...pinned, ...selected].map(k => [k.id, k])).values()]) lines.push(`  · [${k.id}] ${k.text}（${k.source}${k.kind ? `；${k.kind}` : ''}${k.key ? `；约定键${k.key}` : ''}${k.sourceTurn != null ? `；来源回合${k.sourceTurn}` : ''}${k.uncertainNpcNames?.length ? `；同名人物${k.uncertainNpcNames.join('、')}身份待核对，不得指定` : ''}${k.historicalIdentityEvidence?.length ? `；同名身份参考${k.historicalIdentityEvidence.map(p => `[history:${p.index}] ${p.quote}`).join('、')}` : ''}）`);
+    const uncertain = selectRelevant(facts.filter(row => row.status === 'unverified'), query, 6, row => row.text, context);
+    if (uncertain.length) lines.push('【待核实的说法，不能取代已确认事实】', ...uncertain.map(k => `  · [${k.id}] ${k.text}（${k.disputeReason || '来源待核对'}）`));
   }
   const knownEvents = state.storyLog.filter(e => knownStory(state, e));
   if (knownEvents.length) lines.push('【已知的既往事件与后果】', ...selectRelevant(knownEvents, query, 6).map(e => `  · ${e.text}${e.cause ? `（起因：${e.cause}）` : ''}`));
@@ -773,7 +781,7 @@ export function npcCards(state, query = '') {
         `  与玩家：${npc.attitude || '未记录'}｜同行：${npc.following == null ? '未明确记录，结合本轮事实核对，不能据此认定不在' : npc.following ? '是' : '否（旧位置可能过时，按已发生的同行事实核对）'}｜记录位置：${npc.location?.siteName || '未记录'}`,
         npc.loadout?.length ? `  惯用：${npc.loadout.join('、')}` : null,
         `  目标：${npc.goals.filter(g => g.visible !== false && !g.routine).map(g => `[${g.id}] ${g.text}（${g.status}；${g.blockedOn ? `受阻：${g.blockedOn}` : `下一步：${g.steps[g.stepIndex || 0]?.text || g.action}`}）`).join('；') || '照常安排自己的生活'}`,
-        `  记得：${selectRelevant(npc.memories.filter(m => m.visible !== false && !contradictedByCorrection(state, m)), query, 8).map(m => m.text).join('；') || '没有新的互动记录'}`,
+        `  互动记载（具体知情以原文核对）：${selectRelevant(npc.memories.filter(m => m.visible !== false && !contradictedByCorrection(state, m)), query, 8).map(m => m.text).join('；') || '没有新的互动记录'}`,
       ]
         .filter(Boolean)
         .join('\n');

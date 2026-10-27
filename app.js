@@ -606,7 +606,8 @@ async function recoverFinance(raw, plan, error) {
 }
 async function reviewContinuity(raw, plan) {
   // Plain rest has no unresolved factual action; correction turns are always checked.
-  if (plan.judged.kind === 'rest' && !plan.corrections.length) return;
+  if (plan.judged.kind === 'rest' && !plan.corrections.length
+    && (plan.judged.segments || []).every(segment => segment.kind === 'rest')) return;
   turnStatus('正在核对人物、约定和本轮要求…');
   let out = '';
   try {

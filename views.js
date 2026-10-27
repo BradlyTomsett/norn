@@ -345,7 +345,8 @@ function viewClues(u) {
   }
   if (u.knowledge?.length) {
     out.push('<h3>已知</h3>');
-    for (const k of [...u.knowledge].reverse()) out.push(`<div class="item">${esc(k.text)}<span class="hint"> — ${esc(k.source || '')}</span></div>`);
+    const status = { unverified: '待核实', disputed: '有争议', superseded: '已更新', retracted: '已撤回' };
+    for (const k of [...u.knowledge].reverse()) out.push(`<div class="item">${esc(k.text)}<span class="hint"> — ${esc([status[k.status], k.source].filter(Boolean).join(' · '))}</span></div>`);
   }
   if (u.worldLog?.length) {
     out.push('<h3>世界动态</h3>');

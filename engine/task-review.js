@@ -2,6 +2,7 @@ import { upgradeTasks, advanceTasks, closeTask, incidentalTask } from './tasks.j
 import { textId } from './entities.js';
 import { narrationText } from '../messages.js';
 import { archiveGoal } from './facts.js';
+import { cancelledActions, correctionContaminates, contradictedByCorrection, redactCorrectedHistory } from './continuity.js';
 
 const compact = value => String(value || '').replace(/[\s，,。；;、：:“”「」!?！？·]/g, '');
 const negative = /尚未|还没|仍未|没有|未能|不曾|尚待|打算|计划|准备|如果|建议|需要先/;
@@ -18,16 +19,17 @@ function storyText(text) {
 }
 export function taskEvidence(state, messages = []) {
   const rows = [];
+  const guards = cancelledActions(state);
   const add = (id, value) => {
     for (const [index, text] of String(value || '').split(/[。\n]/).map(text => text.trim()).filter(Boolean).entries()) {
       if (text.length < 5 || /^(?:【|①|②|③|④|\d+[.、])/.test(text)) continue;
       rows.push({ id: `${id}:${index}`, text: text.slice(0, 900) });
     }
   };
-  messages.forEach((message, index) => { if (message.role === 'assistant') add(`message:${index}`, storyText(message.content)); });
-  for (const [index, row] of (state.chronicle || []).entries()) add(`chronicle:${index}`, typeof row === 'string' ? row : row.text);
-  for (const [index, row] of (state.knowledge || []).entries()) add(`knowledge:${index}`, typeof row === 'string' ? row : row.text);
-  for (const [index, row] of (state.storyLog || []).entries()) add(`event:${index}`, row.text);
+  messages.forEach((message, index) => { if (message.role === 'assistant') add(`message:${index}`, storyText(redactCorrectedHistory(message.content, index, guards))); });
+  for (const [index, row] of (state.chronicle || []).entries()) if (!contradictedByCorrection(state, row) && !correctionContaminates(row, guards)) add(`chronicle:${index}`, typeof row === 'string' ? row : row.text);
+  for (const [index, row] of (state.knowledge || []).entries()) if (!['unverified', 'superseded', 'disputed', 'retracted'].includes(row?.status) && !correctionContaminates(row, guards)) add(`knowledge:${index}`, typeof row === 'string' ? row : row.text);
+  for (const [index, row] of (state.storyLog || []).entries()) if (!correctionContaminates(row, guards)) add(`event:${index}`, row.text);
   return rows;
 }
 const words = value => { const text = compact(value); return new Set([...text].slice(0, -1).map((_, i) => text.slice(i, i + 2))); };

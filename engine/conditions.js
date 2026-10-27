@@ -12,7 +12,8 @@ export function conditionMet(state, condition, npc = null) {
     case 'npcAlive': return Boolean(state.npcs.find(n => n.id === condition.npcId && !n.dead));
     case 'npcAt': return state.npcs.find(n => n.id === (condition.npcId || npc?.id))?.location?.siteId === condition.siteId;
     case 'playerAt': return state.player.location.siteId === condition.siteId;
-    case 'knowledge': return state.knowledge.some(k => condition.id ? k.id === condition.id : condition.text && k.text.includes(condition.text));
+    case 'knowledge': return state.knowledge.some(k => !['unverified', 'superseded', 'disputed', 'retracted'].includes(k.status)
+      && (condition.id ? k.id === condition.id : condition.text && k.text.includes(condition.text)));
     case 'memory': return Boolean(npc && condition.text && npc.memories.some(m => m.text.includes(condition.text)));
     case 'item': return (state.player.bag || []).some(i => i.name === condition.name && i.qty >= (condition.qty || 1));
     case 'flag': return Object.hasOwn(state.flags, condition.key) && state.flags[condition.key] === condition.value;

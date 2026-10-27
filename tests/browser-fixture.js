@@ -69,13 +69,22 @@ if (scenario === 'context') {
     { role: 'user', content: '重新说清人数\n（本回合纠正：/纠错 瑟拉一直是我的搭档，我们明明是6个人。）' },
     { role: 'assistant', content: '你们继续谈论今晚的安排。' }];
 }
+if (scenario === 'handoff') {
+  state.turn = 3; state.player.location = { siteId: 'old_street', siteName: '北关仓街旧铺檐下' };
+  state.player.contracts = [{ id: 'warehouse', label: '北仓清点', copper: 2400000, status: 'active' }];
+  state.player.unfinished = []; state.knowledge = [{ id: 'wrong-lock', text: '韦头儿说门锁有两把钥匙', sourceTurn: 3, source: '韦头儿当面说明' }];
+  state.npcs.push({ id: 'wei', name: '韦头儿', age: 45, race: 'human', profession: '仓头', traits: [] });
+  initial = [{ role: 'assistant', sourceTurn: 1, content: '北仓清点由粮商公会委托，仓头说报公会名号就成。' },
+    { role: 'user', content: '报公会名号进去查看仓里的锁（本回合纠正：/纠错 不要看锁！不要出现看锁2个字！）' },
+    { role: 'assistant', sourceTurn: 3, content: '你检查仓里的锁具。\n\n仓里比外头暗。韦头儿点头请你进来。\n\n他说门锁有两把钥匙。' }];
+}
 if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
 await store.initStorage();
 if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
-for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['finance', '模拟金额放大'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫'], ['continuity', '模拟事实冲突']]) {
+for (const [value, name] of [['normal', '正常回复'], ['disconnect', '模拟断线'], ['invalid', '模拟金额错误'], ['finance', '模拟金额放大'], ['duplicate', '模拟重复人物'], ['repair', '模拟回复修复'], ['agency', '模拟擅自承诺'], ['ability', '模拟无视免疫'], ['continuity', '模拟事实冲突'], ['cancelled', '模拟重复取消的行动'], ['hostile', '模拟无故敌意']]) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => { mode = value; }; controls.append(b);
 }
 const hide = document.createElement('button'); hide.textContent = '隐藏测试工具'; hide.onclick = () => { controls.hidden = true; }; controls.append(hide);
@@ -97,10 +106,19 @@ window.fetch = async (url, options = {}) => {
     controls.dataset.hasCorrection = String(system.includes('瑟拉一直是我的搭档'));
     controls.dataset.hasBothCorrections = String(system.includes('不要出现巡锁2个字') && system.includes('不要出现查锁2个字'));
   }
+  if (scenario === 'handoff') {
+    controls.dataset.hasScene = String(system.includes('近期原文已描述进入仓里'));
+    controls.dataset.hasContractContext = String(system.includes('粮商公会委托') && system.includes('先按已有合作关系正常交接'));
+    controls.dataset.hasOldWrongFact = String(system.includes('韦头儿说门锁有两把钥匙'));
+  }
   const input = [...request.messages].reverse().find(m => m.role === 'user' && m.content.includes('【本轮实际行动】'))?.content || request.messages.at(-1).content;
   if (system.includes('你现在只核对回复的一致性与完整性')) {
     controls.dataset.contextReviews = String(Number(controls.dataset.contextReviews || 0) + 1);
-    const output = '```json\n' + JSON.stringify({ ok: true, issues: [] }) + '\n```';
+    const candidate = request.messages.findLast(m => m.role === 'assistant')?.content || '';
+    const review = mode === 'hostile' && candidate.includes('我不认识你们')
+      ? { ok: false, issues: [{ kind: 'contradiction', problem: '仓头知道公会委托却无故否认并拒绝接洽', sourceQuote: '仓头说报公会名号就成', replyQuote: '我不认识你们' }] }
+      : { ok: true, issues: [] };
+    const output = '```json\n' + JSON.stringify(review) + '\n```';
     const usage = { choices: [], usage: { prompt_tokens: 120, completion_tokens: 40, prompt_cache_hit_tokens: 50 } };
     return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: ${JSON.stringify(usage)}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
@@ -144,6 +162,11 @@ window.fetch = async (url, options = {}) => {
     text = system.includes('你现在只修复回复的事实一致性与完整性')
       ? '瑟拉一直与你同行。六名成员都在，战力按各自等级评估。按既定约定，结清其他人的工钱后，你与瑟拉平分剩余赏金。'
       : '瑟拉不在这次任务名单里，你们只有五个半人。';
+  }
+  if (mode === 'cancelled' || mode === 'hostile') {
+    const repaired = system.includes('你现在只修复回复的事实一致性与完整性');
+    text = repaired ? '韦头儿点头，与你商量今晚的值守安排。' : mode === 'cancelled' ? '你查看仓里的锁具。' : '韦头儿瞪着你：“我不认识你们，出去！”';
+    if (repaired) delta = { location: { siteId: 'warehouse_inside', siteName: '北关第三座仓内' } };
   }
   if (/睡|歇|休息/.test(input) && !repairing) text = '【生活变化】\n你在旅店休息，醒来后仍留在原处。\n【你现在可以做什么】\n① 问候老杜\n② 等一会';
   const output = `${text}\n\n【实际结算】\n模型写的错误余额999金币，不应显示。\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;

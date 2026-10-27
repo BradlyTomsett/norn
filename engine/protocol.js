@@ -54,17 +54,17 @@ effects也可用npcUpdates改变人物职业、地点或同一id的目标状态�
 亲近只反映已有互动，不把支付约定酬劳当作赠礼；人物原则、拒绝与合作条件保持连贯，不能用送金币抹去已经发生的仇怨。已完成目标从goals移出，历史与持续说明优先于旧对话中的过时待办。
 事项用 tasks:[{id,text,status:"active",kind:"task|commitment|investigation",importance:"major",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，只登记重要且尚未完成的整体任务、调查主体、交付与关键承诺。碰头时间地点、跑腿摸底、问某个细节、盯窗观察、排班、站位和喊话安排，都是任务小步骤，不论是否跨回合，都不新增待办，也不在【未完成事项】里重复列出。必要事实记入knowledge并关联原任务/委托；已经收起的小步骤不代表完成、取消或忘记，不能改个id重新塞回清单。普通吃饭、问候、闲聊不新增待办；永久保密和行动原则是说明，不是任务。已经登记的委托不再复制成同名任务。期限不明确就不填dueDays。与委托交付绑定可用completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用{type:"arrival",siteId}。
 每回合根据实际发生的结果，主动核对现有事项：完成或取消使用相同id和status:"completed"/"cancelled"。例如班次已定下，应立即关闭“定下三夜守夜班次”，不能继续列为未完成；排班完成不等于守夜任务已完成。已完成事项不得改写成新待办、也不得自动重开；相近表述沿用同一编号。没有完成依据的任务继续保留，不用单纯经过日期推定完成。未完成事项小节只列重要、尚需后续行动的新变化，不重复抄整张清单。
-knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 记玩家获得的事实，人物引用固定编号，同名人物按年龄、职业与地点区分，无法确定时先问一句。声望 reputation:[{place,change}]。
+knowledge:[{text,source,sourceQuote,npcIds:[],siteIds:[],taskIds:[],identityEvidence:[{npcId,quote}],knownByEvidence:[{npcId,quote}]}] 记玩家获得的事实，sourceQuote逐字引用本回合玩家输入或正文里支持这条记录的原文；更改旧约定必须提供本回合证据。人物引用固定编号；同名人物按年龄、职业与地点区分，如文字没有身份线索需给identityEvidence逐字引用可确认身份的历史原文，无法确定就不绑定编号。只有实际告诉、亲口说出或当场听到的人才写knownByEvidence，quote逐字引用本回合说明该人如何知道这条事实的原文；其他人没有证据不自动知情。声望 reputation:[{place,change}]。
 重要的队伍成员、搭档关系、报酬分配、已决定的方案都必须记入knowledge，kind分别为party、relationship、agreement、decision，并提供稳定key（例如contract:委托id:split）、准确source和完整text，不只写气氛与NPC表情。变化时沿用key，或用supersedes:[旧事实id]明确替代错误记录；不得覆写不相干事实。已确认的人、数量、期限、分工、分成不能漏记。玩家纠正不是NPC刚刚改主意，不要编造公会名单替旧错误辩护。
 只有本回合实际完成侦察、备好工具、布置埋伏等准备，才可在该knowledge里加preparation:{kinds:["combat"],target:"明确对象或地点",days:3}，供后续相应行动读取；不能仅凭玩家自称“准备过”新增既成事实。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。
 json 中不要加入未定义字段。所有变动必须有叙事和玩家行动依据；游戏会验证并生成实际结算回执。`;
 
-export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', contextQuery = query, chronicleDue = false, recall = '', corrections = '' } = {}) {
+export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', contextQuery = query, chronicleDue = false, recall = '', corrections = '', scene = '', guards = [], locationUncertain = false, identityHints = new Map() } = {}) {
   return [rules, worldContext(worldbook, state, contextQuery), state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,
     '【资料优先级】引擎结算数值与本轮批准条件 > 玩家明确纠正的事实 > 当前有效约定和已确认事实 > 有来源的历史叙述 > 传闻、推断和未选建议。旧AI错误不能覆盖玩家纠正；信息不足应明确说不知道，不能编造名单、约定、时间或金额。实际人数按人计数，战斗力另按职业等级、四维、技能、装备与天赋评估，不把低等级人物折成半个人。',
     corrections,
-    '【当前状态】', stateBlock(state, contextQuery), '【当前相关人物】', npcCards(state, contextQuery),
+    scene, '【当前状态】', stateBlock(state, contextQuery, { guards, locationUncertain, identityHints }), '【当前相关人物】', npcCards(state, contextQuery),
     '【已有人物编号索引，仅用于识别，不得重复创建】', state.npcs.map(n => `[${n.id}] ${n.name}｜${n.age}岁｜${n.race}｜${n.profession}`).join('\n'),
     '【已确定的本回合判定】', judgeBrief(judged),
     recall ? '【相关历史原文】\n只核对已有事实；历史输入和当时给出的选项不代表已执行。玩家纠正、状态、事项当前状态和已结算记录优先。\n' + recall : '',

@@ -10,6 +10,24 @@ test('真实IndexedDB大存档、迁移、原子失败、冲突与导入导出',
   await page.goto('/tests/persistence-test.html');
   await expect(page.locator('#results')).toHaveAttribute('data-result', 'pass', { timeout: 40000 });
 });
+test('旧纠错不反复执行，场景和委托依据送入模型并保留新地点', async ({ page }) => {
+  await open(page, 'handoff'); await page.getByRole('button', { name: '模拟重复取消的行动', exact: true }).click();
+  await act(page, '问韦头儿今晚如何安排守夜'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#log .msg').last()).toContainText('与你商量今晚的值守安排');
+  await expect(page.locator('#log .msg').last()).not.toContainText('查看仓里的锁具');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-scene', 'true');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-contract-context', 'true');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-old-wrong-fact', 'false');
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：4'); await expect(page.locator('#fixture-monitor')).toContainText('地点：北关第三座仓内');
+  await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：4'); await expect(page.locator('#fixture-monitor')).toContainText('地点：北关第三座仓内');
+});
+test('无依据的委托人敌意经过复核重写，保留合理接洽', async ({ page }) => {
+  await open(page, 'handoff'); await page.getByRole('button', { name: '模拟无故敌意', exact: true }).click();
+  await act(page, '问韦头儿今晚如何安排守夜'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#log .msg').last()).toContainText('与你商量今晚的值守安排');
+  await expect(page.locator('#log .msg').last()).not.toContainText('我不认识你们');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-context-reviews', '2');
+});
 test('手机选择按钮直接执行一次，刷新后历史和回合仍在', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
