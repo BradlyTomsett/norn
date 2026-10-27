@@ -144,6 +144,7 @@ test('同名人物在发请求前选身份，搜索定位完整历史', async ({
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
   await page.getByRole('button', { name: /^凯尔（30岁·佣兵/ }).click();
   await expect(page.locator('#input')).toHaveValue(/问候凯尔（30岁·佣兵/);
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await expect(page.locator('#composer #btn-search')).toHaveCount(0);
   await page.getByRole('button', { name: '状态', exact: true }).click();
   await expect(page.locator('#sheet .cs-top #btn-search')).toBeVisible();
