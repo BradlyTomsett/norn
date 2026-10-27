@@ -101,6 +101,17 @@ window.fetch = async (url, options = {}) => {
   if (!String(url).startsWith('https://api.deepseek.com')) return original(url, options);
   const request = JSON.parse(options.body), system = request.messages[0].content;
   requests++; controls.dataset.requests = requests;
+  if (system.includes('你只分析玩家这一回合的原文')) {
+    controls.dataset.intentReviews = String(Number(controls.dataset.intentReviews || 0) + 1);
+    const input = request.messages.at(-1).content;
+    const clauses = input === '让同伴买药水，我不买' ? [
+      { quote: '让同伴买药水', actor: 'other', time: 'now', mode: 'action', target: '药水' },
+      { quote: '我不买', actor: 'player', time: 'now', mode: 'negated', target: '' },
+    ] : [];
+    const output = '```json\n' + JSON.stringify({ clauses }) + '\n```';
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
+  if (scenario === 'intent') controls.dataset.hasIntent = String(system.includes('原文「让同伴买药水」：执行者其他人') && system.includes('原文「我不买」'));
   if (scenario === 'context') {
     controls.dataset.hasAgreement = String(request.messages.some(m => m.content.includes('剩余赏金与瑟拉平分')) || system.includes('剩余赏金与瑟拉平分'));
     controls.dataset.hasCorrection = String(system.includes('瑟拉一直是我的搭档'));

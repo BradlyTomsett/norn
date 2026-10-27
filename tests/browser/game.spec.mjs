@@ -6,6 +6,15 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('复合行动先理解执行者和否定，解释送入正文请求，不扣玩家的钱', async ({ page }) => {
+  await open(page, 'intent'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '让同伴买药水，我不买');
+  await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-intent-reviews', '1');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-intent', 'true');
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：1000000 铜');
+});
+
 test('真实IndexedDB大存档、迁移、原子失败、冲突与导入导出', async ({ page }) => {
   await page.goto('/tests/persistence-test.html');
   await expect(page.locator('#results')).toHaveAttribute('data-result', 'pass', { timeout: 40000 });

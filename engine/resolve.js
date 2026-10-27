@@ -41,17 +41,28 @@ export function isCorrection(text) {
 const FUTURE = /^(?:我(?:们)?(?:打算|计划|准备)?|打算|计划|准备)?(?:明天|明日|明早|明晚|后天|下周|下个月|改天|以后|稍后|待会儿?)/;
 const SPEECH = /^(?:我(?:们)?(?:想|要)?|向[^，。；]{1,12})?(?:问|询问|请问|打听|说|告诉|聊|谈|劝|请求|商量|打招呼)/;
 
+// An instruction to another person is social interaction, not a player transaction.
+export const delegatedAction = part => /^(?:我(?:们)?(?:想|要)?|请|叫|让|拜托|委托)?(?:让|叫|请|拜托|委托)(?!我(?:们)?(?:去|来|自己))[^，。；]{1,20}(?:去|帮忙|帮我|代我|替我)?(?:买|购买|卖|付款|支付|接(?:取|下)?|接受|领|取|送|转账)/.test(part)
+  || /^(?:同伴|队友|搭档|他|她|他们|她们)[^，。；]{0,8}(?:买|购买|卖|付款|支付|接(?:取|下)?|接受|领|取|送|转账)/.test(part);
+const historicalStatement = part => !SPEECH.test(part) && /^(?:我(?:们)?|他|她|他们|她们)?(?:在)?(?:之前|以前|曾经|过去|当初|那时|先前|上次|此前|昨天|前天|去年|上个月|\d+天前|[一二三四五六七八九十]+天前)/.test(part);
+
 /** Separate what is being done now from quoted speech and future plans. */
 export function currentAction(text) {
   const raw = String(text || '');
-  const withoutQuotes = raw.replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '（引语）').replace(/(?:，|,)?\s*(?:然后|接着|随后|之后再)\s*/g, '；');
-  const active = [], future = [];
+  const withoutQuotes = raw.replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '（引语）').replace(/(?:，|,)?\s*(?:然后|接着|随后|之后再|但是|但|而是)\s*/g, '；');
+  const active = [], future = [], historical = [], negated = [];
   for (const part of withoutQuotes.split(/[，,。；;！？!?\n]+/).map(s => s.trim()).filter(Boolean)) {
     if (FUTURE.test(part)) future.push(part);
-    else if (!/^(?:我)?(?:不(?:要|想|打算|会)?|别|无需|不用)(?:再)?(?:去|走|移动|出发|赶路|睡|休息|吃|喝|杀|砍|攻击|买|卖|交易)/.test(part) || /只|但是|而是/.test(part)) active.push(part);
+    else if (historicalStatement(part)) historical.push(part);
+    else if (/^(?:我)?(?:不(?:要|想|打算|会)?|别|无需|不用)(?:再)?(?:去|走|移动|出发|赶路|睡|休息|吃|喝|杀|砍|攻击|买|卖|交易|付|给|接|接受|答应|同意)/.test(part)) {
+      const contrast = part.indexOf('只');
+      if (contrast > 0) { negated.push(part.slice(0, contrast)); active.push(part.slice(contrast)); }
+      else negated.push(part);
+    }
+    else active.push(part);
   }
-  const execution = active.join('，').replace(/不(?:要|想|打算|会)?(?:杀|砍|攻击|买|卖|交易|去|走|睡|吃|喝)[^，。；,!！只但而]*[，。；,!！]?/g, '');
-  return { text: execution, parts: execution.split('，').filter(Boolean), future };
+  const execution = active.join('，').replace(/不(?:要|想|打算|会)?(?:杀|砍|攻击|买|卖|交易|去|走|睡|吃|喝|付|接|接受)[^，。；,!！只但而]*[，。；,!！]?/g, '');
+  return { text: execution, parts: execution.split('，').filter(Boolean), future, historical, negated };
 }
 
 export function classify(text) {
@@ -67,6 +78,7 @@ export function classify(text) {
 function classifyPart(part) {
   if (/^(?:散了|好了|就这样|行了|好吧)$/.test(part)) return 'meta';
   if (/^(?:早安|晚安|你好|谢谢|好的?|可以|同意|行|不行|不用|不了)$/.test(part)) return 'social';
+  if (delegatedAction(part)) return 'social';
   if (SPEECH.test(part)) return 'social';
   if (/^(?:我)?(?:先)?(?:学习|练习|练|研究|阅读|读书|请教)/.test(part)) return 'study';
   if (/^(?:我)?(?:先)?等(?:待|到|一会|\d|[一二两三四五六七八九十])/u.test(part)) return 'rest';

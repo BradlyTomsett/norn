@@ -26,6 +26,7 @@ import { maintainTasks, taskReviewKey, taskReviewInput, applyTaskReview, TASK_RE
 import { searchArchive } from './search.js';
 import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
 import { readPriceBounds } from './price-input.js';
+import { INTENT_SYSTEM, needsIntentReview, validateIntentAnalysis } from './engine/intent.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
 const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl = $('#composer'), dateEl = $('#date');
@@ -724,6 +725,13 @@ async function sendTurn(options = {}) {
   let raw = '', timer = null, lastDraftAt = Date.now(), category = 'generation';
   const started = performance.now(); app.metrics = { turn: source.turn + 1, requests: 0, repairs: 0 };
   try {
+    if (!plan.corrections.length && needsIntentReview(plan.text)) {
+      turnStatus('正在理解行动中的人物、时间和否定…');
+      let analysis = '';
+      for await (const chunk of trackedChat({ system: INTENT_SYSTEM,
+        messages: [{ role: 'user', content: plan.text }], maxTokens: 1000, temperature: 0.1, signal: app.controller.signal })) analysis += chunk;
+      plan.intentAnalysis = validateIntentAnalysis(splitDelta(analysis).delta, plan.text);
+    }
     plan.request = buildTurnRequest(plan, { rules: app.rules, worldbook: app.worldbook, chronicleDue: chronicleDue(plan.state, draft.text) });
     Object.assign(app.metrics, plan.request.stats);
     for await (const chunk of trackedChat({ system: plan.request.system, messages: plan.request.messages, temperature: 0.35, signal: app.controller.signal })) {

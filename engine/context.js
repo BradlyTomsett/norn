@@ -4,6 +4,7 @@ import { extractChoices } from './actions.js';
 import { recallHistory } from './memory.js';
 import { correctionBlock, rememberCorrections, cancelledActions, currentCancelledActions, redactCorrectedHistory, redactCorrectedInput } from './continuity.js';
 import { sceneContext, sceneEvidenceFor, sceneLocationUncertain, historicalIdentityHints } from './scene.js';
+import { intentBlock } from './intent.js';
 
 export const CONTEXT_BUDGET = Object.freeze({ recent: 26000, recall: 14000, total: 100000 });
 export function historyText(message) {
@@ -34,7 +35,7 @@ export function buildTurnRequest(plan, { rules = '', worldbook = '', chronicleDu
   // Short replies and pronouns inherit the active subject; the entire recent exchange remains in messages.
   const topic = [plan.text, ...recent.messages.slice(-6).map(m => m.content),
     ...plan.state.player.contracts.filter(c => c.status === 'active').map(c => c.label)].join('\n');
-  const recall = recallHistory(plan.state, history, topic, 12, { before: recent.start, budget: CONTEXT_BUDGET.recall });
+  const recall = recallHistory(plan.state, history, plan.text, 12, { before: recent.start, budget: CONTEXT_BUDGET.recall, contextQuery: topic });
   const notes = correctionBlock(plan.state, corrections, history, plan.text);
   const lastChoices = extractChoices(history.findLast(m => m.role === 'assistant')?.content || '');
   const currentGuards = corrections.length ? guards.map(guard => ({ ...guard, sourceMessage: 0 })) : [];
@@ -54,6 +55,7 @@ export function buildTurnRequest(plan, { rules = '', worldbook = '', chronicleDu
     + (guards.length ? '\n【玩家已取消的行动与暂不提及的话题】' + guards.map(g => g.action).join('；')
       + '。不要执行、用近义词重做，或反复解释这些事；只承接其余有效剧情。玩家明确重新提出该话题后才解除。' : '')
     + (plan.finance.length ? '\n【本回合已批准交易条件】金额单位为铜：' + JSON.stringify(plan.finance) : '')
+    + (plan.intentAnalysis?.length ? '\n' + intentBlock(plan.intentAnalysis) : '')
     + '\n' + requirements;
   const currentInput = corrections.length ? `请替换原回合，逐项落实这些纠正：\n${corrections.join('\n')}\n原行动和错误回复只供定位，不能将其当成再次要求执行的指令。不增加原回合的时间或重复结算。` : requirements;
   const messages = [...recent.messages, { role: 'user', content: currentInput }];

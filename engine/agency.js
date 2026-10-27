@@ -1,4 +1,4 @@
-import { currentAction } from './resolve.js';
+import { currentAction, delegatedAction } from './resolve.js';
 
 const patterns = {
   purchase: /买|购买|订购/,
@@ -14,9 +14,10 @@ const patterns = {
 const normalized = text => String(text).replace(/[\s，,。.!！?？“”「」：:；;]/g, '');
 
 export function playerPermissions(input) {
-  const parts = currentAction(input).parts.filter(part => !/^(?:我)?(?:问|询问|请问|打听|看看)/.test(part)
+  const parts = currentAction(input).parts.filter(part => !delegatedAction(part) && !/^(?:我)?(?:问|询问|请问|打听|看看)/.test(part)
     && !/是否|能否|可不可以|多少钱|什么价格|(?:不|没)(?:要|想|打算|会|有)?(?:付|买|卖|给|赠|送|借|还|接|答应|同意|承诺|表白|亲吻)/.test(part));
-  return Object.fromEntries(Object.entries(patterns).map(([kind, pattern]) => [kind, parts.some(part => pattern.test(part))]));
+  return Object.fromEntries(Object.entries(patterns).map(([kind, pattern]) => [kind, parts.some(part => pattern.test(part)
+    && !(kind === 'accept' && /(?:答应|同意|接受).{0,8}(?:邀请|宴请|邀约|喝酒|吃饭)/.test(part) && !/(?:委托|任务|这单)/.test(part)))]));
 }
 const amount = row => typeof row === 'number' ? row : Number(row?.copper || 0) + Number(row?.silver || 0) * 100 + Number(row?.gold || 0) * 10000;
 function unauthorizedMoney(money, allow) {
@@ -66,6 +67,8 @@ export function assertPlayerAgency(plan, raw, delta) {
     ...prose.matchAll(/你(?:说|问|答道|回答|补充)(?:道|说)?[：:，,]?\s*[“「]([^”」]+)[”」]/g)];
   for (const match of quotes) if (!normalized(plan.text).includes(normalized(match[1]))) violations.push('补写了玩家没有提供的直接台词');
   if (/你(?:向.{0,12})?(?:表白|亲吻|告白|求婚|爱上)/.test(prose) && !allow.romance) violations.push('替玩家决定了感情表达');
-  if (/你(?:点头)?(?:答应|承诺|同意|接下|接受)/.test(prose) && !allow.accept && !allow.purchase && !allow.payment) violations.push('替玩家作出了重要承诺');
+  const promises = prose.match(/你(?:点头)?(?:答应|承诺|同意|接下|接受)[^，,。！？\n]*/g) || [];
+  if (!allow.accept && !allow.purchase && !allow.payment && promises.some(text => !/(?:邀请|邀约|宴请)/.test(text)
+    || /(?:委托|任务|这单|买|付|支付)/.test(text) || !/(?:答应|同意|接受).{0,8}(?:邀请|邀约|宴请)/.test(plan.text))) violations.push('替玩家作出了重要承诺');
   if (violations.length) throw new AgencyError([...new Set(violations)].join('；'));
 }

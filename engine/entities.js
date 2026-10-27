@@ -33,6 +33,7 @@ export function entityRefs(state, text, explicit = {}) {
   }
   for (const [id, place] of Object.entries(state.locations || {})) if (value.includes(id) || (place.name && value.includes(place.name))) siteIds.add(id);
   const taskIds = (state.player.unfinished || []).filter(task => task && typeof task.text === 'string' && ((task.id && value.includes(task.id)) || (task.text.length >= 6 && value.includes(task.text)))).map(task => task.id).filter(Boolean);
+  for (const contract of state.player.contracts || []) if (contract.id && (value.includes(contract.id) || contract.label && value.includes(contract.label))) taskIds.push(contract.id);
   return { npcIds: [...ids], siteIds: [...siteIds], taskIds: [...new Set([...(explicit.taskIds || []), ...taskIds])] };
 }
 
