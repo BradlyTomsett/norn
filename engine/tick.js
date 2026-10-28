@@ -5,7 +5,7 @@ import { chance, int, pick } from './rng.js';
 import { addCopper, copperText, logLedger } from './state.js';
 import { accrueDebts, ensureDebts, ensureWork, runBills, runLiving, runWages } from './ledger.js';
 import { ensureAssets, runIndustries } from './assets.js';
-import { decayRelations, decayReputation } from './progress.js';
+import { decayRelations, decayReputation, advanceAttributes } from './progress.js';
 import { upgradeState, absoluteDay } from './schema.js';
 import { advanceNpcs, ensureNpcState } from './npcs.js';
 import { actionAbilities } from './abilities.js';
@@ -55,11 +55,13 @@ export function recentWorld(state, n = 4) {
 export function advanceWorld(state, minutes, rng, judged) {
   upgradeState(state);
   ensureNpcState(state);
+  const growthEvents = advanceAttributes(state, minutes, rng);
   const beforeDay = absoluteDay(state.clock);
   const { clock, crossed } = advanceClock(state.clock, minutes || 0, rng);
   state.clock = clock;
   expireEffects(state);
-  const events = [];
+  const events = [...growthEvents];
+  for (const event of growthEvents) logEvent(state, event.text, event.level);
   ensureDebts(state);
   ensureWork(state);
 
@@ -137,13 +139,6 @@ export function advanceWorld(state, minutes, rng, judged) {
   // 年 tick
   if (crossed.years > 0) {
     state.player.age += crossed.years;
-    if (state.player.age >= 16 && !state.flags?.awakeningAsked && !state.flags?.pendingAwakening) {
-      state.flags ||= {};
-      state.flags.pendingAwakening = true;
-      const t = '你十六岁了。按规矩，这个年纪可以去郡城的觉醒塔试一次——要五枚金币。';
-      logEvent(state, t);
-      events.push({ level: 'local', text: t });
-    }
     for (let y = 0; y < crossed.years; y++) {
       for (const npc of state.npcs) {
         npc.age += 1;
