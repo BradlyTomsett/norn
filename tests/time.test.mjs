@@ -34,5 +34,5 @@ test('只使用真实叙述的时间，不把对话中的过去、约定、否�
   const clock = { hour: 21, minute: 30 };
   assert.deepEqual(narrativeTime('到了次日凌晨3点，有人闯入仓库。', clock), { minutes: 330, quote: '到了次日凌晨3点，有人闯入仓库' });
   assert.equal(narrativeTime('后半夜，有人闯入仓库。', clock)?.minutes, 150);
-  for (const text of ['你问“现在是凌晨三点吗？”', '他约定明天凌晨三点见面。', '还没有到凌晨三点。']) assert.equal(narrativeTime(text, clock), null);
+  for (const text of ['你问“现在是凌晨三点吗？”', '他约定明天凌晨三点见面。', '还没有到凌晨三点。', '大家开始守夜。\n【你现在可以做什么】\n① 等到天亮']) assert.equal(narrativeTime(text, clock), null);
 });

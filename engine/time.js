@@ -42,7 +42,7 @@ export function timePreview(clock, minutes) {
 
 /** Only the narrated player's present timeline may contradict the engine. */
 export function narrativeTime(raw, clock) {
-  const prose = String(raw || '').split(/```/)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』/g, '');
+  const prose = String(raw || '').split(/```|【(?:你现在可以做什么|现在可以做什么|行动方向|可选行动|行动选项|选项)】/)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』/g, '');
   const sentences = prose.split(/[。！？\n]+/).map(x => x.trim()).filter(Boolean);
   for (const sentence of sentences.reverse()) {
     if (/尚未|还没|没有|不是|未到|如果|将会|预计|明天再|约定|问|说|听说|上次|以前|曾经/.test(sentence)) continue;
