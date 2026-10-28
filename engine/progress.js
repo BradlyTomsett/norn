@@ -11,34 +11,52 @@ const AWAKENING = [
   { grade: '史诗', name: '魔力感知', effect: '拥有魔法感知能力' },
   { grade: '传说', name: '武器大师', effect: '精通所有武器' },
 ];
+const SKILL_ATTRIBUTES = { 武技: ['body', 'agility'], 魔法: ['spirit', 'wisdom'], 炼金: ['wisdom'],
+  机械: ['wisdom'], 察觉: ['wisdom'], 交涉: ['wisdom', 'spirit'] };
+function actionAttributes(segment) {
+  if (['rest', 'meta'].includes(segment.kind)) return [];
+  if (segment.kind === 'travel') return ['body', 'agility'];
+  if (segment.kind === 'stealth') return ['agility'];
+  if (segment.kind === 'labor') return ['body'];
+  return SKILL_ATTRIBUTES[canonicalSkill(segment.skill)] || [];
+}
 
 /** Accumulate integer minute-units, splitting at birthdays so short and long advances agree. */
-export function advanceAttributes(state, minutes, rng) {
+export function advanceAttributes(state, minutes, rng, judged = null) {
   const player = state.player, stats = player.stats;
   player.attributeGrowth ||= {};
   let remaining = Math.max(0, Math.round(minutes || 0));
   let age = player.age;
   let offset = (state.clock.doy - 1) * 1440 + state.clock.hour * 60 + state.clock.minute;
   const events = [];
+  const segments = judged?.segments?.length ? judged.segments : judged ? [{ ...judged, minutes: remaining }] : [];
+  let segmentOffset = 0;
+  const spans = segments.map(segment => {
+    const start = segmentOffset; segmentOffset += Math.max(0, Math.round(Number(segment.minutes) || 0));
+    return { start, end: segmentOffset, attributes: actionAttributes(segment) };
+  });
+  let progressed = 0;
   while (remaining > 0) {
     const elapsed = Math.min(remaining, YEAR_MINUTES - offset);
     if (age >= 12) {
       const rate = age < 16 ? 2 : GROWTH_RATE[player.talent?.grade] || 1;
       const cap = skillCap(state);
       for (const key of ['body', 'agility', 'wisdom', 'spirit']) {
-        const units = (Number(player.attributeGrowth[key]) || 0) + elapsed * rate;
+        const actionMinutes = spans.reduce((sum, span) => sum + (span.attributes.includes(key)
+          ? Math.max(0, Math.min(progressed + elapsed, span.end) - Math.max(progressed, span.start)) : 0), 0);
+        const units = (Number(player.attributeGrowth[key]) || 0) + (elapsed + actionMinutes) * rate;
         const points = Math.floor(units / YEAR_MINUTES);
         const before = Number(stats[key]) || 0;
         stats[key] = Math.max(before, Math.min(cap, before + points));
         player.attributeGrowth[key] = stats[key] >= cap ? 0 : units % YEAR_MINUTES;
       }
     }
-    remaining -= elapsed; offset += elapsed;
+    remaining -= elapsed; offset += elapsed; progressed += elapsed;
     if (offset === YEAR_MINUTES) {
       age++; offset = 0;
       if (age === 16 && !player.talent) {
         const roll = rng();
-        player.talent = { ...AWAKENING[roll < 0.8 ? 0 : roll < 0.98 ? 1 : 2] };
+        player.talent = { ...AWAKENING[roll < 0.5 ? 0 : roll < 0.9 ? 1 : 2] };
         state.flags ||= {}; state.flags.awakeningAsked = true; state.flags.pendingAwakening = false;
         events.push({ level: 'local', text: `你年满十六岁，觉醒了${player.talent.grade}天赋「${player.talent.name}」：${player.talent.effect}。` });
       }

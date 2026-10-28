@@ -17,12 +17,32 @@ function fresh(age = 12, talent = null) {
 const advance = (s, minutes, random = () => 0.5) => advanceWorld(s, minutes, random, { kind: 'rest' });
 
 test('12岁前不成长，12至16岁按时间累计，觉醒等级只从三种高品阶产生', () => {
-  for (const [roll, grade] of [[0, '珍奇'], [0.9, '史诗'], [0.99, '传说']]) {
+  for (const [roll, grade] of [[0, '珍奇'], [0.499999, '珍奇'], [0.5, '史诗'], [0.899999, '史诗'], [0.9, '传说'], [0.99, '传说']]) {
     const s = fresh(11); advance(s, year, () => roll); assert.equal(s.player.stats.body, 10); assert.equal(s.player.age, 12);
     advance(s, year * 4, () => roll); assert.equal(s.player.stats.body, 18); assert.equal(s.player.age, 16);
     assert.equal(s.player.talent.grade, grade); assert.equal(s.flags.awakeningAsked, true);
     assert.deepEqual(['body', 'agility', 'wisdom', 'spirit'].map(k => s.player.stats[k]), [18, 18, 18, 18]);
   }
+});
+
+test('同样经过一年，实际武技训练只额外增长体质和敏捷，天赋越强增长越快', () => {
+  const values = [];
+  for (const grade of ['珍奇', '史诗', '传说']) {
+    const s = fresh(16, { grade, name: '天赋', effect: '' });
+    advanceWorld(s, year, () => 0.5, { kind: 'study', skill: '武技', segments: [{ kind: 'study', skill: '武技', minutes: year }] });
+    values.push(s.player.stats.body);
+    assert.equal(s.player.stats.body, s.player.stats.agility); assert.equal(s.player.stats.wisdom, s.player.stats.spirit);
+    assert.ok(s.player.stats.body > s.player.stats.wisdom);
+  }
+  assert.deepEqual(values, [14, 16, 18]);
+});
+test('复合行动只计算各自的实际时长，休息不带来训练增长', () => {
+  const s = fresh(16, { grade: '珍奇' }), t = structuredClone(s);
+  const segments = [{ kind: 'study', skill: '魔法', minutes: year / 2 }, { kind: 'rest', skill: '', minutes: year / 2 }];
+  advanceWorld(s, year, () => 0.5, { kind: 'study', segments });
+  advanceWorld(t, year, () => 0.5, { kind: 'rest' });
+  assert.equal(s.player.stats.spirit, 13); assert.equal(s.player.stats.wisdom, 13);
+  assert.equal(s.player.stats.body, t.player.stats.body); assert.equal(t.player.stats.spirit, 12);
 });
 test('16岁以后天赋越强成长越快，分段推进与整段一致，存档往返保留余量', () => {
   const values = [];
