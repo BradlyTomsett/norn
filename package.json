@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "test": "node tools/test.mjs && node --test tests/simulation.test.mjs tests/interaction.test.mjs tests/long-session.test.mjs tests/equipment.test.mjs tests/review-fixes.test.mjs tests/skills-and-tasks.test.mjs tests/context.test.mjs tests/intent-memory.test.mjs tests/time.test.mjs tests/direct-generation.test.mjs tests/attribute-growth.test.mjs",
+    "test": "node tools/test.mjs && node --test tests/simulation.test.mjs tests/interaction.test.mjs tests/long-session.test.mjs tests/equipment.test.mjs tests/review-fixes.test.mjs tests/skills-and-tasks.test.mjs tests/context.test.mjs tests/intent-memory.test.mjs tests/time.test.mjs tests/direct-generation.test.mjs tests/attribute-growth.test.mjs tests/western-style.test.mjs",
     "build": "node tools/build.mjs",
     "test:browser": "playwright test"
   },

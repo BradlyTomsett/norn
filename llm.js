@@ -1,3 +1,4 @@
+import { WESTERN_STYLE } from './engine/protocol.js';
 const KEY = 'norn.key', MODEL = 'norn.model', EFFORT = 'norn.effort', SCOPE = 'norn.credentials.session';
 export const sessionOnly = () => localStorage.getItem(SCOPE) === 'true';
 export function setSessionOnly(value) { localStorage.setItem(SCOPE, String(Boolean(value))); }
@@ -25,7 +26,7 @@ export async function* streamChat({ system, messages, temperature = 0.85, maxTok
   try {
     const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({ model: getModel(), temperature, max_tokens: maxTokens, reasoning_effort: effort, stream: true, stream_options: { include_usage: true },
-        messages: [{ role: 'system', content: system }, ...messages] }), signal: controller.signal });
+        messages: [{ role: 'system', content: String(system || '').includes(WESTERN_STYLE) ? system : `${WESTERN_STYLE}\n\n${system || ''}` }, ...messages] }), signal: controller.signal });
     if (!res.ok || !res.body) {
       const hint = { 401: 'Key 不对或已失效', 402: '余额不足', 429: '请求太频繁，请稍后重试' }[res.status] || '服务暂时不可用';
       throw new Error(`模型返回 ${res.status}：${hint}`);
