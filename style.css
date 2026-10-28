@@ -106,6 +106,8 @@ body {
 }
 .composer.hidden { display: none; }
 #action-preview { flex-basis:100%; font-size:11px; line-height:1.4; }
+#preview-time-edit { flex-basis:100%; font-size:11px; color:var(--muted); }
+#preview-time-edit input, #turn-status input { width: 96px; max-width: 28vw; }
 #input {
   flex: 1; resize: none;
   background: #100e0c; color: var(--ink);

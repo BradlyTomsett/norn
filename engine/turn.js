@@ -11,13 +11,22 @@ import { entityRefs } from './entities.js';
 import { absoluteDay } from './schema.js';
 import { rememberCorrections } from './continuity.js';
 
-export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '' } = {}) {
+export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null } = {}) {
   const action = resolveAction(input, messages), text = action.text;
   const base = upgradeState(structuredClone(source));
   rememberCorrections(base, messages, corrections);
   const state = structuredClone(base);
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
+  if (minutesOverride != null) {
+    if (!Number.isSafeInteger(minutesOverride) || minutesOverride < 0 || minutesOverride > 3650 * 1440) throw new Error('指定时间无效');
+    let remaining = minutesOverride;
+    judged.segments = judged.segments.map((segment, index, all) => {
+      const minutes = index === all.length - 1 ? remaining : Math.min(remaining, segment.minutes);
+      remaining -= minutes; return { ...segment, minutes };
+    });
+    judged.minutes = minutesOverride;
+  }
   const events = advanceWorld(state, judged.minutes, rng, judged);
   advanceTasks(state);
   const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, rng, history: messages, corrections, rejectedReply };

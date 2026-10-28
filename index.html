@@ -29,6 +29,7 @@
 
 <div id="composer" class="composer hidden">
   <div id="action-preview" class="hint hidden" aria-live="polite"></div>
+  <details id="preview-time-edit" class="hidden"><summary>调整预计时间</summary><input id="preview-time-minutes" type="number" min="0" max="5256000" placeholder="推进分钟" aria-label="推进分钟"><button id="preview-time-apply" type="button">采用</button></details>
   <textarea id="input" rows="2" placeholder="你要做什么？（直接说人话）"></textarea>
   <button id="send" class="send">说</button>
   <button id="cancel-turn" class="ghost hidden" type="button">停止</button>

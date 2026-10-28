@@ -82,9 +82,32 @@ test('物价上下限不改直接保存、固定与单边价格刷新保留，�
 
 test('输入前可查看预计动作，近距离移动不跳过半天', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
-  await page.locator('#input').fill('走到柜台前'); await expect(page.locator('#action-preview')).toContainText('分钟');
-  await expect(page.locator('#action-preview')).not.toContainText('小时');
-  await page.locator('#input').fill('抓住窃贼'); await expect(page.locator('#action-preview')).toContainText('动手');
+  await page.locator('#input').fill('走到柜台前'); await expect(page.locator('#action-preview')).toContainText(' m');
+  await expect(page.locator('#action-preview')).not.toContainText(' h');
+  await page.locator('#input').fill('抓住窃贼'); await expect(page.locator('#action-preview')).toContainText(' → ');
+});
+
+test('时间冲突保留剧情，刷新后选择正文时间并仅结算一次', async ({ page }) => {
+  await open(page, 'time-conflict'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.locator('#input').fill('推进到后半夜');
+  await expect(page.locator('#action-preview')).toHaveText('21:30 → 次日 00:00，推进 2 h 30 m');
+  await page.getByRole('button', { name: '说', exact: true }).click();
+  await expect(page.locator('#turn-status')).toContainText('时间需要确认');
+  await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
+  await page.reload(); await expect(page.locator('#turn-status')).toContainText('时间需要确认');
+  await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
+  await page.getByRole('button', { name: '按正文时间', exact: true }).click();
+  await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：1000000 铜');
+  await expect(page.locator('#date')).toContainText('03时00分');
+});
+
+test('守夜遇到需要决定的中途事件，停在事件时刻', async ({ page }) => {
+  await open(page, 'time-interrupt'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '守夜到天亮'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#date')).toContainText('01时00分');
+  await expect(page.locator('#log')).toContainText('有人闯入仓库');
 });
 
 test('五金被写成五十金会自动修复一次，按明确金额扣款', async ({ page }) => {

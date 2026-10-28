@@ -233,7 +233,8 @@ export function savePackage(state, messages = getMessages(state.saveId), { lastT
   if (lastTurn?.base?.turn === state.turn - 1 && Array.isArray(lastTurn.messages)
     && lastTurn.messages.length <= messages.length && lastTurn.messages.every((m, i) => JSON.stringify(m) === JSON.stringify(messages[i]))) {
     out.lastTurn = { id: lastTurn.id, input: lastTurn.input, base: upgradeState(structuredClone(lastTurn.base)),
-      historyCount: lastTurn.messages.length, receipt: lastTurn.receipt, corrections: lastTurn.corrections || [] };
+      historyCount: lastTurn.messages.length, receipt: lastTurn.receipt, corrections: lastTurn.corrections || [],
+      ...(lastTurn.minutesOverride != null ? { minutesOverride: lastTurn.minutesOverride } : {}) };
   }
   return out;
 }

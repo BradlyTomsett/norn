@@ -15,6 +15,7 @@ setKey('fixture-key-no-network');
 const { state } = generateWorld({ regionId: 'greywater', seed: 77, playerName: '测试旅人' });
 state.saveId = 'sv_browser_fixture'; upgradeState(state); ensureAccounts(state);
 state.clock = { year: 222, doy: 10, hour: 12, minute: 0, weather: 'clear' };
+if (scenario === 'time-conflict' || scenario === 'time-interrupt') state.clock = { year: 222, doy: 10, hour: 21, minute: 30, weather: 'clear' };
 state.player.accounts.forEach(a => a.copper = a.id === 'cash' ? 1000000 : 0);
 state.player.debts = []; state.player.equipment = ['旧传说剑（金）'];
 state.prices = { '针线包（一套）': { min: 10, max: 40 }, '墨水（一小瓶）': { min: 20, max: 80 } };
@@ -149,6 +150,8 @@ window.fetch = async (url, options = {}) => {
     return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
   let delta = {}, text = '【本次行动】\n你等了一阵，街上的人继续忙着各自的事。';
+  if (scenario === 'time-conflict') text = system.includes('只调整候选回复的时间') ? '你继续守在仓里，观察四周。' : '到了次日凌晨3点，仓里仍然安静。';
+  if (scenario === 'time-interrupt') text = '到了次日凌晨1点，有人闯入仓库。';
   if (mode === 'finance') {
     text = '你交给老杜五枚金币。';
     delta = { transactions: [{ id: 'gift', kind: 'gift', to: state.npcs[0].id, account: 'cash', copper: system.includes('你现在只修复本次交易') ? 50000 : 500000 }] };

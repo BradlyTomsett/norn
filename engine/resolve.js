@@ -1,6 +1,7 @@
 import { int } from './rng.js';
 import { actionAbilities, abilityBrief } from './abilities.js';
 import { actionSkill, fixedSkills } from './skills.js';
+import { targetMinutes } from './time.js';
 
 const RULES = [
   ['craft', /维修|修理|修复|制作|打造|锻造|打铁|炼制|制药|配药|配制|调制|烹饪|做饭/],
@@ -126,6 +127,8 @@ export function actionMinutes(text, kind, fallback, clock = null) {
   if (kind === 'meta') return 0;
   const execution = currentAction(text).text;
   if (kind === 'social' && /问|询问|打听|告诉/.test(execution) && !/持续|连续|交谈|聊了|聊上/.test(execution)) return fallback;
+  const target = clock && targetMinutes(execution, clock);
+  if (target != null) return target;
   const duration = /(?<number>\d+(?:\.\d+)?|[一二两三四五六七八九十百半]+)(?:整|个)?(?<halfBefore>半)?(?<unit>分钟|小时|天|日|周|星期|个月|月|年)(?<halfAfter>半)?/g;
   for (const m of execution.matchAll(duration)) {
     const after = execution.slice(m.index + m[0].length), before = execution.slice(0, m.index);
