@@ -43,6 +43,7 @@ export function buildTurnRequest(plan, { rules = '', worldbook = '', chronicleDu
   const actionText = currentGuards.length ? redactCorrectedInput(plan.text, 0, currentGuards) : plan.text;
   const rejected = currentGuards.length ? redactCorrectedHistory(plan.rejectedReply, 1, currentGuards) : plan.rejectedReply;
   const requirements = `${corrections.length ? '【被纠正的原回合输入，仅供定位，不得执行被否定部分】' : '【本轮玩家原始输入，逐项处理】'}\n${originalInput}\n${corrections.length ? '【原回合行动，以下方纠错为准】' : '【本轮实际行动】'}\n${actionText}`
+    + `\n【本回合起始时间】${plan.base.clock.year}年，第${plan.base.clock.doy}日，${String(plan.base.clock.hour).padStart(2, '0')}:${String(plan.base.clock.minute).padStart(2, '0')}。最终时刻以正文实际进展为准。`
     + (plan.selected?.length ? `\n本轮选择了：${plan.selected.map(s => `${s.number}. ${s.text}`).join('；')}` : '')
     + (corrections.length ? `\n【本轮纠错，替换原回复，不能继续执行被否定的行动】\n${corrections.join('\n')}\n原输入仅供定位。按纠错修改事件含义，禁止换同义词继续原错误。保持原回合时间与已批准结算边界，不额外行动。` : '')
     + (rejected ? `\n【待替换的错误回复，仅供定位，不能作为事实】\n${rejected}` : '')

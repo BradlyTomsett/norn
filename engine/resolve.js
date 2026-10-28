@@ -209,5 +209,5 @@ export function judge(state, text, rng) {
     travelScope: segments.find(s => s.kind === 'travel')?.travelScope, actionText: intent.text, futurePlans: intent.future };
 }
 export function judgeBrief(d) {
-  return `当前行动：${d.actionText || '只作计划，不执行未来行动'}\n判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n${abilityBrief(d.effects)}\n行动顺序：${(d.segments || []).map(s => `${s.text}（${s.minutes}分钟）`).join(' → ')}\n本回合耗时：${d.minutes} 分钟（由引擎统一推进）${d.futurePlans?.length ? `\n留待以后、这回合不得执行：${d.futurePlans.join('；')}` : ''}`;
+  return `当前行动：${d.actionText || '只作计划，不执行未来行动'}\n判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n${abilityBrief(d.effects)}\n行动顺序：${(d.segments || []).map(s => `${s.text}（${s.minutes}分钟）`).join(' → ')}\n本回合${d.timeSource === 'narrative' ? '正文' : '预计'}耗时：${d.minutes} 分钟${d.futurePlans?.length ? `\n留待以后、这回合不得执行：${d.futurePlans.join('；')}` : ''}`;
 }

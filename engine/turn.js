@@ -10,6 +10,7 @@ import { financeTerms, assertFinance } from './finance.js';
 import { entityRefs } from './entities.js';
 import { absoluteDay } from './schema.js';
 import { rememberCorrections } from './continuity.js';
+import { narrativeTime } from './time.js';
 
 export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null } = {}) {
   const action = resolveAction(input, messages), text = action.text;
@@ -33,6 +34,18 @@ export function prepareTurn(source, input, id, { messages = [], corrections = []
   plan.finance = financeTerms(plan);
   return plan;
 }
+
+/** Rebuild from the uncommitted baseline, never advance the already-previewed world twice. */
+export function followNarrativeTime(plan, raw) {
+  const timing = narrativeTime(raw, plan.base.clock);
+  if (!timing) return plan;
+  const next = timing.minutes === plan.judged.minutes ? { ...plan, judged: { ...plan.judged } }
+    : prepareTurn(plan.base, plan.text, plan.id, { messages: plan.history, corrections: plan.corrections,
+      rejectedReply: plan.rejectedReply, minutesOverride: timing.minutes });
+  for (const key of ['input', 'selected', 'intentAnalysis']) if (plan[key] != null) next[key] = plan[key];
+  next.judged.timeSource = 'narrative'; next.narrativeTiming = timing;
+  return next;
+}
 export function finishTurn(plan, delta) {
   const state = structuredClone(plan.state);
   const model = structuredClone(delta);
@@ -44,7 +57,7 @@ export function finishTurn(plan, delta) {
   if (/^(我(?:要|想)?|请帮我)?(?:买|购买|卖掉|卖出|出售)/.test(plan.text) && ['success', 'critical', 'crush'].includes(plan.judged.outcome)
     && !model.transactions?.length && !model.trade) throw new Error('本次买卖缺少交易记录，请重试');
   if (/领取.*赏金|领赏/.test(plan.text) && !model.transactions?.some(tx => tx.kind === 'reward') && !model.bounty) throw new Error('领取赏金缺少委托结算记录，请重试');
-  const rng = prepareTurn(plan.base, plan.text, plan.id).rng;
+  const rng = prepareTurn(plan.base, plan.text, plan.id, { minutesOverride: plan.judged.minutes }).rng;
   applyDelta(state, engineDelta(plan.judged, state), rng, { bump: false });
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });
   if (!result.applied) throw new Error(result.rejected.join('；'));

@@ -87,20 +87,32 @@ test('输入前可查看预计动作，近距离移动不跳过半天', async ({
   await page.locator('#input').fill('抓住窃贼'); await expect(page.locator('#action-preview')).toContainText(' → ');
 });
 
-test('时间冲突保留剧情，刷新后选择正文时间并仅结算一次', async ({ page }) => {
+test('时间不一致直接按正文结算，原文保留且刷新后不重复结算', async ({ page }) => {
   await open(page, 'time-conflict'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.locator('#input').fill('推进到后半夜');
   await expect(page.locator('#action-preview')).toHaveText('21:30 → 次日 00:00，推进 2 h 30 m');
   await page.getByRole('button', { name: '说', exact: true }).click();
-  await expect(page.locator('#turn-status')).toContainText('时间需要确认');
-  await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
-  await page.reload(); await expect(page.locator('#turn-status')).toContainText('时间需要确认');
-  await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
-  await page.getByRole('button', { name: '按正文时间', exact: true }).click();
   await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
+  await expect(page.getByRole('button', { name: '按正文时间', exact: true })).toHaveCount(0);
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
   await expect(page.locator('#fixture-monitor')).toContainText('随身：1000000 铜');
   await expect(page.locator('#date')).toContainText('03时00分');
+  await page.reload(); await expect(page.locator('#date')).toContainText('03时00分');
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+});
+
+test('旧版卡在时间选择的草稿直接继续，复用原回复并按正文结算', async ({ page }) => {
+  await open(page, 'time-legacy'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await expect(page.locator('#turn-status')).toContainText('按正文时间结算');
+  await page.getByRole('button', { name: '继续本回合', exact: true }).click();
+  await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#date')).toContainText('03时00分');
+  await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
+  await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await expect(page.getByRole('button', { name: '继续本回合', exact: true })).toHaveCount(0);
 });
 
 test('守夜遇到需要决定的中途事件，停在事件时刻', async ({ page }) => {

@@ -27,7 +27,7 @@ import { searchArchive } from './search.js';
 import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
 import { readPriceBounds } from './price-input.js';
 import { INTENT_SYSTEM, needsIntentReview, validateIntentAnalysis } from './engine/intent.js';
-import { timePreview, narrativeTime } from './engine/time.js';
+import { timePreview } from './engine/time.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
 const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl = $('#composer'), dateEl = $('#date');
@@ -552,22 +552,12 @@ function showPending() {
   if (!pending) { turnStatus(); return; }
   const el = $('#turn-status'); el.classList.remove('hidden');
   if (pending.timeConflict) {
-    const c = pending.timeConflict;
     if (pending.raw && !logEl.querySelector('.pending-time-preview')) {
       const bubble = addMessage('assistant', narrationText(pending.raw)); bubble.classList.add('pending-time-preview');
     }
-    el.textContent = `时间需要确认：引擎 ${timePreview(c.clock, c.engine)}；正文 ${timePreview(c.clock, c.story)}。 `;
-    for (const [label, minutes] of [['按引擎时间', c.engine], ['按正文时间', c.story]]) {
-      const button = document.createElement('button'); button.textContent = label;
-      button.onclick = () => send({ retry: true, timeMinutes: minutes }); el.append(button);
-    }
-    const custom = document.createElement('input'); custom.type = 'number'; custom.min = '0'; custom.max = String(3650 * 1440);
-    custom.placeholder = '推进分钟'; custom.setAttribute('aria-label', '自定推进分钟'); el.append(custom);
-    const button = document.createElement('button'); button.textContent = '按自定时间'; button.onclick = () => {
-      const minutes = Number(custom.value);
-      if (custom.value === '' || !Number.isSafeInteger(minutes) || minutes < 0 || minutes > 3650 * 1440) { custom.setCustomValidity('请输入有效的推进分钟数'); custom.reportValidity(); return; }
-      custom.setCustomValidity(''); send({ retry: true, timeMinutes: minutes });
-    }; el.append(button); return;
+    el.textContent = '上一回合的回复已保留，继续后按正文时间结算。 ';
+    const button = document.createElement('button'); button.textContent = '继续本回合';
+    button.onclick = () => send({ retry: true }); el.append(button); return;
   }
   el.textContent = '有一回合尚未提交，进度保持原样。 ';
   const retry = document.createElement('button'); retry.textContent = '重试本回合'; retry.onclick = () => send({ retry: true }); el.append(retry);
@@ -649,19 +639,6 @@ async function recoverContinuity(raw, plan, error) {
     messages: repairMessages(plan, raw, '修复上述明确问题后输出完整回复和JSON。'), temperature: 0.2, signal: app.controller.signal })) out += chunk;
   return out;
 }
-async function alignTime(raw, plan) {
-  const prior = splitDelta(raw).delta;
-  if (!prior) throw new Error('原回复缺少变化数据，无法安全调整时间');
-  turnStatus('正在按所选时间重新核对剧情和世界变化…');
-  let out = '';
-  for await (const chunk of trackedChat({ system: planSystem(plan) + '\n只调整候选回复的时间和因时间变化必须调整的剧情，保留原本已发生且仍合理的事件、人物、已批准交易和物品。不得增加行动或在所选结束时刻之后继续叙述；必须完整输出正文和JSON。',
-    messages: repairMessages(plan, raw, `按本回合已确定的${plan.judged.minutes}分钟与当前世界事件调整，不能改变交易或物品。`), temperature: 0.1, signal: app.controller.signal })) out += chunk;
-  const next = splitDelta(out).delta;
-  const fields = ['transactions', 'money', 'trade', 'bounty', 'earn', 'gift', 'payDebt', 'borrow', 'items', 'use', 'lose'];
-  const select = value => Object.fromEntries(fields.filter(k => value?.[k] != null).map(k => [k, value[k]]));
-  if (!next || JSON.stringify(select(prior)) !== JSON.stringify(select(next))) throw new Error('调整时间改变了交易或物品，原进度已保留，请重试');
-  return out;
-}
 async function send(options = {}) {
   if (busy() || !app.saveId) return;
   app.preparing = true; sendEl.disabled = true;
@@ -704,7 +681,6 @@ async function sendTurn(options = {}) {
   if (options.retry) {
     if (!pending) return;
     if (pending.baseRevision !== current.revision) { addMessage('error', '草稿之后存档已变化，请取消草稿后重新行动。'); return; }
-    if (pending.timeConflict && options.timeMinutes == null) { showPending(); return; }
     draft = pending;
   } else if (isCorrection(typed)) {
     const previous = store.getLastTurn(app.saveId);
@@ -733,7 +709,7 @@ async function sendTurn(options = {}) {
   const history = draft.history || store.getMessages(app.saveId);
   let plan;
   try {
-    plan = prepareTurn(source, draft.text, draft.id, { messages: history, corrections: draft.corrections || (draft.correction ? [draft.correction] : []), rejectedReply: draft.rejectedReply || '', minutesOverride: options.timeMinutes ?? draft.minutesOverride ?? null });
+    plan = prepareTurn(source, draft.text, draft.id, { messages: history, corrections: draft.corrections || (draft.correction ? [draft.correction] : []), rejectedReply: draft.rejectedReply || '', minutesOverride: draft.minutesOverride ?? null });
     draft = { ...draft, input: draft.input || plan.input, text: plan.text };
   } catch (error) { addMessage('error', '这次行动还没有开始：' + error.message); return; }
   const ambiguous = ambiguousPeople(source, plan.text);
@@ -747,7 +723,8 @@ async function sendTurn(options = {}) {
     }
     box.append(group); return;
   }
-  try { await store.putPendingAsync(app.saveId, { ...draft, raw: options.timeMinutes != null ? draft.raw : '' }); }
+  const reuseReply = Boolean(options.retry && (draft.replyComplete || draft.timeConflict) && draft.raw && splitDelta(draft.raw).delta);
+  try { await store.putPendingAsync(app.saveId, { ...draft, raw: reuseReply ? draft.raw : '', replyComplete: reuseReply }); }
   catch (error) { addMessage('error', '无法保存待处理回合：' + error.message + '。原进度已保留。'); return; }
   inputEl.value = ''; inputEl.style.height = 'auto';
   previewTimeOverride = null; $('#preview-time-edit').classList.add('hidden');
@@ -758,10 +735,10 @@ async function sendTurn(options = {}) {
   addMessage('user', draft.correction || playerText);
   const bubble = addMessage('assistant', ''); bubble.classList.add('cursor'); scrollToElement(bubble);
   turnStatus('正在生成，完成验证后保存…');
-  let raw = '', timer = null, lastDraftAt = Date.now(), category = 'generation', interruptedMinutes = null;
+  let raw = '', timer = null, lastDraftAt = Date.now(), category = 'generation', replyComplete = false;
   const started = performance.now(); app.metrics = { turn: source.turn + 1, requests: 0, repairs: 0 };
   try {
-    if (options.timeMinutes == null && !plan.corrections.length && needsIntentReview(plan.text)) {
+    if (!reuseReply && !plan.corrections.length && needsIntentReview(plan.text)) {
       turnStatus('正在理解行动中的人物、时间和否定…');
       let analysis = '';
       for await (const chunk of trackedChat({ system: INTENT_SYSTEM,
@@ -770,39 +747,23 @@ async function sendTurn(options = {}) {
     }
     plan.request = buildTurnRequest(plan, { rules: app.rules, worldbook: app.worldbook, chronicleDue: chronicleDue(plan.state, draft.text) });
     Object.assign(app.metrics, plan.request.stats);
-    if (options.timeMinutes != null) raw = await alignTime(draft.raw, plan);
+    if (reuseReply) raw = draft.raw;
     else for await (const chunk of trackedChat({ system: plan.request.system, messages: plan.request.messages, temperature: 0.35, signal: app.controller.signal })) {
       raw += chunk;
       app.metrics.firstTokenMs ??= performance.now() - started;
       if (!timer) timer = setTimeout(() => { timer = null; bubble.textContent = '正在生成并核对回复…（' + raw.length + ' 字）'; }, 100);
-      if (Date.now() - lastDraftAt > 2000) { await store.putPendingAsync(app.saveId, { ...draft, raw }); lastDraftAt = Date.now(); }
+      if (Date.now() - lastDraftAt > 2000) { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete: false }); lastDraftAt = Date.now(); }
     }
     clearTimeout(timer); timer = null;
-    const detected = narrativeTime(raw, plan.base.clock);
-    if (options.timeMinutes != null && detected && detected.minutes !== plan.judged.minutes) throw new Error('调整后的正文时间仍不一致，请重新选择时间');
-    if (options.timeMinutes == null && detected && detected.minutes !== plan.judged.minutes) {
-      const story = narrationText(raw), quoteAt = story.lastIndexOf(detected.quote);
-      const eventText = quoteAt < 0 ? detected.quote : story.slice(quoteAt, quoteAt + detected.quote.length + 100);
-      const interrupt = detected.minutes < plan.judged.minutes && /(?:等|守|睡|休息|推进|直到)/.test(plan.text)
-        && /(?:闯入|敲门|警报|袭击|闯进|呼救|异响)/.test(eventText);
-      if (interrupt) {
-        interruptedMinutes = detected.minutes;
-        const marker = eventText.match(/闯入|敲门|警报|袭击|闯进|呼救|异响/)?.[0];
-        plan = prepareTurn(source, draft.text, draft.id, { messages: history, corrections: draft.corrections || [], rejectedReply: draft.rejectedReply || '', minutesOverride: detected.minutes });
-        plan.request = buildTurnRequest(plan, { rules: app.rules, worldbook: app.worldbook, chronicleDue: chronicleDue(plan.state, draft.text) });
-        raw = await alignTime(raw, plan);
-        const revised = narrativeTime(raw, plan.base.clock);
-        if (!marker || !narrationText(raw).includes(marker) || !revised || revised.minutes !== plan.judged.minutes) throw new Error('中途事件或时间未能保留，原进度已保留');
-      } else {
-        await store.putPendingAsync(app.saveId, { ...draft, raw, timeConflict: { clock: plan.base.clock, engine: plan.judged.minutes, story: detected.minutes } });
-        bubble.textContent = narrationText(raw) || '本回合回复已生成，等待确认时间。'; bubble.classList.add('pending-time-preview');
-        showPending(); return;
-      }
-    }
+    replyComplete = true;
+    await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete });
     category = 'validation';
-    const result = await settleReply(plan, raw, { reviewContinuity, repairContinuity: recoverContinuity, repairAgency: recoverAgency, repairNarrative: recoverAbilityNarrative, repairFinance: recoverFinance, repair: async (...args) => {
+    const result = await settleReply(plan, raw, { prepareContext: currentPlan => {
+      currentPlan.request = buildTurnRequest(currentPlan, { rules: app.rules, worldbook: app.worldbook, chronicleDue: chronicleDue(currentPlan.state, draft.text) });
+    }, reviewContinuity, repairContinuity: recoverContinuity, repairAgency: recoverAgency, repairNarrative: recoverAbilityNarrative, repairFinance: recoverFinance, repair: async (...args) => {
       turnStatus('正在核对回复，完成后保存…'); return recoverDelta(...args);
     } });
+    plan = result.plan;
     const clean = narrationText(result.raw) || '这一回合的行动已经记下。';
     mergeChronicle(result.state, parseChronicle(clean));
     maintainTasks(result.state, [...history.slice(-12), { role: 'assistant', content: clean }], draft.id);
@@ -813,7 +774,7 @@ async function sendTurn(options = {}) {
     category = 'storage';
     await store.putSaveAsync(result.state, messages, { expectedRevision: draft.baseRevision, pending: null, replaceFrom: history.length,
       lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt, corrections: plan.corrections,
-        minutesOverride: options.timeMinutes ?? draft.minutesOverride ?? interruptedMinutes } });
+        minutesOverride: plan.narrativeTiming?.minutes ?? draft.minutesOverride ?? null } });
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: 'saved', durationMs: performance.now() - started, outputChars: result.raw.length }).catch(() => {});
     await loadGame(app.saveId, { allowDuringTurn: true });
     turnStatus('已在本机保存。');
@@ -825,7 +786,7 @@ async function sendTurn(options = {}) {
     }
   } catch (error) {
     clearTimeout(timer);
-    try { await store.putPendingAsync(app.saveId, { ...draft, raw: draft.timeConflict ? draft.raw : raw }); } catch { /* The original committed save is still intact. */ }
+    try { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete }); } catch { /* The original committed save is still intact. */ }
     bubble.textContent = '这份回复尚未通过核对，原进度已保留。';
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: app.controller.signal.aborted ? 'cancelled' : 'failed', category: app.controller.signal.aborted ? 'cancelled' : category, durationMs: performance.now() - started, outputChars: raw.length }).catch(() => {});
     bubble.classList.remove('cursor');

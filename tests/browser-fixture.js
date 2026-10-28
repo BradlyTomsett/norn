@@ -15,7 +15,7 @@ setKey('fixture-key-no-network');
 const { state } = generateWorld({ regionId: 'greywater', seed: 77, playerName: '测试旅人' });
 state.saveId = 'sv_browser_fixture'; upgradeState(state); ensureAccounts(state);
 state.clock = { year: 222, doy: 10, hour: 12, minute: 0, weather: 'clear' };
-if (scenario === 'time-conflict' || scenario === 'time-interrupt') state.clock = { year: 222, doy: 10, hour: 21, minute: 30, weather: 'clear' };
+if (['time-conflict', 'time-interrupt', 'time-legacy'].includes(scenario)) state.clock = { year: 222, doy: 10, hour: 21, minute: 30, weather: 'clear' };
 state.player.accounts.forEach(a => a.copper = a.id === 'cash' ? 1000000 : 0);
 state.player.debts = []; state.player.equipment = ['旧传说剑（金）'];
 state.prices = { '针线包（一套）': { min: 10, max: 40 }, '墨水（一小瓶）': { min: 20, max: 80 } };
@@ -82,6 +82,14 @@ if (scenario === 'handoff') {
 if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
 await store.initStorage();
 if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);
+if (scenario === 'time-legacy') {
+  const saved = store.getSave(state.saveId);
+  if (saved.turn === 0 && !store.getPending(state.saveId)) await store.putPendingAsync(state.saveId, {
+    id: 'turn:legacy-time', text: '推进到后半夜', input: '推进到后半夜', baseRevision: saved.revision,
+    raw: '到了次日凌晨3点，仓里仍然安静。\n```json\n{}\n```',
+    timeConflict: { clock: saved.clock, engine: 150, story: 330 },
+  });
+}
 let mode = 'normal';
 const controls = document.createElement('div'); controls.id = 'fixture-controls';
 controls.style.cssText = 'position:fixed;top:45px;left:3px;z-index:200;font:11px sans-serif;max-width:230px;background:#111;color:white;padding:6px';
@@ -150,7 +158,7 @@ window.fetch = async (url, options = {}) => {
     return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
   let delta = {}, text = '【本次行动】\n你等了一阵，街上的人继续忙着各自的事。';
-  if (scenario === 'time-conflict') text = system.includes('只调整候选回复的时间') ? '你继续守在仓里，观察四周。' : '到了次日凌晨3点，仓里仍然安静。';
+  if (scenario === 'time-conflict') text = '到了次日凌晨3点，仓里仍然安静。';
   if (scenario === 'time-interrupt') text = '到了次日凌晨1点，有人闯入仓库。';
   if (mode === 'finance') {
     text = '你交给老杜五枚金币。';

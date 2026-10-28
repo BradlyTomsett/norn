@@ -1,5 +1,5 @@
 import { splitDelta } from '../format.js';
-import { finishTurn } from './turn.js';
+import { finishTurn, followNarrativeTime } from './turn.js';
 import { AgencyError, assertPlayerAgency, approvedFinance } from './agency.js';
 import { NarrativeError, assertAbilityNarrative } from './narrative.js';
 import { FinanceError, assertFinance, assertFinanceRepair } from './finance.js';
@@ -45,10 +45,12 @@ function financeSignature(delta) {
 }
 
 /** Validation may request one data-only repair; neither attempt mutates the plan. */
-export async function settleReply(plan, raw, { repair, repairAgency, repairNarrative, repairFinance, reviewContinuity, repairContinuity } = {}) {
+export async function settleReply(plan, raw, { repair, repairAgency, repairNarrative, repairFinance, reviewContinuity, repairContinuity, prepareContext } = {}) {
   const original = splitDelta(raw).delta;
   try {
     if (!original) throw new Error('回复缺少有效变化块');
+    plan = followNarrativeTime(plan, raw);
+    prepareContext?.(plan);
     assertPlayerAgency(plan, raw, original);
     assertFinance(plan, raw, original);
     assertAbilityNarrative(plan, raw);
@@ -57,7 +59,7 @@ export async function settleReply(plan, raw, { repair, repairAgency, repairNarra
     if (reviewContinuity) await reviewContinuity(raw, plan);
     const result = finishTurn(plan, validateFactChanges(plan, normalizeNpcDelta(original, plan.state), raw));
     rememberSceneEvidence(result.state, plan);
-    return { ...result, raw, repaired: false };
+    return { ...result, raw, repaired: false, plan };
   } catch (error) {
     if (error.contextReviewFailed) throw error;
     const agency = error instanceof AgencyError;
@@ -76,6 +78,8 @@ export async function settleReply(plan, raw, { repair, repairAgency, repairNarra
       const protectedData = delta => Object.fromEntries(Object.entries(delta || {}).filter(([key]) => !['knowledge', 'newInfo', 'npcUpdates', 'tasks', 'goals', 'problems', 'location'].includes(key)));
       if (canonical(protectedData(original)) !== canonical(protectedData(repaired))) throw new Error('一致性修复改变了受保护的结算或物品，原进度已保留。');
     }
+    plan = followNarrativeTime(plan, repairedRaw);
+    prepareContext?.(plan);
     assertPlayerAgency(plan, repairedRaw, repaired);
     assertFinance(plan, repairedRaw, repaired);
     assertAbilityNarrative(plan, repairedRaw);
@@ -84,6 +88,6 @@ export async function settleReply(plan, raw, { repair, repairAgency, repairNarra
     if (reviewContinuity) await reviewContinuity(repairedRaw, plan);
     const result = finishTurn(plan, validateFactChanges(plan, normalizeNpcDelta(repaired, plan.state), repairedRaw));
     rememberSceneEvidence(result.state, plan);
-    return { ...result, raw: repairedRaw, repaired: true };
+    return { ...result, raw: repairedRaw, repaired: true, plan };
   }
 }

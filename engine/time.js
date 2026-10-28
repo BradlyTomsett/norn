@@ -42,18 +42,29 @@ export function timePreview(clock, minutes) {
 
 /** Only the narrated player's present timeline may contradict the engine. */
 export function narrativeTime(raw, clock) {
-  const prose = String(raw || '').split(/```|【(?:你现在可以做什么|现在可以做什么|行动方向|可选行动|行动选项|选项)】/)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』/g, '');
+  const prose = String(raw || '').split(/```|【(?:你现在可以做什么|现在可以做什么|行动方向|可选行动|行动选项|选项)】/)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '');
   const sentences = prose.split(/[。！？\n]+/).map(x => x.trim()).filter(Boolean);
   for (const sentence of sentences.reverse()) {
-    if (/尚未|还没|没有|不是|未到|如果|将会|预计|明天再|约定|问|说|听说|上次|以前|曾经/.test(sentence)) continue;
-    const match = sentence.match(/(?:已经|此时|现在|到了|来到|时间来到|夜已|直至|直到|过了|转眼|守到|等到)(?:是|已|已经|了|到)?\s*(?:次日|第二天|翌日|明日|明天)?\s*(?:凌晨|后半夜|天亮|黎明|清晨|早上|上午|中午|下午|晚上|夜里)?\s*(?:\d{1,2}|[零一二两三四五六七八九十]{1,3})?(?::\d{2}|点(?:半|\d{1,2}分?)?|时)?/)
-      || sentence.match(/^(?:次日|第二天|翌日)?(?:凌晨|后半夜|天亮|黎明|清晨)(?:\d{1,2}|[零一二两三四五六七八九十]{1,3})?(?::\d{2}|点(?:半|\d{1,2}分?)?|时)?/);
-    if (!match) continue;
-    let fragment = match[0].replace(/次日|第二天|翌日/g, '明天');
-    if (!/后半夜|天亮|黎明|清晨|\d{1,2}:\d{2}|[零一二两三四五六七八九十\d]+(?:点|时)/.test(fragment)) continue;
-    fragment = fragment.replace(/^(?:已经|此时|现在|到了|来到|时间来到|夜已|直至|直到|过了|转眼|守到|等到|^)(?:是|已|已经|了|到)?/, '等到');
-    const minutes = targetMinutes(fragment, clock);
-    if (minutes != null) return { minutes, quote: sentence };
+    const clauses = sentence.split(/[，,；;]/).map(x => x.trim());
+    for (const clause of clauses.reverse()) {
+      if (/尚未|还没|不是|未到|如果|将会|预计|明天再|约定|询问|你问|他说|她说|听说|上次|以前|曾经|打算|计划|准备|可以|将要/.test(clause)) continue;
+      const marker = '(?:已经|此时|现在|这时|到了|来到|时间来到|夜已|直至|直到|转眼|守到|等到)';
+      const day = '(?:次日|第二天|翌日|明日|明天|今天|当天)?';
+      const period = '(?:凌晨|后半夜|天亮|黎明|清晨|早上|上午|中午|下午|晚上|夜里)?';
+      const point = '(?:\\d{1,2}|[零一二两三四五六七八九十]{1,3})(?::\\d{2}|点(?:半|\\d{1,2}分?)?|时)';
+      const matches = [...clause.matchAll(new RegExp(`(?:${marker}(?:(?:已经|已)?是|已经|已|了|到)?\\s*|^)(${day}\\s*${period}\\s*(?:${point})?|后半夜|天亮|黎明|清晨)`, 'g'))];
+      for (const match of matches.reverse()) {
+        const fragment = match[1].trim().replace(/次日|第二天|翌日/g, '明天');
+        if (!fragment || !/后半夜|天亮|黎明|清晨|\d{1,2}:\d{2}|[零一二两三四五六七八九十\d]+(?:点|时)/.test(fragment)) continue;
+        const minutes = targetMinutes('等到' + fragment, clock);
+        if (minutes != null && minutes <= 3650 * 1440) return { minutes, quote: sentence };
+      }
+      const duration = clause.match(/(?:本轮(?:共|总共)?(?:经过|耗时)|总共(?:经过|耗时)?|共(?:经过|耗时)|已经过了|过了)(\d+|[零一二两三四五六七八九十]+)(?:个)?(分钟|小时|天|日)/);
+      if (duration) {
+        const minutes = numeral(duration[1]) * ({ 分钟: 1, 小时: 60, 天: 1440, 日: 1440 }[duration[2]]);
+        if (Number.isSafeInteger(minutes) && minutes >= 0 && minutes <= 3650 * 1440) return { minutes, quote: sentence };
+      }
+    }
   }
   return null;
 }
