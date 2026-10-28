@@ -44,6 +44,8 @@ if (scenario === 'long') {
 if (scenario === 'tasks') {
   state.player.contracts = [{ id: 'warehouse', label: '北仓清点', copper: 2400000, status: 'active' }, { id: 'west', label: '西门仓库调查', copper: 30000, status: 'active', workStatus: 'completed' }, { id: 'paid', label: '旧护送', copper: 1000, status: 'paid', paidCopper: 1000 }];
   state.player.unfinished = [{ id: 'roster', text: '定下三夜守夜的班次，谁头半夜谁后半夜' }, { id: 'investigation', text: '查清西门仓库失窃原因' }, { id: 'promise', text: '明晚日落前后到北关第三座仓门口碰头' }, { id: 'food', text: '吃饭' }, { id: 'secret', text: '传说级天赋严格保密' }];
+  state.player.taskHistory = [{ ...state.player.unfinished.find(t => t.id === 'investigation'), status: 'completed' }];
+  state.player.unfinished = state.player.unfinished.filter(t => t.id !== 'investigation');
   initial = [{ role: 'assistant', content: '三夜的班定下来了：头两夜你带塔姆守头半夜，老杜带凯尔守后半夜，第三夜对调。\n西门仓库失窃原因已经调查清楚，西门仓库调查已经完成，证物交给治安官。' }];
 }
 if (scenario === 'skills') {

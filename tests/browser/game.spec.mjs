@@ -28,6 +28,7 @@ test('长回复截断自动补完，钱物任务关系写入状态且不请求�
   await page.locator('#cs-tabs').getByRole('button', { name: '关系', exact: true }).click();
   await expect(page.locator('#cs-body')).toContainText('交接顺利');
   await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '存档', exact: true }).click();
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: '导出', exact: true }).click();
   const payload = JSON.parse(await readFile(await (await download).path(), 'utf8'));
@@ -170,7 +171,7 @@ test('旧事项去重、归档、重新打开并在刷新后保留', async ({ pa
   await page.locator('#cs-body summary').filter({ hasText: '历史事项' }).click(); await page.getByRole('button', { name: '重新打开', exact: true }).click();
   await expect(page.getByRole('button', { name: '标记完成', exact: true })).toHaveCount(1);
 });
-test('当前委托移到状态事项，旧事项自动完成与精简，待领酬不自动付款且刷新后保持', async ({ page }) => {
+test('状态中的已完成任务与待领酬直接显示，整理不调用API且刷新后保持', async ({ page }) => {
   await open(page, 'tasks'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '存档', exact: true }).click(); await page.getByRole('button', { name: '设置', exact: true }).click();
   await expect(page.locator('#settings')).not.toContainText('当前委托'); await page.locator('#set-close').click(); await page.locator('#btn-saves-close').click();
