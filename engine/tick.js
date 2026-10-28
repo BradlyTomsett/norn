@@ -55,7 +55,7 @@ export function recentWorld(state, n = 4) {
 export function advanceWorld(state, minutes, rng, judged) {
   upgradeState(state);
   ensureNpcState(state);
-  const growthEvents = advanceAttributes(state, minutes, rng);
+  const growthEvents = advanceAttributes(state, minutes, rng, judged);
   const beforeDay = absoluteDay(state.clock);
   const { clock, crossed } = advanceClock(state.clock, minutes || 0, rng);
   state.clock = clock;
