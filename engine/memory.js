@@ -1,5 +1,6 @@
 import { entityRefs, factEntityRefs, textId } from './entities.js';
 import { narrationText } from '../messages.js';
+import { OPTION_HEADING } from './actions.js';
 import { contradictedByCorrection, cancelledActions, redactCorrectedHistory, redactCorrectedInput } from './continuity.js';
 
 // Topic families bridge common paraphrases; they only rank existing passages, never create facts.
@@ -53,7 +54,7 @@ export function recallHistory(state, messages, query, limit = 5, { before = Math
   const guards = cancelledActions(state);
   const candidates = messages.slice(0, before).map((message, index) => {
     const raw = (message.role === 'assistant' ? narrationText(message.content) : message.content)
-      .split(/【(?:你现在可以做什么|行动方向|可选行动)】/)[0].trim();
+      .split(OPTION_HEADING)[0].trim();
     const text = message.role === 'assistant' ? redactCorrectedHistory(raw, index, guards) : redactCorrectedInput(raw, index, guards);
     return { text, index, role: message.role, turn: message.sourceTurn, ...entityRefs(state, text, message.entities || {}), uncertainNpcNames: message.entities?.uncertainNpcNames || [] };
   }).filter(row => row.text && !contradictedByCorrection(state, row.text) && !/^(?:\/纠错|我的钱数没有增加|光支出了)/.test(row.text));

@@ -1,9 +1,10 @@
 import { narrationText } from '../messages.js';
+import { OPTION_HEADING } from './actions.js';
 import { entityRefs, factEntityRefs, npcLabel, textId } from './entities.js';
 import { relevantNpcs } from './npcs.js';
 import { cancelledActions, redactCorrectedHistory, redactCorrectedInput, correctionContaminates, contradictedByCorrection } from './continuity.js';
 
-const story = message => narrationText(message?.content || '').split(/【(?:你现在可以做什么|现在可以做什么|行动方向|可选行动|行动选项|选项)】/)[0].trim();
+const story = message => narrationText(message?.content || '').split(OPTION_HEADING)[0].trim();
 const wholeLines = (value, limit) => {
   const result = []; let length = 0;
   for (const part of String(value).split(/(?<=[。！？\n])/).map(x => x.trim()).filter(Boolean)) {

@@ -1,6 +1,6 @@
 import { buildPrompt } from './protocol.js';
 import { narrationText } from '../messages.js';
-import { extractChoices } from './actions.js';
+import { extractChoices, OPTION_HEADING } from './actions.js';
 import { recallHistory } from './memory.js';
 import { correctionBlock, rememberCorrections, cancelledActions, currentCancelledActions, redactCorrectedHistory, redactCorrectedInput } from './continuity.js';
 import { sceneContext, sceneEvidenceFor, sceneLocationUncertain, historicalIdentityHints } from './scene.js';
@@ -9,7 +9,7 @@ import { intentBlock } from './intent.js';
 export const CONTEXT_BUDGET = Object.freeze({ recent: 26000, recall: 14000, total: 100000 });
 export function historyText(message) {
   let text = message.role === 'assistant' ? narrationText(message.content) : String(message.content || '');
-  if (message.role === 'assistant') text = text.split(/【(?:你现在可以做什么|现在可以做什么|行动方向|可选行动|行动选项|选项)】/)[0];
+  if (message.role === 'assistant') text = text.split(OPTION_HEADING)[0];
   return text.trim();
 }
 /** Whole conversational turns, never the beginning of a long message with its conclusion cut off. */

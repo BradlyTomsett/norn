@@ -5,6 +5,7 @@ import { ensureAccounts } from '../engine/money.js';
 import { uiState } from '../engine/state.js';
 import * as store from '../store.js';
 import { setKey } from '../llm.js';
+import { setGhConfig } from '../sync.js';
 const params = new URLSearchParams(location.search), scenario = params.get('scenario');
 if (params.has('reset')) {
   localStorage.clear(); sessionStorage.clear();
@@ -12,6 +13,7 @@ if (params.has('reset')) {
   params.delete('reset'); history.replaceState(null, '', '?' + params);
 }
 setKey('fixture-key-no-network');
+if (scenario === 'cloud-policy') setGhConfig({ owner: 'fixture', repo: 'fixture', branch: 'main', token: 'fixture-only' });
 const { state } = generateWorld({ regionId: 'greywater', seed: 77, playerName: '测试旅人' });
 state.saveId = 'sv_browser_fixture'; upgradeState(state); ensureAccounts(state);
 state.clock = { year: 222, doy: 10, hour: 12, minute: 0, weather: 'clear' };
@@ -115,8 +117,19 @@ const refresh = () => {
 setInterval(refresh, 200); refresh();
 const original = window.fetch.bind(window);
 let requests = 0;
+let cloudFile = null, cloudWrites = 0;
 window.fetch = async (url, options = {}) => {
-  if (String(url).startsWith('https://api.github.com')) throw new Error('Fixture blocks cloud writes');
+  if (String(url).startsWith('https://api.github.com')) {
+    if (scenario !== 'cloud-policy') throw new Error('Fixture blocks cloud writes');
+    if (options.method === 'PUT') {
+      const body = JSON.parse(options.body); cloudWrites++;
+      cloudFile = { content: body.content, sha: `fixture-${cloudWrites}` };
+      controls.dataset.cloudWrites = String(cloudWrites);
+      return Response.json({ content: { sha: cloudFile.sha } });
+    }
+    if (cloudFile) return Response.json(cloudFile);
+    return new Response('', { status: 404 });
+  }
   if (!String(url).startsWith('https://api.deepseek.com')) return original(url, options);
   const request = JSON.parse(options.body), system = request.messages[0].content;
   requests++; controls.dataset.requests = requests;

@@ -6,7 +6,7 @@ import { stateBlock, npcCards, uiState, transferCopper, copperText } from './eng
 import { isCorrection, judge } from './engine/resolve.js';
 import { makeRng } from './engine/rng.js';
 import { prepareTurn } from './engine/turn.js';
-import { extractChoices, resolveAction } from './engine/actions.js';
+import { ensureChoices, extractChoices, resolveAction } from './engine/actions.js';
 import { settleGeneratedReply } from './engine/reply.js';
 import { buildPrompt } from './engine/protocol.js';
 import { esc, format, splitDelta } from './format.js';
@@ -38,7 +38,7 @@ const reportActionError = error => addMessage('error', '操作没有保存：' +
 const runAction = action => Promise.resolve().then(action).catch(reportActionError);
 window.addEventListener('unhandledrejection', event => { event.preventDefault(); reportActionError(event.reason || new Error('操作未完成')); });
 document.addEventListener('click', event => {
-  if (busy() && event.target.closest('#btn-saves, #btn-save-now, #btn-panel, .turn-actions, #sheet, #saves, #wizard, #custom, #restore')) {
+  if (busy() && event.target.closest('#btn-saves, #btn-refresh, #btn-panel, .turn-actions, #sheet, #saves, #wizard, #custom, #restore')) {
     event.preventDefault(); event.stopImmediatePropagation(); turnStatus('请等当前回合结束，或先停止生成。');
   }
 }, true);
@@ -311,8 +311,11 @@ async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {})
 }
 
 function renderChoices(bubble, message) {
-  const choices = extractChoices(message.content); if (!choices.length) return;
-  for (const row of bubble.querySelectorAll('p')) if (/^[①-⑳]|^\d{1,2}[.、．)）]/.test(row.textContent.trim())) row.remove();
+  const choices = extractChoices(ensureChoices(message.content)); if (!choices.length) return;
+  for (const row of bubble.querySelectorAll('p')) {
+    const text = row.textContent.trim().replace(/\*\*/g, '');
+    if (choices.some(choice => text.endsWith(choice.text) && /^(?:[-*•·]\s+|(?:[-*•·]\s*)?(?:[①-⑳]|\d{1,2}[.、．)）]|[（(]\d{1,2}[)）]))/.test(text))) row.remove();
+  }
   const box = document.createElement('div'); box.className = 'action-choices'; box.setAttribute('aria-label', '可选行动');
   for (const choice of choices) {
     const button = document.createElement('button'); button.className = 'action-choice'; button.textContent = choice.number + ' · ' + choice.text;
@@ -643,7 +646,6 @@ async function sendTurn(options = {}) {
       await store.putSaveAsync(current, messages); inputEl.value = '';
       await loadGame(app.saveId, { allowDuringTurn: true });
       addMessage('assistant', '已保存这条纠正，后续回复会优先参考。此旧存档没有上一回合快照，已结算的钱款和时间保持原状。');
-      if (sync.ghReady()) sync.backupSave(current, messages).catch(() => {});
       return;
     }
     draft = { id: previous.id, text: previous.input, correction: typed, baseState: previous.base, minutesOverride: previous.minutesOverride,
@@ -710,7 +712,7 @@ async function sendTurn(options = {}) {
       turnStatus('正在整理状态变化数据…'); return recoverDelta(...args);
     } });
     plan = result.plan;
-    const clean = narrationText(result.raw) || '这一回合的行动已经记下。';
+    const clean = ensureChoices(narrationText(result.raw) || '这一回合的行动已经记下。');
     mergeChronicle(result.state, parseChronicle(clean));
     maintainTasks(result.state, [...history.slice(-12), { role: 'assistant', content: clean }], draft.id);
     const messages = [...history, { role: 'user', content: playerText + (draft.correction ? `\n（本回合纠正：${draft.correction}）` : ''),
@@ -724,12 +726,6 @@ async function sendTurn(options = {}) {
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: 'saved', durationMs: performance.now() - started, outputChars: result.raw.length }).catch(() => {});
     await loadGame(app.saveId, { allowDuringTurn: true });
     turnStatus('已在本机保存。');
-    if (sync.ghReady()) {
-      turnStatus('已在本机保存，正在备份到云端…');
-      sync.backupSave(result.state, messages).then(() => { updateGhStatus(); turnStatus('本机与云端均已保存。'); }).catch(e => {
-        updateGhStatus(); turnStatus('本机已保存；云备份未完成：' + e.message);
-      });
-    }
   } catch (error) {
     clearTimeout(timer);
     try { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete, generationTruncated }); } catch { /* The original committed save is still intact. */ }
@@ -825,7 +821,6 @@ $('#cs-body').addEventListener('click', event => {
     contract.copper = amount;
     if (state.player.contract?.id === contract.id) state.player.contract.copper = amount;
     await store.putSaveAsync(state); refreshTasks(state, '委托酬劳已保存。');
-    if (sync.ghReady()) sync.backupSave(state, store.getMessages(state.saveId)).catch(() => {});
   });
 });
 
@@ -871,7 +866,6 @@ $('#cs-body').addEventListener('click', event => {
     catch (error) { $('#gear-message').textContent = error.message; return; }
     await store.putSaveAsync(state); app.loadedRevision = state.revision; app.ui = uiState(state); renderSheet('gear');
     $('#gear-message').textContent = '常用装备已保存。';
-    if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
   });
 });
 
@@ -995,32 +989,7 @@ function openSheet(tab) {
 $('#btn-panel').onclick = () => openSheet();
 $('#btn-close').onclick = () => $('#sheet').classList.add('hidden');
 
-// 手动保存：写一次本地，能云备份就顺手备份
-$('#btn-save-now').onclick = async () => {
-  const btn = $('#btn-save-now');
-  const state = store.getSave(app.saveId);
-  if (!state) {
-    btn.textContent = '没有存档';
-    setTimeout(() => (btn.textContent = '保存'), 1200);
-    return;
-  }
-  await store.putSaveAsync(state); if (state.saveId === app.saveId) app.loadedRevision = state.revision;
-  btn.disabled = true;
-  btn.textContent = '已保存';
-  if (sync.ghReady()) {
-    try {
-      await sync.backupSave(state, store.getMessages(app.saveId));
-      btn.textContent = '已备份';
-      updateGhStatus();
-    } catch {
-      btn.textContent = '备份失败';
-    }
-  }
-  setTimeout(() => {
-    btn.textContent = '保存';
-    btn.disabled = false;
-  }, 1400);
-};
+$('#btn-refresh').onclick = () => { if (!busy()) location.reload(); };
 
 /* ---------------- 账户间转账（不经过模型） ---------------- */
 
@@ -1063,7 +1032,6 @@ async function doTransfer() {
         : `已转 ${copperText(copper)}。`;
     after.className = 'hint ok';
   }
-  if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
 }
 
 document.addEventListener('click', async (e) => {
@@ -1129,7 +1097,6 @@ document.addEventListener('click', async (e) => {
     after.textContent = `${adding ? '增加' : '减少'} ${res.count} ${unit}：${name}`;
     after.className = 'hint it-msg ok';
   }
-  if (sync.ghReady()) sync.backupSave(state, store.getMessages(app.saveId)).catch(() => {});
 });
 
 $('#btn-new').onclick = () => {

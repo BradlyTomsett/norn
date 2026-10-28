@@ -1,6 +1,7 @@
 import { upgradeTasks, advanceTasks, closeTask, incidentalTask } from './tasks.js';
 import { textId } from './entities.js';
 import { narrationText } from '../messages.js';
+import { OPTION_HEADING } from './actions.js';
 import { archiveGoal } from './facts.js';
 import { cancelledActions, correctionContaminates, contradictedByCorrection, redactCorrectedHistory } from './continuity.js';
 
@@ -11,7 +12,7 @@ const important = /委托|任务|调查|查清|查明|追查|追踪|线索|失�
 
 function storyText(text) {
   let skip = false;
-  return narrationText(text).split('\n').filter(line => {
+  return narrationText(text).split(OPTION_HEADING)[0].split('\n').filter(line => {
     const heading = line.trim().replace(/\*\*/g, '').match(/^【([^】]+)】/);
     if (heading) skip = /未完成|待办|你现在可以|行动方向|选项|可选行动/.test(heading[1]);
     return !skip;

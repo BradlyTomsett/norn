@@ -1,6 +1,7 @@
 import { moneyMentions, numberOf, NUMBER_TEXT } from './numbers.js';
 import { entityRefs } from './entities.js';
 import { currentAction, delegatedAction } from './resolve.js';
+import { OPTION_HEADING } from './actions.js';
 
 const kinds = { purchase: /买|购买|订购/, sale: /卖|出售/, gift: /给|赠|打赏|分给|分成|平分/, payment: /付|结账|结清|雇|聘|捐/, borrow: /借/, repay: /还|偿还/, transfer: /转账|转入|转出|调拨/,
   reward: /领(?:取)?.{0,8}(?:赏金|报酬)|交活|领赏/, income: /收到|收取|收入|赚|领工钱/ };
@@ -9,7 +10,7 @@ const quantity = text => {
   const match = String(text).match(new RegExp(`(?:买|购买|订购|卖出|卖掉|出售|拿|给|收下)?\\s*(${NUMBER_TEXT})\\s*(件|瓶|把|支|条|块|袋|份|匹|个|本|张)(?!金币|银币|铜币)`));
   return match && numberOf(match[1]) > 0 ? { qty: numberOf(match[1]), item: String(text).slice(match.index + match[0].length).split(/[，。；\s]/)[0].replace(/(?:总价|一共|共|每件|每瓶|单价|最多|不超过|预算|花费|花|价格).*$/, '') } : null;
 };
-const quotedProse = message => String(message?.content || '').split(/【(?:你现在可以|行动方向|可选行动)】|```/)[0];
+const quotedProse = message => String(message?.content || '').split('```')[0].split(OPTION_HEADING)[0];
 function explicitItem(part) {
   const tail = part.match(/(?:购买|订购|买|出售|卖出|卖掉)([^，。；]{1,80})/)?.[1];
   if (!tail || /点|一些|东西|吃的|用品|补给|随便|刚才|这个|这些|报价|约定|选的/.test(tail)) return '';

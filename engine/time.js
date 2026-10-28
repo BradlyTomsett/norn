@@ -1,3 +1,4 @@
+import { OPTION_HEADING } from './actions.js';
 const dayMinute = clock => clock.hour * 60 + clock.minute;
 const numeral = text => {
   if (/^\d+$/.test(text)) return Number(text);
@@ -42,7 +43,7 @@ export function timePreview(clock, minutes) {
 
 /** Only the narrated player's present timeline may contradict the engine. */
 export function narrativeTime(raw, clock) {
-  const prose = String(raw || '').split(/```|【(?:你现在可以做什么|现在可以做什么|行动方向|可选行动|行动选项|选项)】/)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '');
+  const prose = String(raw || '').split('```')[0].split(OPTION_HEADING)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '');
   const sentences = prose.split(/[。！？\n]+/).map(x => x.trim()).filter(Boolean);
   for (const sentence of sentences.reverse()) {
     const clauses = sentence.split(/[，,；;]/).map(x => x.trim());

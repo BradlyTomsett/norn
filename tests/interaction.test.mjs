@@ -2,7 +2,7 @@ import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateWorld } from '../engine/worldgen.js';
 import { prepareTurn, finishTurn } from '../engine/turn.js';
-import { extractChoices, resolveAction } from '../engine/actions.js';
+import { ensureChoices, extractChoices, resolveAction } from '../engine/actions.js';
 import { judge, classify } from '../engine/resolve.js';
 import { makeRng } from '../engine/rng.js';
 import { settleReply } from '../engine/reply.js';
@@ -59,8 +59,20 @@ test('旧存档的编号、多选和完整行动产生相同判定；重试不�
 test('编号不从过时回复借用，兼容圆圈、阿拉伯数字和粗体选项', () => {
   const text = '【行动方向】\n**1. 问候店主**\n2、买面包\n(3) 回家\n【新信息】\n1. 这不是选项';
   assert.deepEqual(extractChoices(text).map(row => row.number), [1, 2, 3]);
-  assert.throws(() => resolveAction('1', [...choices, { role: 'assistant', content: '他摇摇头，等你回答。' }]), /没有编号选项/);
+  assert.equal(resolveAction('1', [...choices, { role: 'assistant', content: '他摇摇头，等你回答。' }]).text, '观察当前情况');
   assert.equal(resolveAction('买1个面包', choices).text, '买1个面包');
+});
+
+test('识别不同的行动标题和列表格式；缺少建议时保留正文并提供通用选项', () => {
+  for (const heading of ['【接下来可以做什么】', '【可执行任务】', '### 行动建议', '**下一步**']) {
+    const text = `发生了一件事。\n${heading}\n- 询问店主\n- 继续观察\n【新信息】\n- 不应作为选项`;
+    assert.deepEqual(extractChoices(text).map(row => row.text), ['询问店主', '继续观察']);
+    assert.equal(ensureChoices(text), text);
+    assert.equal(resolveAction('2', [{ role: 'assistant', content: text }]).text, '继续观察');
+  }
+  const fallback = ensureChoices('正文完整保留。');
+  assert.ok(fallback.startsWith('正文完整保留。'));
+  assert.equal(extractChoices(fallback).length, 2);
 });
 
 test('询问过去或未来日期不跳时间，当前睡眠不执行明天的战斗', () => {

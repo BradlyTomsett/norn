@@ -6,6 +6,46 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('普通回合、状态修改和刷新只存本机，主动云备份才上传', async ({ page }) => {
+  await open(page, 'cloud-policy'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '看看周围'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-cloud-writes', /\d/);
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '物价', exact: true }).click();
+  await page.getByRole('textbox', { name: '物品或服务名', exact: true }).fill('测试茶匙');
+  await page.getByRole('textbox', { name: '新增价格下限（铜）', exact: true }).fill('1200');
+  await page.getByRole('textbox', { name: '新增价格上限（铜）', exact: true }).fill('1200');
+  await page.getByRole('button', { name: '＋ 加进物价表', exact: true }).click();
+  await expect(page.locator('#px-msg')).toContainText('已加入物价');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-cloud-writes', /\d/);
+  await page.locator('#btn-close').click();
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.locator('#input')).toBeVisible();
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-cloud-writes', /\d/);
+  await page.getByRole('button', { name: '存档', exact: true }).click();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '备份到云端', exact: true }).click();
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-cloud-writes', '1');
+  await page.locator('#saves').getByRole('button', { name: '返回', exact: true }).click();
+  await act(page, '继续看看'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-cloud-writes', '1');
+  await page.getByRole('button', { name: '存档', exact: true }).click();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '备份到云端', exact: true }).click();
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-cloud-writes', '2');
+});
+
+test('模型漏写行动提示时显示可选行动，刷新后仍可选择', async ({ page }) => {
+  await open(page, 'intent'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '看看周围'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.getByRole('button', { name: '1 · 观察当前情况', exact: true })).toBeVisible();
+  await page.reload(); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '1 · 观察当前情况', exact: true }).click();
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：2');
+  await expect(page.locator('#log')).toContainText('观察当前情况');
+});
+
 test('旧版卡在复核依据的完整回复可直接继续保存，钱款不重复生成', async ({ page }) => {
   await open(page, 'blocked-review'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '继续本回合', exact: true }).click();
@@ -165,7 +205,7 @@ test('旧事项去重、归档、重新打开并在刷新后保留', async ({ pa
   await expect(page.getByRole('button', { name: '标记完成', exact: true })).toHaveCount(1);
   await page.getByRole('button', { name: '标记完成', exact: true }).click();
   await expect(page.locator('#cs-body')).toContainText('历史事项（1）');
-  await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.reload(); await expect(page.locator('#input')).toBeVisible(); await page.getByRole('button', { name: '状态', exact: true }).click();
   await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
   await expect(page.locator('#task-maintenance-status')).toContainText('事项已自动整理');
   await page.locator('#cs-body summary').filter({ hasText: '历史事项' }).click(); await page.getByRole('button', { name: '重新打开', exact: true }).click();
@@ -187,7 +227,7 @@ test('状态中的已完成任务与待领酬直接显示，整理不调用API�
   await page.locator('#cs-body summary').filter({ hasText: '历史事项' }).click();
   await expect(page.locator('#cs-body')).toContainText('定下三夜守夜的班次'); await expect(page.locator('#cs-body')).toContainText('已归档');
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-reviews', /\d/);
-  await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click(); await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
+  await page.reload(); await expect(page.locator('#input')).toBeVisible(); await page.getByRole('button', { name: '状态', exact: true }).click(); await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
   await expect(page.locator('#task-maintenance-status')).toContainText('事项已自动整理');
   await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0); await expect(page.locator('#current-contracts')).toContainText('250 金');
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-reviews', /\d/);
@@ -206,7 +246,8 @@ test('固定六项技能含零值，旧药材保留数值，小步骤退出清�
   await page.locator('#cs-body summary').filter({ hasText: '历史事项' }).click();
   await expect(page.locator('#cs-body')).toContainText('历史事项（5）');
   await expect(page.getByRole('button', { name: '重新打开', exact: true })).toHaveCount(0);
-  await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.reload(); await expect(page.locator('#input')).toBeVisible();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
   await expect(labels).toHaveText(['武技130', '魔法0', '炼金20', '机械0', '察觉71.1', '交涉55.3']);
   await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
   await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0);
@@ -263,7 +304,7 @@ test('旧纠正加载后写入持久存档，立即导出和刷新都保留纠�
   expect(payload.state.continuity.corrections[0].text).toContain('瑟拉一直是我的搭档');
   expect(payload.state.knowledge.find(k => k.id === 'old-membership').status).toBe('disputed');
   expect(payload.state.player.unfinished).toHaveLength(0); expect(payload.state.turn).toBe(0); expect(payload.messages).toHaveLength(24);
-  await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.reload(); await expect(page.locator('#input')).toBeVisible(); await page.getByRole('button', { name: '状态', exact: true }).click();
   await expect(page.locator('#cs-body')).not.toContainText('定下瑟拉是否加入');
 });
 test('生成文本不复核，诊断仍记录用量且不含原文或密钥', async ({ page }) => {
