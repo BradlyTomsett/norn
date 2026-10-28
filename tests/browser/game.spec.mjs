@@ -6,12 +6,40 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
-test('复合行动先理解执行者和否定，解释送入正文请求，不扣玩家的钱', async ({ page }) => {
+test('旧版卡在复核依据的完整回复可直接继续保存，钱款不重复生成', async ({ page }) => {
+  await open(page, 'blocked-review'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '继续本回合', exact: true }).click();
+  await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：1000020 铜');
+  await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：1000020 铜');
+});
+
+test('长回复截断自动补完，钱物任务关系写入状态且不请求剧情复核', async ({ page }) => {
+  await open(page, 'long-output'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '交付信物'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-context-reviews', /\d/);
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：1000020 铜');
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.locator('#cs-tabs').getByRole('button', { name: '物品', exact: true }).click();
+  await expect(page.locator('#cs-body')).toContainText('测试面包');
+  await page.locator('#cs-tabs').getByRole('button', { name: '关系', exact: true }).click();
+  await expect(page.locator('#cs-body')).toContainText('交接顺利');
+  await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await page.getByRole('button', { name: '存档', exact: true }).click();
+  const download = page.waitForEvent('download'); await page.getByRole('button', { name: '导出', exact: true }).click();
+  const payload = JSON.parse(await readFile(await (await download).path(), 'utf8'));
+  expect(payload.state.player.taskHistory.some(t => t.id === 'delivery' && t.status === 'completed')).toBe(true);
+});
+
+test('普通回合仅生成一次，不进行额外意图分析或复核', async ({ page }) => {
   await open(page, 'intent'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await act(page, '让同伴买药水，我不买');
   await expect(page.locator('#turn-status')).toContainText('已在本机保存');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-intent-reviews', '1');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-intent', 'true');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-intent-reviews', /\d/);
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
   await expect(page.locator('#fixture-monitor')).toContainText('随身：1000000 铜');
 });
 
@@ -19,23 +47,23 @@ test('真实IndexedDB大存档、迁移、原子失败、冲突与导入导出',
   await page.goto('/tests/persistence-test.html');
   await expect(page.locator('#results')).toHaveAttribute('data-result', 'pass', { timeout: 40000 });
 });
-test('旧纠错不反复执行，场景和委托依据送入模型并保留新地点', async ({ page }) => {
+test('旧纠错与场景仍送入模型，返回的正文不再被二次重写', async ({ page }) => {
   await open(page, 'handoff'); await page.getByRole('button', { name: '模拟重复取消的行动', exact: true }).click();
   await act(page, '问韦头儿今晚如何安排守夜'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
-  await expect(page.locator('#log .msg').last()).toContainText('与你商量今晚的值守安排');
-  await expect(page.locator('#log .msg').last()).not.toContainText('查看仓里的锁具');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
+  await expect(page.locator('#log .msg').last()).toContainText('查看仓里的锁具');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-scene', 'true');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-contract-context', 'true');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-old-wrong-fact', 'false');
-  await expect(page.locator('#fixture-monitor')).toContainText('回合：4'); await expect(page.locator('#fixture-monitor')).toContainText('地点：北关第三座仓内');
-  await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：4'); await expect(page.locator('#fixture-monitor')).toContainText('地点：北关第三座仓内');
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：4'); await expect(page.locator('#fixture-monitor')).toContainText('地点：北关仓街旧铺檐下');
+  await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：4'); await expect(page.locator('#fixture-monitor')).toContainText('地点：北关仓街旧铺檐下');
 });
-test('无依据的委托人敌意经过复核重写，保留合理接洽', async ({ page }) => {
+test('模型返回的人物态度直接保存，不发一致性复核请求', async ({ page }) => {
   await open(page, 'handoff'); await page.getByRole('button', { name: '模拟无故敌意', exact: true }).click();
   await act(page, '问韦头儿今晚如何安排守夜'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
-  await expect(page.locator('#log .msg').last()).toContainText('与你商量今晚的值守安排');
-  await expect(page.locator('#log .msg').last()).not.toContainText('我不认识你们');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-context-reviews', '2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
+  await expect(page.locator('#log .msg').last()).toContainText('我不认识你们');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-context-reviews', /\d/);
 });
 test('手机选择按钮直接执行一次，刷新后历史和回合仍在', async ({ page }) => {
   await open(page);
@@ -95,7 +123,7 @@ test('时间不一致直接按正文结算，原文保留且刷新后不重复�
   await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
   await expect(page.getByRole('button', { name: '按正文时间', exact: true })).toHaveCount(0);
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
   await expect(page.locator('#fixture-monitor')).toContainText('随身：1000000 铜');
   await expect(page.locator('#date')).toContainText('03时00分');
@@ -110,7 +138,7 @@ test('旧版卡在时间选择的草稿直接继续，复用原回复并按正�
   await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#date')).toContainText('03时00分');
   await expect(page.locator('#log')).toContainText('到了次日凌晨3点');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
   await page.reload(); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
   await expect(page.getByRole('button', { name: '继续本回合', exact: true })).toHaveCount(0);
 });
@@ -122,12 +150,12 @@ test('守夜遇到需要决定的中途事件，停在事件时刻', async ({ pa
   await expect(page.locator('#log')).toContainText('有人闯入仓库');
 });
 
-test('五金被写成五十金会自动修复一次，按明确金额扣款', async ({ page }) => {
+test('按模型返回的交易数据更新状态，不额外核对正文金额', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '模拟金额放大', exact: true }).click();
   await act(page, '给老杜5金币'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
-  await expect(page.locator('#fixture-monitor')).toContainText('随身：950000 铜');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
-  await expect(page.locator('.turn-receipt')).toContainText('5 金');
+  await expect(page.locator('#fixture-monitor')).toContainText('随身：500000 铜');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
+  await expect(page.locator('.turn-receipt')).toContainText('50 金');
 });
 test('旧事项去重、归档、重新打开并在刷新后保留', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '状态', exact: true }).click();
@@ -157,7 +185,7 @@ test('当前委托移到状态事项，旧事项自动完成与精简，待领�
   await expect(page.locator('#task-maintenance-status')).toContainText('委托酬劳已保存');
   await page.locator('#cs-body summary').filter({ hasText: '历史事项' }).click();
   await expect(page.locator('#cs-body')).toContainText('定下三夜守夜的班次'); await expect(page.locator('#cs-body')).toContainText('已归档');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-reviews', '1');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-reviews', /\d/);
   await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click(); await page.locator('#cs-tabs').getByRole('button', { name: '事项', exact: true }).click();
   await expect(page.locator('#task-maintenance-status')).toContainText('事项已自动整理');
   await expect(page.locator('#active-tasks .task-entry')).toHaveCount(0); await expect(page.locator('#current-contracts')).toContainText('250 金');
@@ -202,13 +230,13 @@ test('同名人物在发请求前选身份，搜索定位完整历史', async ({
   await expect(page.locator('#input')).toBeVisible();
 });
 
-test('完整上下文含旧约定，事实冲突自动重写；连续纠错保留全部要求且不多走回合', async ({ page }) => {
+test('完整上下文保留约定与连续纠错，正文直接保存且纠错不多走回合', async ({ page }) => {
   await open(page, 'context'); await page.getByRole('button', { name: '模拟事实冲突', exact: true }).click();
   await act(page, '说清今晚队伍和分配约定'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-agreement', 'true');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-correction', 'true');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-context-reviews', '1');
-  await expect(page.locator('#log')).toContainText('六名成员都在'); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-context-reviews', /\d/);
+  await expect(page.locator('#log')).toContainText('五个半人'); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
   await act(page, '/纠错 不要出现巡锁2个字！'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await act(page, '/纠错 不要出现查锁2个字！'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-has-both-corrections', 'true');
@@ -237,16 +265,15 @@ test('旧纠正加载后写入持久存档，立即导出和刷新都保留纠�
   await page.reload(); await page.getByRole('button', { name: '状态', exact: true }).click();
   await expect(page.locator('#cs-body')).not.toContainText('定下瑟拉是否加入');
 });
-test('擅自台词与承诺重写一次，诊断包含用量且不含原文或密钥', async ({ page }) => {
+test('生成文本不复核，诊断仍记录用量且不含原文或密钥', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '模拟擅自承诺', exact: true }).click();
   await act(page, '问店主面包多少钱'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
-  await expect(page.locator('#log')).toContainText('等你决定是否购买');
-  await expect(page.locator('#log')).not.toContainText('这笔钱我来付');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
+  await expect(page.locator('#log')).toContainText('这笔钱我来付');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
   await page.getByRole('button', { name: '存档', exact: true }).click();
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '复制诊断信息', exact: true }).click();
-  await expect(page.locator('#diag-out')).toContainText('"promptTokens":360');
+  await expect(page.locator('#diag-out')).toContainText('"promptTokens":120');
   await expect(page.locator('#diag-out')).not.toContainText('fixture-key');
   await expect(page.locator('#diag-out')).not.toContainText('问店主');
 });
@@ -304,12 +331,12 @@ test('手机常用装备最多9栏，箭矢分颜色堆叠，护甲盾牌单选�
   await page.locator('[data-item-act="del"]').click();
   await expect(page.locator('#cs-body').getByText('磨刀石（绿） ×2', { exact: true })).toBeVisible();
 });
-test('免疫矛盾正文自动重写一次，本回合武器和生效能力进入结算', async ({ page }) => {
+test('正文直接保存，武器与天赋的实际状态结算仍保留', async ({ page }) => {
   await open(page, 'gear'); await page.getByRole('button', { name: '模拟无视免疫', exact: true }).click();
   await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await act(page, '用大枪攻击守卫'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
-  await expect(page.locator('#log')).not.toContainText('鲜血流了下来');
+  await expect(page.locator('#log')).toContainText('鲜血流了下来');
   await expect(page.locator('.turn-receipt')).toContainText('使用：大枪（紫）');
   await expect(page.locator('.turn-receipt')).toContainText('天赋免疫已生效');
-  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '3');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
 });

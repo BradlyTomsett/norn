@@ -42,7 +42,7 @@ if (scenario === 'long') {
     ...Array.from({ length: 1000 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `这是第${i}段日常生活记录。` + '城中的生活照常继续。'.repeat(45) })), ...initial];
 }
 if (scenario === 'tasks') {
-  state.player.contracts = [{ id: 'warehouse', label: '北仓清点', copper: 2400000, status: 'active' }, { id: 'west', label: '西门仓库调查', copper: 30000, status: 'active' }, { id: 'paid', label: '旧护送', copper: 1000, status: 'paid', paidCopper: 1000 }];
+  state.player.contracts = [{ id: 'warehouse', label: '北仓清点', copper: 2400000, status: 'active' }, { id: 'west', label: '西门仓库调查', copper: 30000, status: 'active', workStatus: 'completed' }, { id: 'paid', label: '旧护送', copper: 1000, status: 'paid', paidCopper: 1000 }];
   state.player.unfinished = [{ id: 'roster', text: '定下三夜守夜的班次，谁头半夜谁后半夜' }, { id: 'investigation', text: '查清西门仓库失窃原因' }, { id: 'promise', text: '明晚日落前后到北关第三座仓门口碰头' }, { id: 'food', text: '吃饭' }, { id: 'secret', text: '传说级天赋严格保密' }];
   initial = [{ role: 'assistant', content: '三夜的班定下来了：头两夜你带塔姆守头半夜，老杜带凯尔守后半夜，第三夜对调。\n西门仓库失窃原因已经调查清楚，西门仓库调查已经完成，证物交给治安官。' }];
 }
@@ -80,6 +80,7 @@ if (scenario === 'handoff') {
     { role: 'assistant', sourceTurn: 3, content: '你检查仓里的锁具。\n\n仓里比外头暗。韦头儿点头请你进来。\n\n他说门锁有两把钥匙。' }];
 }
 if (scenario === 'legacy' && !localStorage.getItem('norn.index')) store.putSave(state, initial);
+if (scenario === 'long-output') state.player.unfinished = [{ id: 'delivery', text: '交付信物' }];
 await store.initStorage();
 if (scenario !== 'empty' && !store.listSaves().length) await store.putSaveAsync(state, initial);
 if (scenario === 'time-legacy') {
@@ -88,6 +89,13 @@ if (scenario === 'time-legacy') {
     id: 'turn:legacy-time', text: '推进到后半夜', input: '推进到后半夜', baseRevision: saved.revision,
     raw: '到了次日凌晨3点，仓里仍然安静。\n```json\n{}\n```',
     timeConflict: { clock: saved.clock, engine: 150, story: 330 },
+  });
+}
+if (scenario === 'blocked-review') {
+  const saved = store.getSave(state.saveId);
+  if (saved.turn === 0 && !store.getPending(state.saveId)) await store.putPendingAsync(state.saveId, {
+    id: 'turn:blocked-review', text: '看看仓里', input: '看看仓里', baseRevision: saved.revision, replyComplete: true,
+    raw: '你收到二十铜，仓里仍然安静。\n```json\n{"transactions":[{"kind":"income","copper":20,"note":"收到款项"}]}\n```',
   });
 }
 let mode = 'normal';
@@ -192,6 +200,14 @@ window.fetch = async (url, options = {}) => {
   }
   if (/睡|歇|休息/.test(input) && !repairing) text = '【生活变化】\n你在旅店休息，醒来后仍留在原处。\n【你现在可以做什么】\n① 问候老杜\n② 等一会';
   const output = `${text}\n\n【实际结算】\n模型写的错误余额999金币，不应显示。\n\n\`\`\`json\n${JSON.stringify(delta)}\n\`\`\``;
+  if (scenario === 'long-output') {
+    const continued = request.messages.at(-1).content.includes('仅补上覆盖整个本回合');
+    const data = { transactions: [{ kind: 'income', copper: 20, note: '收到款项' }], items: [{ name: '测试面包', qty: 2 }],
+      tasks: [{ id: 'delivery', status: 'completed' }], relations: [{ npcId: state.npcs[0].id, closeness: 3, observable: '交接顺利' }] };
+    const content = continued ? '```json\n' + JSON.stringify(data) + '\n```' : '你收到款项和两块测试面包，完成了交付。\n```json\n{"transactions":[';
+    const chunk = { choices: [{ delta: { content }, ...(continued ? {} : { finish_reason: 'length' }) }] };
+    return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
   const frame = `data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\r\n\r\n`;
   const usage = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 120, completion_tokens: 40, prompt_cache_hit_tokens: 50 } })}\r\n\r\n`;
   return new Response(frame + (mode === 'disconnect' ? '' : usage + 'data: [DONE]\r\n\r\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });

@@ -252,6 +252,11 @@ test('SSE支持分块CRLF，断线和长度截断不视为成功', async () => {
   assert.equal(await collect('data: {"choices":[{"delta":{"content":"完成"}}]}\r\n\r\ndata: [DONE]\r\n\r\n'), '完成');
   await assert.rejects(collect('data: {"choices":[{"delta":{"content":"半截"}}]}\n\n'), /断开/);
   await assert.rejects(collect('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'), /长度/);
+  globalThis.fetch = async () => new Response('data: {"choices":[{"delta":{"content":"最后一段"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n');
+  let last = '';
+  try { for await (const chunk of streamChat({ system: 'test', messages: [] })) last += chunk; }
+  catch (error) { assert.equal(error.code, 'generation_length'); }
+  assert.equal(last, '最后一段');
   const encoder = new TextEncoder();
   globalThis.fetch = async () => new Response(new ReadableStream({ start(c) { for (const t of ['data: {"choices":[{"delta":{"content":"分块"}}]}\r', '\n\r', '\ndata: [DONE]\r\n']) c.enqueue(encoder.encode(t)); c.close(); } }));
   let text = ''; for await (const chunk of streamChat({ system: 'test', messages: [] })) text += chunk;

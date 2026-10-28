@@ -44,6 +44,33 @@ function financeSignature(delta) {
     && !(typeof delta[key] === 'object' && Object.keys(delta[key]).length === 0)).map(key => [key, delta[key]]))));
 }
 
+/** Live game path: trust the generated story and apply its data without narrative review. */
+export async function settleGeneratedReply(plan, raw, { repairState } = {}) {
+  plan = followNarrativeTime(plan, raw);
+  const apply = delta => {
+    if (!delta || typeof delta !== 'object' || Array.isArray(delta)) throw new Error('回复缺少状态变化数据');
+    const model = normalizeNpcDelta(delta, plan.state);
+    const dataPlan = { ...plan, state: structuredClone(plan.state) };
+    for (const row of rows(model.contractUpdates)) {
+      const contract = dataPlan.state.player.contracts.find(c => c.id === row?.id);
+      if (!contract) throw new Error('委托更新引用了不存在的编号');
+      if (['completed', 'active'].includes(row.workStatus)) contract.workStatus = row.workStatus;
+    }
+    delete model.contractUpdates;
+    // These values are maintained by the engine; model copies must not double-apply them.
+    for (const key of ['time', 'body', 'skills', 'eventId']) delete model[key];
+    const result = finishTurn(dataPlan, model, { enforceTerms: false });
+    rememberSceneEvidence(result.state, plan);
+    return { ...result, raw, plan };
+  };
+  try { return { ...apply(splitDelta(raw).delta), repaired: false }; }
+  catch (error) {
+    if (!repairState) throw error;
+    const delta = await repairState(raw, plan, error.message);
+    return { ...apply(delta), repaired: true };
+  }
+}
+
 /** Validation may request one data-only repair; neither attempt mutates the plan. */
 export async function settleReply(plan, raw, { repair, repairAgency, repairNarrative, repairFinance, reviewContinuity, repairContinuity, prepareContext } = {}) {
   const original = splitDelta(raw).delta;

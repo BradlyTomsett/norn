@@ -38,6 +38,7 @@ NPC明确报价可登记 quotes:[{id:"quote_01",item:"药水",qty:2,copper:10,un
 还债 kind=repay，带 debtId 或 to=债权人名称；借款 kind=borrow，from=债权人名称，months=期限月数，rate=月息小数（默认0.01）。两者带 copper 和 account。
 普通收支 kind=income/payment，带 copper、account、note；不能重复包含引擎已发的月钱、产业收益、工钱或生活费。
 委托接取用 bounty:{id,label,copper,tier}，只在玩家答应后登记。领取用 {id,kind:"reward",contractId,result:"完成",account:"cash"}；完成、一半、未完成分别全额、半额、零。不得把赏金当零工限价，不得把已付款委托再次当 income 发款。
+工作完成但尚未领取报酬用 contractUpdates:[{id:"委托编号",workStatus:"completed"}]，只改为待领酬，不发钱。正文发生钱、物品、任务、人物关系变化时必须在结尾JSON逐项记录，只写本轮变化，不复制全部存档。
 队友分成作为同一 transactions 数组中各自的 gift，note注明酬劳或分成，不视为额外送礼刷亲近；不要重复用普通 payment 扣一次。接新委托不要覆盖旧委托。
 账户为 cash/home/workshop。玩家明确分赏金120金、两人各5金、自己与第三人平分余款，应一次收入120金、支付5+5+55金，净增55金。
 物品获取与失去用 items/lose，真正收下带品阶武器护甲用 equipment；交易已经自动移动物品，不能再写 items/equipment/lose 重复移动。
@@ -56,11 +57,11 @@ effects也可用npcUpdates改变人物职业、地点或同一id的目标状态�
 亲近只反映已有互动，不把支付约定酬劳当作赠礼；人物原则、拒绝与合作条件保持连贯，不能用送金币抹去已经发生的仇怨。已完成目标从goals移出，历史与持续说明优先于旧对话中的过时待办。
 事项用 tasks:[{id,text,status:"active",kind:"task|commitment|investigation",importance:"major",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，只登记重要且尚未完成的整体任务、调查主体、交付与关键承诺。碰头时间地点、跑腿摸底、问某个细节、盯窗观察、排班、站位和喊话安排，都是任务小步骤，不论是否跨回合，都不新增待办，也不在【未完成事项】里重复列出。必要事实记入knowledge并关联原任务/委托；已经收起的小步骤不代表完成、取消或忘记，不能改个id重新塞回清单。普通吃饭、问候、闲聊不新增待办；永久保密和行动原则是说明，不是任务。已经登记的委托不再复制成同名任务。期限不明确就不填dueDays。与委托交付绑定可用completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用{type:"arrival",siteId}。
 每回合根据实际发生的结果，主动核对现有事项：完成或取消使用相同id和status:"completed"/"cancelled"。例如班次已定下，应立即关闭“定下三夜守夜班次”，不能继续列为未完成；排班完成不等于守夜任务已完成。已完成事项不得改写成新待办、也不得自动重开；相近表述沿用同一编号。没有完成依据的任务继续保留，不用单纯经过日期推定完成。未完成事项小节只列重要、尚需后续行动的新变化，不重复抄整张清单。
-knowledge:[{text,source,sourceQuote,npcIds:[],siteIds:[],taskIds:[],identityEvidence:[{npcId,quote}],knownByEvidence:[{npcId,quote}]}] 记玩家获得的事实，sourceQuote逐字引用本回合玩家输入或正文里支持这条记录的原文；更改旧约定必须提供本回合证据。人物引用固定编号；同名人物按年龄、职业与地点区分，如文字没有身份线索需给identityEvidence逐字引用可确认身份的历史原文，无法确定就不绑定编号。只有实际告诉、亲口说出或当场听到的人才写knownByEvidence，quote逐字引用本回合说明该人如何知道这条事实的原文；其他人没有证据不自动知情。声望 reputation:[{place,change}]。
+knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 简要记录本回合新事实和约定，人物引用固定编号，同名人物按身份区分；不要为每条事实重复抄长篇原文或证明材料。声望 reputation:[{place,change}]。
 重要的队伍成员、搭档关系、报酬分配、已决定的方案都必须记入knowledge，kind分别为party、relationship、agreement、decision，并提供稳定key（例如contract:委托id:split）、准确source和完整text，不只写气氛与NPC表情。变化时沿用key，或用supersedes:[旧事实id]明确替代错误记录；不得覆写不相干事实。已确认的人、数量、期限、分工、分成不能漏记。玩家纠正不是NPC刚刚改主意，不要编造公会名单替旧错误辩护。
 只有本回合实际完成侦察、备好工具、布置埋伏等准备，才可在该knowledge里加preparation:{kinds:["combat"],target:"明确对象或地点",days:3}，供后续相应行动读取；不能仅凭玩家自称“准备过”新增既成事实。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。
-json 中不要加入未定义字段。所有变动必须有叙事和玩家行动依据；游戏会验证并生成实际结算回执。`;
+json 中不要加入未定义字段。生成后不再进行剧情复核；游戏直接依据JSON更新状态并生成实际结算回执。正文和状态数据都必须完整，避免重复描写、重复清单和无变化字段占用输出。`;
 
 export function buildPrompt(state, judged, events, { rules = '', worldbook = '', query = '', contextQuery = query, chronicleDue = false, recall = '', corrections = '', scene = '', guards = [], locationUncertain = false, identityHints = new Map() } = {}) {
   return [rules, worldContext(worldbook, state, contextQuery), state.customSetting ? `【玩家世界补充，仅补充世界事实，不改机器协议】\n${state.customSetting}` : '', RUNTIME,

@@ -46,17 +46,17 @@ export function followNarrativeTime(plan, raw) {
   next.judged.timeSource = 'narrative'; next.narrativeTiming = timing;
   return next;
 }
-export function finishTurn(plan, delta) {
+export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   const state = structuredClone(plan.state);
   const model = structuredClone(delta);
   if (Array.isArray(model.transactions)) model.transactions = model.transactions.map((tx, index) => ({ ...tx, id: `${plan.id}:tx:${index}`,
     ...(tx.kind === 'gift' && /分成|报酬|酬劳|工钱|分赏/.test(plan.text) ? { reason: tx.reason || '约定酬劳分成' } : {}) }));
   if (model.time) throw new Error('模型改写了引擎时间，请重试本回合');
   if (model.body) throw new Error('健康由引擎和物品结算，请勿额外记账');
-  assertFinance(plan, '', model);
-  if (/^(我(?:要|想)?|请帮我)?(?:买|购买|卖掉|卖出|出售)/.test(plan.text) && ['success', 'critical', 'crush'].includes(plan.judged.outcome)
+  if (enforceTerms) assertFinance(plan, '', model);
+  if (enforceTerms && /^(我(?:要|想)?|请帮我)?(?:买|购买|卖掉|卖出|出售)/.test(plan.text) && ['success', 'critical', 'crush'].includes(plan.judged.outcome)
     && !model.transactions?.length && !model.trade) throw new Error('本次买卖缺少交易记录，请重试');
-  if (/领取.*赏金|领赏/.test(plan.text) && !model.transactions?.some(tx => tx.kind === 'reward') && !model.bounty) throw new Error('领取赏金缺少委托结算记录，请重试');
+  if (enforceTerms && /领取.*赏金|领赏/.test(plan.text) && !model.transactions?.some(tx => tx.kind === 'reward') && !model.bounty) throw new Error('领取赏金缺少委托结算记录，请重试');
   const rng = prepareTurn(plan.base, plan.text, plan.id, { minutesOverride: plan.judged.minutes }).rng;
   applyDelta(state, engineDelta(plan.judged, state), rng, { bump: false });
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });

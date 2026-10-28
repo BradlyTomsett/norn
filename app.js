@@ -7,7 +7,7 @@ import { isCorrection, judge } from './engine/resolve.js';
 import { makeRng } from './engine/rng.js';
 import { prepareTurn } from './engine/turn.js';
 import { extractChoices, resolveAction } from './engine/actions.js';
-import { settleReply } from './engine/reply.js';
+import { settleGeneratedReply } from './engine/reply.js';
 import { buildPrompt } from './engine/protocol.js';
 import { esc, format, splitDelta } from './format.js';
 import { messageParts, narrationText, stripSettlement } from './messages.js';
@@ -20,13 +20,13 @@ import { VIEWS } from './views.js';
 import { BUILD } from './build.js';
 import { ambiguousPeople, entityRefs } from './engine/entities.js';
 import { buildTurnRequest, repairMessages } from './engine/context.js';
-import { CONTEXT_REVIEW_RULES, validateContextReview, rememberCorrections, ContinuityError } from './engine/continuity.js';
+import { rememberCorrections } from './engine/continuity.js';
 import { applyTasks } from './engine/tasks.js';
-import { maintainTasks, taskReviewKey, taskReviewInput, applyTaskReview, TASK_REVIEW_SYSTEM } from './engine/task-review.js';
+import { maintainTasks } from './engine/task-review.js';
 import { searchArchive } from './search.js';
 import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
 import { readPriceBounds } from './price-input.js';
-import { INTENT_SYSTEM, needsIntentReview, validateIntentAnalysis } from './engine/intent.js';
+import { completeReply } from './generation.js';
 import { timePreview } from './engine/time.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
@@ -560,7 +560,8 @@ function showPending() {
     button.onclick = () => send({ retry: true }); el.append(button); return;
   }
   el.textContent = '有一回合尚未提交，进度保持原样。 ';
-  const retry = document.createElement('button'); retry.textContent = '重试本回合'; retry.onclick = () => send({ retry: true }); el.append(retry);
+  const retry = document.createElement('button'); retry.textContent = pending.replyComplete ? '继续本回合' : pending.generationTruncated ? '继续生成' : '重试本回合';
+  retry.onclick = () => send({ retry: true }); el.append(retry);
 }
 function turnButtons(bubble) {
   const actions = document.createElement('div'); actions.className = 'turn-actions';
@@ -572,11 +573,11 @@ function turnButtons(bubble) {
 }
 async function recoverDelta(raw, plan, error = '') {
   const system = planSystem(plan) +
-    '\n你现在只修复变化数据，只输出一个 json 代码块。依据玩家原行动、当前状态与已写出的叙事，不能增加、删除或改变交易金额、数量、收付款对象，也不能重写剧情。没有证据的金额不能猜。已有人物必须使用原 id 和 npcUpdates，不要重复登记或覆盖不同身份。\n验证问题：' + error;
+    '\n你现在只整理状态变化数据，只输出一个完整JSON代码块。接受已有正文，禁止核对剧情、寻找证据或改写正文。依据正文完整记录金钱交易、物品增减、任务进展、人物与关系、地点变化。只修正无法存入状态的数据格式或编号引用，已有数据正确的部分完整保留；交易和物品不能重复登记。\n数据处理问题：' + error;
   app.metrics && app.metrics.repairs++;
   let out = '';
-  for await (const chunk of trackedChat({ system, messages: repairMessages(plan, raw, '只修复上述候选回复的变化数据，完整遵守本轮资料和玩家纠正。'),
-    maxTokens: 3000, temperature: 0.2, signal: app.controller.signal })) out += chunk;
+  for await (const chunk of trackedChat({ system, messages: repairMessages(plan, raw, '仅整理本回合应写入状态的变化数据，不核对或改写正文。'),
+    maxTokens: 8000, effort: 'none', temperature: 0.2, signal: app.controller.signal })) out += chunk;
   const delta = splitDelta(out).delta;
   if (!delta) throw new Error('回复缺少有效变化块，请重试本回合');
   return delta;
@@ -586,58 +587,6 @@ async function* trackedChat(options) {
   for await (const chunk of llm.streamChat({ ...options, onUsage: usage => {
     if (app.metrics) for (const [key, value] of Object.entries(usage)) app.metrics[key] = (app.metrics[key] || 0) + value;
   } })) yield chunk;
-}
-async function recoverAgency(raw, plan, error) {
-  if (app.metrics) app.metrics.repairs++;
-  turnStatus('回复替玩家作了决定，正在重写并核对…');
-  const system = planSystem(plan)
-    + '\n你现在修复玩家自主权问题，重新输出完整正文及 json。移除玩家没有批准的付款、交易、承诺、感情表态和补写台词。NPC 可以提出要求，然后停下来等玩家决定。保留玩家已明确批准的交易原金额、数量和对象，不增删其他交易。验证问题：' + error;
-  let out = '';
-  for await (const chunk of trackedChat({ system, messages: repairMessages(plan, raw, '修复玩家自主权问题，保留原始上下文与本轮纠正。'), temperature: 0.2, signal: app.controller.signal })) out += chunk;
-  return out;
-}
-async function recoverAbilityNarrative(raw, plan, error) {
-  if (app.metrics) app.metrics.repairs++;
-  turnStatus('正文与装备或天赋效果不一致，正在重写核对…');
-  const system = planSystem(plan)
-    + '\n你现在只修复本回合叙事与能力结果的矛盾。重新输出完整正文及原有JSON变化块。实际使用的武器、免疫效果与引擎健康结算不可推翻；删除无效的受伤、中毒或控制描写。不能变更原有交易、物品变化、人物、地点或行动目标结果。秘密天赋不直接透露给NPC。验证问题：' + error;
-  let out = '';
-  for await (const chunk of trackedChat({ system, messages: repairMessages(plan, raw, '只修复叙事与能力结果的矛盾，仍须执行本轮纠正。'), temperature: 0.2, signal: app.controller.signal })) out += chunk;
-  return out;
-}
-async function recoverFinance(raw, plan, error) {
-  if (app.metrics) app.metrics.repairs++;
-  turnStatus('金额、数量或对象与约定不一致，正在核对…');
-  const system = planSystem(plan)
-    + '\n你现在只修复本次交易与玩家明确约定的矛盾，重写完整正文与JSON。严格遵守以下已批准条件：' + JSON.stringify(plan.finance)
-    + '\n只可纠正这些业务的金额、数量与对象，不增删交易，不改变其他剧情数据。无法确定时不要猜。问题：' + error;
-  let out = '';
-  for await (const chunk of trackedChat({ system, messages: repairMessages(plan, raw, '只修复已批准的交易条件，遵守完整上下文和本轮纠正。'), temperature: 0.1, signal: app.controller.signal })) out += chunk;
-  return out;
-}
-async function reviewContinuity(raw, plan) {
-  // Plain rest has no unresolved factual action; correction turns are always checked.
-  if (plan.judged.kind === 'rest' && !plan.corrections.length
-    && (plan.judged.segments || []).every(segment => segment.kind === 'rest')) return;
-  turnStatus('正在核对人物、约定和本轮要求…');
-  let out = '';
-  try {
-    for await (const chunk of trackedChat({ system: planSystem(plan) + '\n' + CONTEXT_REVIEW_RULES,
-      messages: repairMessages(plan, raw, '核对以上候选回复，仅输出一致性核对JSON。'), maxTokens: 1800, temperature: 0.1, signal: app.controller.signal })) out += chunk;
-    validateContextReview(splitDelta(out).delta, raw, planSystem(plan) + '\n' + plan.request.messages.map(m => m.content).join('\n'));
-  } catch (error) {
-    if (!(error instanceof ContinuityError)) error.contextReviewFailed = true;
-    throw error;
-  }
-}
-async function recoverContinuity(raw, plan, error) {
-  if (app.metrics) app.metrics.repairs++;
-  turnStatus('发现事实冲突或遗漏，正在重写并重新核对…');
-  let out = '';
-  for await (const chunk of trackedChat({ system: planSystem(plan)
-    + '\n你现在只修复回复的事实一致性与完整性。依据同一份完整资料，重写正文与JSON。逐项落实玩家纠正，不能仅换同义词继续被否定的行为；不能为旧AI错误编造理由。保留所有交易、物品和其他引擎结算，只可修正与错误有关的knowledge、npcUpdates、tasks、goals、problems、location，不能凭空新增行动。问题：' + error,
-    messages: repairMessages(plan, raw, '修复上述明确问题后输出完整回复和JSON。'), temperature: 0.2, signal: app.controller.signal })) out += chunk;
-  return out;
 }
 async function send(options = {}) {
   if (busy() || !app.saveId) return;
@@ -723,8 +672,9 @@ async function sendTurn(options = {}) {
     }
     box.append(group); return;
   }
-  const reuseReply = Boolean(options.retry && (draft.replyComplete || draft.timeConflict) && draft.raw && splitDelta(draft.raw).delta);
-  try { await store.putPendingAsync(app.saveId, { ...draft, raw: reuseReply ? draft.raw : '', replyComplete: reuseReply }); }
+  const reuseReply = Boolean(options.retry && (draft.replyComplete || draft.timeConflict) && draft.raw);
+  const resumeReply = Boolean(options.retry && draft.generationTruncated && draft.raw);
+  try { await store.putPendingAsync(app.saveId, { ...draft, raw: reuseReply || resumeReply ? draft.raw : '', replyComplete: reuseReply }); }
   catch (error) { addMessage('error', '无法保存待处理回合：' + error.message + '。原进度已保留。'); return; }
   inputEl.value = ''; inputEl.style.height = 'auto';
   previewTimeOverride = null; $('#preview-time-edit').classList.add('hidden');
@@ -734,34 +684,30 @@ async function sendTurn(options = {}) {
   const playerText = draft.input !== draft.text ? `${draft.input}\n${draft.text}` : draft.text;
   addMessage('user', draft.correction || playerText);
   const bubble = addMessage('assistant', ''); bubble.classList.add('cursor'); scrollToElement(bubble);
-  turnStatus('正在生成，完成验证后保存…');
-  let raw = '', timer = null, lastDraftAt = Date.now(), category = 'generation', replyComplete = false;
+  turnStatus('正在生成，完成后更新状态并保存…');
+  let raw = '', timer = null, lastDraftAt = Date.now(), category = 'generation', replyComplete = false, generationTruncated = resumeReply;
   const started = performance.now(); app.metrics = { turn: source.turn + 1, requests: 0, repairs: 0 };
   try {
-    if (!reuseReply && !plan.corrections.length && needsIntentReview(plan.text)) {
-      turnStatus('正在理解行动中的人物、时间和否定…');
-      let analysis = '';
-      for await (const chunk of trackedChat({ system: INTENT_SYSTEM,
-        messages: [{ role: 'user', content: plan.text }], maxTokens: 1000, temperature: 0.1, signal: app.controller.signal })) analysis += chunk;
-      plan.intentAnalysis = validateIntentAnalysis(splitDelta(analysis).delta, plan.text);
-    }
     plan.request = buildTurnRequest(plan, { rules: app.rules, worldbook: app.worldbook, chronicleDue: chronicleDue(plan.state, draft.text) });
     Object.assign(app.metrics, plan.request.stats);
     if (reuseReply) raw = draft.raw;
-    else for await (const chunk of trackedChat({ system: plan.request.system, messages: plan.request.messages, temperature: 0.35, signal: app.controller.signal })) {
-      raw += chunk;
-      app.metrics.firstTokenMs ??= performance.now() - started;
-      if (!timer) timer = setTimeout(() => { timer = null; bubble.textContent = '正在生成并核对回复…（' + raw.length + ' 字）'; }, 100);
-      if (Date.now() - lastDraftAt > 2000) { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete: false }); lastDraftAt = Date.now(); }
-    }
+    else raw = await completeReply({ system: plan.request.system, messages: plan.request.messages, temperature: 0.35, signal: app.controller.signal },
+      { stream: trackedChat, initialRaw: resumeReply ? draft.raw : '', resume: resumeReply,
+        onProgress: async text => {
+          raw = text; app.metrics.firstTokenMs ??= performance.now() - started;
+          if (!timer) timer = setTimeout(() => { timer = null; bubble.textContent = '正在生成…（' + raw.length + ' 字）'; }, 100);
+          if (Date.now() - lastDraftAt > 2000) { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete: false, generationTruncated }); lastDraftAt = Date.now(); }
+        }, onContinuation: async text => {
+          generationTruncated = true; turnStatus('回复较长，正在接着补完…');
+          await store.putPendingAsync(app.saveId, { ...draft, raw: text, replyComplete: false, generationTruncated });
+        } });
     clearTimeout(timer); timer = null;
-    replyComplete = true;
-    await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete });
+    replyComplete = true; generationTruncated = false;
+    await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete, generationTruncated });
     category = 'validation';
-    const result = await settleReply(plan, raw, { prepareContext: currentPlan => {
-      currentPlan.request = buildTurnRequest(currentPlan, { rules: app.rules, worldbook: app.worldbook, chronicleDue: chronicleDue(currentPlan.state, draft.text) });
-    }, reviewContinuity, repairContinuity: recoverContinuity, repairAgency: recoverAgency, repairNarrative: recoverAbilityNarrative, repairFinance: recoverFinance, repair: async (...args) => {
-      turnStatus('正在核对回复，完成后保存…'); return recoverDelta(...args);
+    turnStatus('正在更新钱、物品、任务和人物关系…');
+    const result = await settleGeneratedReply(plan, raw, { repairState: async (...args) => {
+      turnStatus('正在整理状态变化数据…'); return recoverDelta(...args);
     } });
     plan = result.plan;
     const clean = narrationText(result.raw) || '这一回合的行动已经记下。';
@@ -786,8 +732,8 @@ async function sendTurn(options = {}) {
     }
   } catch (error) {
     clearTimeout(timer);
-    try { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete }); } catch { /* The original committed save is still intact. */ }
-    bubble.textContent = '这份回复尚未通过核对，原进度已保留。';
+    try { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete, generationTruncated }); } catch { /* The original committed save is still intact. */ }
+    bubble.textContent = raw ? narrationText(raw) || '本回合回复已保留。' : '本回合尚未生成完成，原进度已保留。';
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: app.controller.signal.aborted ? 'cancelled' : 'failed', category: app.controller.signal.aborted ? 'cancelled' : category, durationMs: performance.now() - started, outputChars: raw.length }).catch(() => {});
     bubble.classList.remove('cursor');
     addMessage('error', '本回合尚未提交：' + (app.controller.signal.aborted ? '生成已停止' : error.message));
@@ -863,22 +809,9 @@ async function autoMaintainTasks() {
     const changed = maintainTasks(state, messages);
     if (changed) { await store.putSaveAsync(state); refreshTasks(state, '已自动整理完成和日常事项。'); }
     if (app.saveId !== id || busy() || store.getPending(id)) return;
-    const key = taskReviewKey(state, messages);
-    if (state.taskMaintenance?.key === key) { taskNotice('事项已自动整理。'); return; }
-    const input = taskReviewInput(state, messages);
-    if ((!input.tasks.length && !input.contracts.length && !input.goals.length) || !input.sources.length) { taskNotice('事项已自动整理。'); return; }
-    if (!llm.hasKey() || busy() || app.saveId !== id) return;
-    taskNotice('正在核对历史，自动整理重要事项…');
-    let raw = '';
-    for await (const chunk of llm.streamChat({ system: TASK_REVIEW_SYSTEM,
-      messages: [{ role: 'user', content: JSON.stringify(input) }], maxTokens: 3000, temperature: 0.1, timeoutMs: 45000 })) raw += chunk;
-    if (busy() || app.saveId !== id || store.getSave(id)?.revision !== state.revision || store.getPending(id)) return;
-    const review = splitDelta(raw).delta; applyTaskReview(state, review, input.sources);
-    state.taskMaintenance = { version: 1, key: taskReviewKey(state, messages) };
-    await store.putSaveAsync(state); refreshTasks(state, '事项已自动整理。');
-    if (sync.ghReady()) sync.backupSave(state, messages).catch(() => {});
+    refreshTasks(state, '事项已自动整理。');
   } catch (error) {
-    if (app.saveId === id) taskNotice('本次整理未完成，现有任务已保留；下次打开事项时再核对。');
+    if (app.saveId === id) taskNotice('本次整理未完成，现有任务已保留。');
   } finally { taskReviewFlights.delete(id); }
 }
 
