@@ -148,8 +148,8 @@ logEl.addEventListener(
 
 const FAMILY_LABEL = {
   npc_farmer: '农户', npc_miller: '磨坊工', npc_apprentice: '学徒', npc_orphan: '孤儿',
-  npc_miner: '矿工', npc_smith_apprentice: '锻工学徒', npc_ferryman: '渡夫', npc_peddler: '行商',
-  npc_fisher: '渔户', npc_docker: '脚夫', npc_clerk: '账房学徒',
+  npc_miner: '矿工', npc_smith_apprentice: '锻工学徒', npc_ferryman: '渡夫', npc_peddler: '旅行商人',
+  npc_fisher: '渔民', npc_docker: '码头工人', npc_clerk: '记账员学徒',
 };
 
 async function openWizard() {

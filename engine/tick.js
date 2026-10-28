@@ -34,7 +34,7 @@ const MONTH_EVENTS = [
 const NPC_EVENTS = [
   { type: 'ill', text: (n) => `${n}病了一场，躺了十来天，人瘦了一圈` },
   { type: 'marry', text: (n) => `${n}与邻镇的一位手艺人成了婚` },
-  { type: 'move', text: (n) => `${n}搬走了，说是去郡城投亲戚` },
+  { type: 'move', text: (n) => `${n}搬去了郡城，与那里的亲属同住` },
   { type: 'promote', text: (n) => `${n}升了，管的事情比从前多` },
   { type: 'die', text: (n) => `${n}死了，丧事办得很简单` },
 ];

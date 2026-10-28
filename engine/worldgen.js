@@ -31,14 +31,14 @@ export const REGIONS = [
     terrain: '黑岩山脉的余脉，一条河从这里过，岸上是矿车轨道与货栈',
     economy: '铁料、煤、矮人锻造；渡船与关税',
     politics: '人类与矮人混居，镇长由行会推举，但真正说话的是矿主',
-    risk: '矿洞塌方；走私；边境税吏格外苛刻',
+    risk: '矿洞塌方；走私；边境关税官格外苛刻',
     families: ['npc_miner', 'npc_smith_apprentice', 'npc_ferryman', 'npc_peddler'],
     names: {
       male: ['多恩', '布鲁诺', '卡尔', '奥托', '芬', '格里姆'],
       female: ['布伦', '希尔达', '英格', '薇拉', '赛拉'],
       family: ['石足', '铁手', '灰炉', '渡口', '山下'],
     },
-    professions: ['矿主', '矮人锻匠', '税吏', '货栈主'],
+    professions: ['矿主', '矮人锻匠', '关税官', '仓库老板'],
     metaphor: 'forge',
   },
   {
@@ -56,7 +56,7 @@ export const REGIONS = [
       female: ['妮拉', '莎拉', '伊莎', '凯特', '米拉'],
       family: ['索尔', '维拉', '卡恩', '朗', '梅'],
     },
-    professions: ['船长', '商会账房', '码头管事', '鱼贩'],
+    professions: ['船长', '商会记账员', '码头主管', '鱼贩'],
     metaphor: 'sea',
   },
 ];
@@ -65,14 +65,14 @@ const FAMILY_INFO = {
   npc_farmer: { tag: '农户', money: 60, desc: '家里佃着别人的地，年成好时能攒下一点' },
   npc_miller: { tag: '磨坊工', money: 90, desc: '父亲在磨坊帮工，家里常年有面粉味' },
   npc_apprentice: { tag: '学徒', money: 70, desc: '家里托人把你送进铺子当学徒，指望着学门手艺' },
-  npc_orphan: { tag: '孤儿', money: 12, desc: '家里只剩一个远房姑母，管你一顿饭，不管你一辈子' },
+  npc_orphan: { tag: '孤儿', money: 12, desc: '只有一位远房亲属偶尔照看你，其余时候得自己想办法' },
   npc_miner: { tag: '矿工', money: 55, desc: '父亲下矿，母亲在井口卖热汤' },
   npc_smith_apprentice: { tag: '锻工学徒', money: 75, desc: '父亲在矮人锻匠手下干活，手上全是烫疤' },
   npc_ferryman: { tag: '渡夫', money: 50, desc: '家里有条渡船，靠来往的货吃饭' },
-  npc_peddler: { tag: '行商', money: 85, desc: '父亲挑着担子跑三镇，家里总有一股杂货味' },
-  npc_fisher: { tag: '渔户', money: 45, desc: '家里有条旧渔船，天不亮就出海' },
-  npc_docker: { tag: '脚夫', money: 40, desc: '父亲在码头扛包，一天一结，下雨就没钱' },
-  npc_clerk: { tag: '账房学徒', money: 95, desc: '母亲识几个字，在商会里抄账，家里干净得像别人家' },
+  npc_peddler: { tag: '旅行商人', money: 85, desc: '父亲带着货物往返于三个小镇，家里总有一股杂货味' },
+  npc_fisher: { tag: '渔民', money: 45, desc: '家里有条旧渔船，天不亮就出海' },
+  npc_docker: { tag: '码头工人', money: 40, desc: '父亲在码头搬运货物，按天领工钱，下雨就没有收入' },
+  npc_clerk: { tag: '记账员学徒', money: 95, desc: '母亲能读写，在商会整理账目，家里收拾得很整洁' },
 };
 
 const VOICE_BY_PROFESSION = {
@@ -82,11 +82,11 @@ const VOICE_BY_PROFESSION = {
   酒馆老板: { vocabulary: 2, sentence: 'medium', politeness: 2, tics: ['坐下说'], metaphor: '酒和客人' },
   矿主: { vocabulary: 3, sentence: 'short', politeness: 1, tics: ['数目说话'], metaphor: '矿脉和塌方' },
   矮人锻匠: { vocabulary: 2, sentence: 'short', politeness: 1, tics: ['锤子不会骗人'], metaphor: '钢和火' },
-  税吏: { vocabulary: 4, sentence: 'long', politeness: 3, tics: ['依律'], metaphor: '条文和印' },
-  货栈主: { vocabulary: 3, sentence: 'medium', politeness: 2, tics: ['货在人在'], metaphor: '货和账' },
+  关税官: { vocabulary: 4, sentence: 'long', politeness: 3, tics: ['按规定'], metaphor: '条文和印章' },
+  仓库老板: { vocabulary: 3, sentence: 'medium', politeness: 2, tics: ['先点清货物'], metaphor: '货物和账本' },
   船长: { vocabulary: 2, sentence: 'short', politeness: 1, tics: ['起锚'], metaphor: '海和风' },
-  商会账房: { vocabulary: 4, sentence: 'medium', politeness: 3, tics: ['这笔不对'], metaphor: '数字和印章' },
-  码头管事: { vocabulary: 2, sentence: 'short', politeness: 1, tics: ['扛得动吗'], metaphor: '绳和包' },
+  商会记账员: { vocabulary: 4, sentence: 'medium', politeness: 3, tics: ['这笔不对'], metaphor: '数字和印章' },
+  码头主管: { vocabulary: 2, sentence: 'short', politeness: 1, tics: ['扛得动吗'], metaphor: '绳索和货包' },
   鱼贩: { vocabulary: 2, sentence: 'short', politeness: 2, tics: ['新鲜着呢'], metaphor: '鱼和冰' },
 };
 
@@ -197,7 +197,7 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
     }),
   );
 
-  const neighborProfession = region.id === 'tideport' ? '鱼贩' : region.id === 'anvilford' ? '货栈主' : '磨坊工';
+  const neighborProfession = region.id === 'tideport' ? '鱼贩' : region.id === 'anvilford' ? '仓库老板' : '磨坊工';
   const neighborGender = gender === 'male' ? 'female' : 'male';
   npcs.push(
     makeNpc(rng, {
@@ -316,7 +316,7 @@ export function openingText(state, fam, region) {
   lines.push('');
   if (fam.tag === '孤儿') {
     lines.push(
-      `你十二岁。${region.name}的人大多知道你——不是因为你做过什么，是因为你没有大人。姑母隔三天给你留一碗饭，剩下的时间你自己想办法。`,
+      `你十二岁。${region.name}的人大多知道你是个孤儿。远房亲属每隔几天给你留些食物，剩下的时间你得自己想办法。`,
     );
   } else {
     lines.push(
