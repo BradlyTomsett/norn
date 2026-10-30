@@ -133,6 +133,35 @@ export function getLastTurn(id) {
   if (turn?.historyCount != null) turn.messages = getMessages(id, { limit: turn.historyCount });
   return turn;
 }
+/** Checkpoints share the main message history rather than storing 20 copies. */
+export function getRewindPoints(id) {
+  const record = readRecord(id); if (!record) return [];
+  const points = structuredClone(record.rewindPoints || []);
+  const last = getLastTurn(id);
+  if (last?.base && !points.some(p => p.turn === last.base.turn)) points.push({ turn: last.base.turn, state: last.base, historyCount: last.messages.length });
+  return points.filter(p => Number.isSafeInteger(p.turn) && p.state?.turn === p.turn && Number.isSafeInteger(p.historyCount) && p.historyCount >= 0)
+    .sort((a, b) => a.turn - b.turn).slice(-20);
+}
+function nextRewindPoints(old, options) {
+  if (options.rewindPoints !== undefined) return structuredClone(options.rewindPoints).slice(-20);
+  const points = structuredClone(old?.rewindPoints || []), point = options.rewindPoint;
+  if (!point) return points;
+  return [...points.filter(p => p.turn < point.turn), structuredClone(point)].slice(-20);
+}
+export async function rewindTurns(id, count) {
+  if (!Number.isInteger(count) || count < 1 || count > 20) throw new Error('请输入 1 到 20 之间的整数。');
+  await loadMessages(id);
+  const current = getSave(id); if (!current) throw new Error('找不到存档。');
+  const points = getRewindPoints(id), target = points.find(point => point.turn === current.turn - count);
+  if (!target || target.historyCount > getMessages(id).length) throw new Error('该回合没有可用的恢复点，请选择已保存的回合数。');
+  const restored = upgradeState(structuredClone(target.state));
+  if (restored.player.body.health <= 0 || restored.gameEnded) throw new Error('该恢复点的人物已死亡，请选择更早的回合。');
+  restored.saveId = id; restored.revision = current.revision; delete restored.gameEnded;
+  const messages = getMessages(id, { limit: target.historyCount });
+  await putSaveAsync(restored, messages, { expectedRevision: current.revision, pending: null, lastTurn: null,
+    rewindPoints: points.filter(point => point.turn < target.turn) });
+  return restored;
+}
 export function putPending(id, pending) {
   const record = readRecord(id);
   if (!record) throw new Error('找不到存档');
@@ -152,7 +181,8 @@ export function putSave(state, messages, options = {}) {
   const record = { format: 'norn-save', schemaVersion: SCHEMA_VERSION, state: next,
     diagnostics: old?.diagnostics || [],
     messages: messages ?? old?.messages ?? [], pending: options.pending === undefined ? old?.pending || null : options.pending,
-    lastTurn: options.lastTurn === undefined ? old?.lastTurn || null : options.lastTurn };
+    lastTurn: options.lastTurn === undefined ? old?.lastTurn || null : options.lastTurn,
+    rewindPoints: nextRewindPoints(options.rewindPoint ? { rewindPoints: getRewindPoints(next.saveId) } : old, options) };
   writeRecord(next.saveId, record);
   state.updatedAt = next.updatedAt; state.revision = next.revision;
 }
@@ -172,6 +202,7 @@ export async function putSaveAsync(state, messages, options = {}) {
     const patch = compact({
       pending: options.pending === undefined ? old?.pending || null : options.pending,
       lastTurn: options.lastTurn === undefined ? old?.lastTurn || null : options.lastTurn,
+      rewindPoints: nextRewindPoints(options.rewindPoint ? { rewindPoints: getRewindPoints(id) } : old, options),
     }, nextMessages);
     const record = await archive.commit(id, { state: snapshot, expectedRevision, patch,
       tail: messages === undefined ? undefined : { start, messages: nextMessages.slice(start) } });
@@ -228,7 +259,7 @@ export function deleteSave(id) {
 export function newId() {
   return 'sv_' + (globalThis.crypto?.randomUUID?.().replaceAll('-', '') || Math.random().toString(36).slice(2));
 }
-export function savePackage(state, messages = getMessages(state.saveId), { lastTurn = null } = {}) {
+export function savePackage(state, messages = getMessages(state.saveId), { lastTurn = null, rewindPoints = [] } = {}) {
   const out = { format: 'norn-save', schemaVersion: SCHEMA_VERSION, state: upgradeState(structuredClone(state)), messages: cleanRetiredMessages(messages) };
   if (lastTurn?.base?.turn === state.turn - 1 && Array.isArray(lastTurn.messages)
     && lastTurn.messages.length <= messages.length && lastTurn.messages.every((m, i) => JSON.stringify(m) === JSON.stringify(messages[i]))) {
@@ -238,10 +269,11 @@ export function savePackage(state, messages = getMessages(state.saveId), { lastT
       ...(Object.hasOwn(lastTurn, 'randomEvent') ? { randomEvent: lastTurn.randomEvent } : {}),
       ...(lastTurn.minutesOverride != null ? { minutesOverride: lastTurn.minutesOverride } : {}) };
   }
+  if (rewindPoints.length) out.rewindPoints = structuredClone(rewindPoints).slice(-20);
   return out;
 }
 export function exportSave(state) {
-  const blob = new Blob([JSON.stringify(savePackage(state, getMessages(state.saveId), { lastTurn: getLastTurn(state.saveId) }), null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(savePackage(state, getMessages(state.saveId), { lastTurn: getLastTurn(state.saveId), rewindPoints: getRewindPoints(state.saveId) }), null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `norn-${state.player.name}-${state.saveId}.json`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -256,6 +288,16 @@ export function decodeSave(payload) {
   if (!Array.isArray(messages) || messages.some(m => !['user', 'assistant', 'system'].includes(m.role) || typeof m.content !== 'string')) throw new Error('存档的对话记录无效');
   delete state.messages;
   const out = { state: upgradeState(state), messages: cleanRetiredMessages(messages) };
+  if (payload.rewindPoints != null) {
+    if (!Array.isArray(payload.rewindPoints) || payload.rewindPoints.length > 20) throw new Error('回档记录无效');
+    let previousTurn = -1, previousCount = -1;
+    out.rewindPoints = payload.rewindPoints.map(row => {
+      if (!Number.isSafeInteger(row.turn) || row.turn <= previousTurn || row.turn >= state.turn || row.state?.turn !== row.turn
+        || !Number.isSafeInteger(row.historyCount) || row.historyCount < previousCount || row.historyCount > messages.length) throw new Error('回档记录无效');
+      previousTurn = row.turn; previousCount = row.historyCount;
+      return { turn: row.turn, state: decodeSave({ format: 'norn-save', schemaVersion: payload.schemaVersion, state: row.state, messages: [] }).state, historyCount: row.historyCount };
+    });
+  }
   if (payload.lastTurn) {
     const row = payload.lastTurn;
     if (typeof row.id !== 'string' || typeof row.input !== 'string' || !Number.isSafeInteger(row.historyCount) || row.historyCount < 0 || row.historyCount > messages.length - 2
@@ -266,11 +308,12 @@ export function decodeSave(payload) {
   return out;
 }
 export async function importSave(file) {
-  const { state, messages, lastTurn } = decodeSave(JSON.parse(await file.text()));
+  const { state, messages, lastTurn, rewindPoints = [] } = decodeSave(JSON.parse(await file.text()));
   state.snapshotOf = state.saveId; state.lineageId ||= state.saveId;
   state.saveId = newId(); state.revision = 0;
   state.createdAt = new Date().toISOString(); state.label ||= '导入的存档';
   if (lastTurn) lastTurn.base.saveId = state.saveId;
-  await putSaveAsync(state, messages, { lastTurn: lastTurn || null });
+  for (const point of rewindPoints) point.state.saveId = state.saveId;
+  await putSaveAsync(state, messages, { lastTurn: lastTurn || null, rewindPoints });
   return state.saveId;
 }

@@ -303,11 +303,43 @@ async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {})
     composerEl.classList.add('hidden');
   } else {
     if (app.messages.at(-1)?.role === 'user') addMessage('error', '上一条消息没有收到回复，可以重试本回合。');
-    if (last && store.getLastTurn(id)) turnButtons(last);
-    if (last && app.messages.at(-1)?.role === 'assistant') renderChoices(last, app.messages.at(-1));
+    if (state.player.body.health > 0 && !state.gameEnded) {
+      if (last && store.getLastTurn(id)) turnButtons(last);
+      if (last && app.messages.at(-1)?.role === 'assistant') renderChoices(last, app.messages.at(-1));
+    } else { showDeathOptions(state); last = logEl.lastElementChild; }
   }
   renderSheet(); renderToc(); showPending();
   if (focus || last) scrollToElement(focus || last); else scrollToEnd();
+}
+
+function showDeathOptions(state) {
+  composerEl.classList.add('hidden');
+  const box = document.createElement('div'); box.className = 'msg'; box.id = 'death-options';
+  if (state.gameEnded) { box.textContent = '本局已结束。你可以从存档选择其他进度。'; logEl.append(box); return; }
+  const counts = store.getRewindPoints(state.saveId).filter(p => p.state.player?.body?.health > 0 && !p.state.gameEnded)
+    .map(p => state.turn - p.turn).filter(n => n >= 1 && n <= 20).sort((a, b) => a - b);
+  box.innerHTML = `<p class="sec">【人物死亡】</p><p>选择结束游戏，或回到之前的回合。</p>
+    <p id="death-available"></p><label>回退回合数（最多 20）<input id="death-count" type="number" min="1" max="20" step="1" inputmode="numeric" class="name-input" /></label>
+    <p id="death-message" role="status"></p><div class="action-choices"><button id="death-rewind" class="action-choice">回档</button><button id="death-end" class="action-choice">结束游戏</button></div>`;
+  logEl.append(box);
+  box.querySelector('#death-available').textContent = counts.length ? `可回退：${counts.join('、')} 回合` : '当前没有可用的回档记录。';
+  const input = box.querySelector('#death-count'); input.value = counts[0] || ''; input.disabled = !counts.length;
+  box.querySelector('#death-rewind').disabled = !counts.length;
+  box.querySelector('#death-rewind').onclick = () => runAction(async () => {
+    if (busy()) return;
+    const raw = input.value.trim(), count = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isInteger(count) || count < 1 || count > 20 || !counts.includes(count)) {
+      box.querySelector('#death-message').textContent = '请输入可回退的回合数，最多 20 回合。'; return;
+    }
+    try { await store.rewindTurns(state.saveId, count); await loadGame(state.saveId); turnStatus(`已回退 ${count} 回合，本机进度已保存。`); }
+    catch (error) { box.querySelector('#death-message').textContent = error.message; }
+  });
+  box.querySelector('#death-end').onclick = () => runAction(async () => {
+    if (busy()) return;
+    const current = store.getSave(state.saveId); current.gameEnded = true;
+    await store.putSaveAsync(current, undefined, { expectedRevision: state.revision, pending: null });
+    await loadGame(state.saveId);
+  });
 }
 
 function renderChoices(bubble, message) {
@@ -361,7 +393,8 @@ $('#btn-snap').onclick = async () => {
   copy.saveId = store.newId();
   copy.label = `${s.player.name} · ${s.player.age} 岁 · 第 ${s.turn} 回合`;
   copy.snapshotOf = app.saveId;
-  await store.putSaveAsync(copy, store.getMessages(app.saveId));
+  const points = store.getRewindPoints(app.saveId); for (const point of points) point.state.saveId = copy.saveId;
+  await store.putSaveAsync(copy, store.getMessages(app.saveId), { rewindPoints: points });
   renderSaves();
   alert('已存快照。');
 };
@@ -618,6 +651,7 @@ async function send(options = {}) {
 async function sendTurn(options = {}) {
   if (app.streaming || !app.saveId) return;
   const current = store.getSave(app.saveId);
+  if (current?.player.body.health <= 0 || current?.gameEnded) { turnStatus('人物已死亡，请先选择结束游戏或回档。'); return; }
   const pending = store.getPending(app.saveId);
   const typed = inputEl.value.trim();
   if (!options.retry && !typed) return;
@@ -631,7 +665,8 @@ async function sendTurn(options = {}) {
     const previous = store.getLastTurn(app.saveId);
     if (!previous) { addMessage('error', '还没有可撤回的回合。'); return; }
     const restored = structuredClone(previous.base); restored.saveId = app.saveId;
-    await store.putSaveAsync(restored, previous.messages, { expectedRevision: current.revision, lastTurn: null, pending: null });
+    await store.putSaveAsync(restored, previous.messages, { expectedRevision: current.revision, lastTurn: null, pending: null,
+      rewindPoints: store.getRewindPoints(app.saveId).filter(point => point.turn < restored.turn) });
     inputEl.value = ''; await loadGame(app.saveId, { allowDuringTurn: true }); addMessage('assistant', '已撤回上一回合，回到结算前。'); return;
   }
   if (!llm.hasKey()) { openSettings(); return; }
@@ -730,6 +765,7 @@ async function sendTurn(options = {}) {
     result.state.saveId = app.saveId;
     category = 'storage';
     await store.putSaveAsync(result.state, messages, { expectedRevision: draft.baseRevision, pending: null, replaceFrom: history.length,
+      rewindPoint: { turn: plan.base.turn, state: plan.base, historyCount: history.length },
       lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt, corrections: plan.corrections, eventFrequency: draft.eventFrequency, randomEvent: draft.randomEvent,
         minutesOverride: plan.narrativeTiming?.minutes ?? draft.minutesOverride ?? null } });
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: 'saved', durationMs: performance.now() - started, outputChars: result.raw.length }).catch(() => {});
@@ -1199,6 +1235,7 @@ $('#btn-gh-restore').onclick = async () => {
               const carried = Array.isArray(state.messages) ? state.messages : [];
               delete state.messages;
               const restoredTurn = state.restoredTurn || null; delete state.restoredTurn;
+              const restoredPoints = state.restoredPoints || []; delete state.restoredPoints;
               state.snapshotOf = state.saveId;
               state.lineageId ||= state.saveId;
               state.saveId = store.newId();
@@ -1206,7 +1243,8 @@ $('#btn-gh-restore').onclick = async () => {
               state.createdAt = new Date().toISOString();
               state.label = '来自 GitHub';
               if (restoredTurn) restoredTurn.base.saveId = state.saveId;
-              await store.putSaveAsync(state, carried, { lastTurn: restoredTurn });
+              for (const point of restoredPoints) point.state.saveId = state.saveId;
+              await store.putSaveAsync(state, carried, { lastTurn: restoredTurn, rewindPoints: restoredPoints });
               $('#restore').classList.add('hidden');
               await loadGame(state.saveId);
               alert(`已恢复：${state.player.name} · 第 ${state.turn ?? 0} 回合`);

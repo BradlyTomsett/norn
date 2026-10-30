@@ -6,6 +6,24 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('人物死亡后可输入回退回合数，恢复剧情及状态；结束游戏后刷新仍结束', async ({ page }) => {
+  await open(page, 'death'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await act(page, '看看周围'); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await act(page, '再看看周围'); await expect(page.locator('#fixture-monitor')).toContainText('回合：2');
+  await act(page, '攻击巫妖皇'); await expect(page.locator('#death-options')).toContainText('人物死亡');
+  await expect(page.locator('#composer')).toBeHidden();
+  await expect(page.locator('#death-available')).toContainText('1、2、3');
+  await page.locator('#death-count').fill('21'); await page.locator('#death-rewind').click();
+  await expect(page.locator('#death-message')).toContainText('最多 20 回合');
+  await page.locator('#death-count').fill('2'); await page.locator('#death-rewind').click();
+  await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
+  await expect(page.locator('#input')).toBeVisible(); await expect(page.locator('#log')).not.toContainText('攻击巫妖皇');
+  await act(page, '攻击巫妖皇'); await expect(page.locator('#death-options')).toContainText('人物死亡');
+  await page.locator('#death-end').click(); await expect(page.locator('#death-options')).toContainText('本局已结束');
+  await page.reload(); await expect(page.locator('#death-options')).toContainText('本局已结束');
+  await expect(page.locator('#composer')).toBeHidden();
+});
+
 test('随机事件频率可在设置中选择并在刷新后保留', async ({ page }) => {
   await open(page); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '存档', exact: true }).click();

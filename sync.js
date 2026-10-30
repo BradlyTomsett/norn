@@ -1,4 +1,4 @@
-import { decodeSave, savePackage, getSave, getLastTurn } from './store.js';
+import { decodeSave, savePackage, getSave, getLastTurn, getRewindPoints } from './store.js';
 import { sessionOnly } from './llm.js';
 import { uiState } from './engine/state.js';
 const CFG = 'norn.gh';
@@ -78,7 +78,8 @@ export function backupSave(state, messages) {
   const snapshot = structuredClone(state), c = ghConfig();
   const path = `saves/${snapshot.saveId}.json`, key = baselineKey(c, snapshot.saveId);
   const checkpoint = getSave(snapshot.saveId)?.revision === snapshot.revision ? getLastTurn(snapshot.saveId) : null;
-  const payload = JSON.stringify(savePackage(snapshot, messages || [], { lastTurn: checkpoint }), null, 2);
+  const points = checkpoint || getSave(snapshot.saveId)?.revision === snapshot.revision ? getRewindPoints(snapshot.saveId) : [];
+  const payload = JSON.stringify(savePackage(snapshot, messages || [], { lastTurn: checkpoint, rewindPoints: points }), null, 2);
   const run = async () => {
     const head = await ghGet(path, c), expected = localStorage.getItem(key);
     if (head?.text === payload) { localStorage.setItem(key, head.sha); return path; }
@@ -101,6 +102,6 @@ export function backupSave(state, messages) {
 }
 export async function restoreSave(path) {
   const file = await ghGet(path); if (!file) throw new Error('文件不在了');
-  const { state, messages, lastTurn } = decodeSave(JSON.parse(file.text));
-  return { ...state, messages, ...(lastTurn ? { restoredTurn: lastTurn } : {}) };
+  const { state, messages, lastTurn, rewindPoints } = decodeSave(JSON.parse(file.text));
+  return { ...state, messages, ...(lastTurn ? { restoredTurn: lastTurn } : {}), ...(rewindPoints ? { restoredPoints: rewindPoints } : {}) };
 }
