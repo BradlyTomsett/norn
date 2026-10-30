@@ -11,8 +11,9 @@ import { entityRefs } from './entities.js';
 import { absoluteDay } from './schema.js';
 import { rememberCorrections } from './continuity.js';
 import { narrativeTime } from './time.js';
+import { selectRandomEvent, recordRandomEvent } from './random-events.js';
 
-export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null } = {}) {
+export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null, eventFrequency = 'medium', randomEventOverride = undefined } = {}) {
   const action = resolveAction(input, messages), text = action.text;
   const base = upgradeState(structuredClone(source));
   rememberCorrections(base, messages, corrections);
@@ -30,7 +31,8 @@ export function prepareTurn(source, input, id, { messages = [], corrections = []
   }
   const events = advanceWorld(state, judged.minutes, rng, judged);
   advanceTasks(state);
-  const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, rng, history: messages, corrections, rejectedReply };
+  const randomEvent = randomEventOverride === undefined ? selectRandomEvent(base, judged, text, eventFrequency) : randomEventOverride;
+  const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, randomEvent, eventFrequency, rng, history: messages, corrections, rejectedReply };
   plan.finance = financeTerms(plan);
   return plan;
 }
@@ -41,7 +43,8 @@ export function followNarrativeTime(plan, raw) {
   if (!timing) return plan;
   const next = timing.minutes === plan.judged.minutes ? { ...plan, judged: { ...plan.judged } }
     : prepareTurn(plan.base, plan.text, plan.id, { messages: plan.history, corrections: plan.corrections,
-      rejectedReply: plan.rejectedReply, minutesOverride: timing.minutes });
+      rejectedReply: plan.rejectedReply, minutesOverride: timing.minutes, eventFrequency: plan.eventFrequency });
+  next.randomEvent = plan.randomEvent;
   for (const key of ['input', 'selected', 'intentAnalysis']) if (plan[key] != null) next[key] = plan[key];
   next.judged.timeSource = 'narrative'; next.narrativeTiming = timing;
   return next;
@@ -61,6 +64,7 @@ export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   applyDelta(state, engineDelta(plan.judged, state), rng, { bump: false });
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });
   if (!result.applied) throw new Error(result.rejected.join('；'));
+  recordRandomEvent(state, plan.randomEvent, plan.id);
   trainSkill(state, plan.judged);
   if (['social', 'trade'].includes(plan.judged.kind)) for (const id of entityRefs(state, plan.text).npcIds) {
     const npc = state.npcs.find(n => n.id === id), name = npc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

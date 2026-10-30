@@ -393,6 +393,7 @@ function openSettings() {
   $('#set-session-only').checked = llm.sessionOnly();
   $('#set-model').value = llm.getModel();
   for (const b of $('#set-effort').children) b.classList.toggle('selected', b.dataset.effort === llm.getEffort());
+  for (const b of $('#set-events').children) b.classList.toggle('selected', b.dataset.frequency === (localStorage.getItem('norn.eventFrequency') || 'medium'));
   const gh = sync.ghConfig();
   $('#set-gh-repo').value = gh.owner && gh.repo ? `${gh.owner}/${gh.repo}` : '';
   $('#set-gh-branch').value = gh.branch || 'main';
@@ -530,12 +531,17 @@ $('#set-effort').addEventListener('click', (e) => {
   [...$('#set-effort').children].forEach((c) => c.classList.remove('selected'));
   b.classList.add('selected');
 });
+$('#set-events').addEventListener('click', e => {
+  const button = e.target.closest('[data-frequency]'); if (!button) return;
+  for (const row of $('#set-events').children) row.classList.toggle('selected', row === button);
+});
 $('#set-save').onclick = () => {
   llm.setSessionOnly($('#set-session-only').checked);
   llm.setKey($('#set-key').value);
   llm.setModel($('#set-model').value);
   const sel = $('#set-effort').querySelector('.selected');
   if (sel) llm.setEffort(sel.dataset.effort);
+  localStorage.setItem('norn.eventFrequency', $('#set-events .selected')?.dataset.frequency || 'medium');
   saveGhFromForm();
   $('#settings').classList.add('hidden');
   updateGhStatus();
@@ -649,6 +655,7 @@ async function sendTurn(options = {}) {
       return;
     }
     draft = { id: previous.id, text: previous.input, correction: typed, baseState: previous.base, minutesOverride: previous.minutesOverride,
+      eventFrequency: previous.eventFrequency, ...(Object.hasOwn(previous, 'randomEvent') ? { randomEvent: previous.randomEvent } : {}),
       corrections: [...new Set([...(previous.corrections || []), typed])],
       rejectedReply: store.getMessages(app.saveId).findLast(m => m.role === 'assistant')?.content || '',
       history: previous.messages, baseRevision: current.revision, createdAt: new Date().toISOString() };
@@ -660,8 +667,10 @@ async function sendTurn(options = {}) {
   const history = draft.history || store.getMessages(app.saveId);
   let plan;
   try {
-    plan = prepareTurn(source, draft.text, draft.id, { messages: history, corrections: draft.corrections || (draft.correction ? [draft.correction] : []), rejectedReply: draft.rejectedReply || '', minutesOverride: draft.minutesOverride ?? null });
-    draft = { ...draft, input: draft.input || plan.input, text: plan.text };
+    const eventFrequency = draft.eventFrequency || localStorage.getItem('norn.eventFrequency') || 'medium';
+    plan = prepareTurn(source, draft.text, draft.id, { messages: history, corrections: draft.corrections || (draft.correction ? [draft.correction] : []), rejectedReply: draft.rejectedReply || '', minutesOverride: draft.minutesOverride ?? null, eventFrequency,
+      randomEventOverride: Object.hasOwn(draft, 'randomEvent') ? draft.randomEvent : undefined });
+    draft = { ...draft, input: draft.input || plan.input, text: plan.text, eventFrequency, randomEvent: plan.randomEvent };
   } catch (error) { addMessage('error', '这次行动还没有开始：' + error.message); return; }
   const ambiguous = ambiguousPeople(source, plan.text);
   if (ambiguous) {
@@ -721,7 +730,7 @@ async function sendTurn(options = {}) {
     result.state.saveId = app.saveId;
     category = 'storage';
     await store.putSaveAsync(result.state, messages, { expectedRevision: draft.baseRevision, pending: null, replaceFrom: history.length,
-      lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt, corrections: plan.corrections,
+      lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt, corrections: plan.corrections, eventFrequency: draft.eventFrequency, randomEvent: draft.randomEvent,
         minutesOverride: plan.narrativeTiming?.minutes ?? draft.minutesOverride ?? null } });
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: 'saved', durationMs: performance.now() - started, outputChars: result.raw.length }).catch(() => {});
     await loadGame(app.saveId, { allowDuringTurn: true });

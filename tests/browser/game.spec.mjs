@@ -6,6 +6,20 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('随机事件频率可在设置中选择并在刷新后保留', async ({ page }) => {
+  await open(page); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '存档', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.locator('#set-events .selected')).toHaveText('适中');
+  await page.locator('#set-events').getByRole('button', { name: '多', exact: true }).click();
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#set-save').click(); await page.reload();
+  await expect(page.locator('#input')).toBeVisible();
+  await page.getByRole('button', { name: '存档', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.locator('#set-events .selected')).toHaveText('多');
+});
+
 test('普通回合、状态修改和刷新只存本机，主动云备份才上传', async ({ page }) => {
   await open(page, 'cloud-policy'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await act(page, '看看周围'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
