@@ -2,7 +2,7 @@ import { makeRng } from './rng.js';
 
 // Directions, not pre-written facts: the model builds a scene from the actual context.
 export const EVENT_TYPES = [
-  { id: 'road_robbery', label: '道路劫持或拦路', scenes: ['road'], weight: 3, prompt: '有人出于具体目的拦路，可能交涉、欺骗或威胁；先呈现局面，让玩家决定如何应对。' },
+  { id: 'road_robbery', label: '道路劫持或拦路', scenes: ['road', 'wild'], weight: 3, prompt: '有人出于具体目的拦路，可能交涉、欺骗或威胁；先呈现局面，让玩家决定如何应对。' },
   { id: 'road_encounter', label: '旅途相遇或求助', scenes: ['road'], weight: 5, prompt: '旅途中遇到商队、旅人、求助或道路变故，人物目的与地点相符。' },
   { id: 'animal', label: '动物或魔兽遭遇', scenes: ['road', 'wild'], weight: 5, prompt: '依据地形出现动物或魔兽的踪迹、接近或袭击；考虑护幼、饥饿、受惊，也可避开冲突。' },
   { id: 'theft', label: '盗窃、诈骗或可疑行为', scenes: ['town', 'work'], weight: 4, prompt: '出现偷窃、诈骗或可疑行为，可针对现场其他人；不要预设成功，丢失只记录实际发生的结果。' },
@@ -18,6 +18,8 @@ export const EVENT_TYPES = [
 
 export function eventScene(state, judged, input) {
   const text = `${state.player.location?.siteName || ''} ${input || ''}`;
+  if (/森林|树林|山林|野外|荒野|山洞|矿洞/.test(text)) return 'wild';
+  if (/家中|卧室|自己家|家里|旅店客房/.test(text)) return 'home';
   if (judged.travelScope === 'journey' || judged.travelScope === 'route' || /赶路|旅途|荒野|野外|山路/.test(text)) return /荒野|野外|森林|树林|山林/.test(text) ? 'wild' : 'road';
   if (/仓|守夜|值守|调查|委托|工作|工坊|货栈/.test(text)) return 'work';
   if (/森林|树林|山林|野外|荒野|山洞|矿洞/.test(text)) return 'wild';
@@ -26,16 +28,25 @@ export function eventScene(state, judged, input) {
 }
 
 export function selectRandomEvent(state, judged, input, frequency = 'medium') {
+  if (judged.kind === 'meta') return null;
+  const ongoing = state.randomEvents?.findLast(e => ['pending', 'introduced'].includes(e.status));
+  if (ongoing) {
+    const type = EVENT_TYPES.find(e => e.id === ongoing.type);
+    if (type) return { ...type, type: type.id, id: ongoing.id, scene: ongoing.scene, continuing: true, summary: ongoing.text || type.label };
+  }
   const minutes = Math.max(0, Number(judged.minutes) || 0);
   if (minutes < 30 || ['meta', 'combat', 'social', 'trade'].includes(judged.kind)) return null;
   const last = state.randomEvents?.at(-1);
   if (last && Number(state.turn) - Number(last.turn) < 2) return null;
-  const factor = { low: 0.04, medium: 0.09, high: 0.18 }[frequency] ?? 0.09;
+  const scene = eventScene(state, judged, input);
+  const safe = scene === 'home' || /旅店|教堂|公会大厅/.test(state.player.location?.siteName || '');
+  const factor = ({ low: 0.04, medium: 0.09, high: 0.18 }[frequency] ?? 0.09) * (safe ? 0.5 : 1);
   const rng = makeRng(((state.seed || 1) ^ Math.imul((state.turn || 0) + 1, 0x9e3779b1) ^ 0x5ad41) >>> 0);
   if (rng() >= 1 - Math.exp(-factor * Math.min(minutes / 60, 48))) return null;
-  const scene = eventScene(state, judged, input);
   const recent = new Set((state.randomEvents || []).slice(-4).map(row => row.type));
-  let pool = EVENT_TYPES.filter(row => row.scenes.includes(scene) && (row.id !== 'task' || state.player.contracts?.some(c => c.status === 'active') || state.player.unfinished?.length));
+  const hasTask = state.player.contracts?.some(c => c.status === 'active') || state.player.unfinished?.length;
+  let pool = EVENT_TYPES.filter(row => (row.scenes.includes(scene) || row.id === 'task' && hasTask && /调查|守夜|工作|委托/.test(input)) && (row.id !== 'task' || hasTask))
+    .map(row => ({ ...row, weight: row.weight * (safe && ['theft','magic','incident','road_robbery'].includes(row.id) ? 0.2 : 1) }));
   const fresh = pool.filter(row => !recent.has(row.id)); if (fresh.length) pool = fresh;
   const total = pool.reduce((sum, row) => sum + row.weight, 0);
   let roll = rng() * total;
@@ -46,10 +57,13 @@ export function selectRandomEvent(state, judged, input, frequency = 'medium') {
 export function eventPrompt(event, { state, judged } = {}) {
   if (!event) return '';
   const contracts = state?.player?.contracts?.filter(c => c.status === 'active').map(c => c.label) || [];
-  return `【引擎触发的随机事件】类型：${event.label}。${event.prompt}\n场景分类：${event.scene}；起始地点：${state?.player?.location?.siteName || '未知'}；当前行动：${judged?.actionText || '依玩家原文'}；现有委托：${contracts.join('、') || '无已登记委托'}。仅在确实相关时联系这些委托，不制造已有事实之外的关联。先描述迹象或眼前局面；普通背景变化可以结束或继续，必须立即决定的危机停在发生时刻，等待玩家选择。根据本轮开始时刻、天气、人物关系和历史生成具体经过，选择并写清实际经过时间内的发生时刻，不得把不在场的人写成在场。不要替玩家付款、交易、接受委托、攻击或决定，不强加新的任务；只把实际发生的状态变化记入JSON，遵守现有装备与天赋。`;
+  return `【引擎触发的随机事件】类型：${event.label}。${event.prompt}${event.continuing ? `\n承接同一事件：${event.summary}。优先处理眼前情况，不另起一次遭遇。` : ''}\n场景分类：${event.scene}；起始地点：${state?.player?.location?.siteName || '未知'}；当前行动：${judged?.actionText || '依玩家原文'}；现有委托：${contracts.join('、') || '无已登记委托'}。仅在确实相关时联系这些委托，不制造已有事实之外的关联。先描述迹象或眼前局面；普通背景变化可以结束或继续，必须立即决定的危机停在发生时刻，等待玩家选择。根据本轮开始时刻、天气、人物关系和历史生成具体经过，选择并写清实际经过时间内的发生时刻，不得把不在场的人写成在场。不要替玩家付款、交易、接受委托、攻击或决定，不强加新的任务；只把实际发生的状态变化记入JSON，遵守现有装备与天赋。结尾JSON用eventUpdate:{status:"pending|resolved|left",text:"本次事件当前局面简记"}报告阶段：等待选择为pending，实际解决为resolved，玩家已离开为left。`;
 }
 
-export function recordRandomEvent(state, event, id) {
+export function recordRandomEvent(state, event, id, update) {
   if (!event) return;
-  state.randomEvents = [...(state.randomEvents || []).filter(row => row.id !== id), { id, type: event.type, turn: state.turn }].slice(-20);
+  const eventId = event.id || id;
+  const status = ['pending','resolved','left'].includes(update?.status) ? update.status : 'introduced';
+  const text = typeof update?.text === 'string' ? update.text.slice(0, 600) : event.summary || event.label;
+  state.randomEvents = [...(state.randomEvents || []).filter(row => row.id !== eventId), { id: eventId, type: event.type, scene: event.scene, text, status, turn: state.turn }].slice(-20);
 }

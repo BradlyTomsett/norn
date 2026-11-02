@@ -12,7 +12,7 @@ export async function searchArchive(state, messages, query, { kind = 'all', limi
     if (!terms.every(term => haystack.includes(term))) return;
     total++; if (results.length < limit) results.push(row);
   };
-  for (const npc of state.npcs) add({ kind: 'people', id: npc.id, title: npcLabel(state, npc), text: `${npc.age}岁 · ${npc.profession || ''} · ${npc.location?.siteName || ''}\n${(Array.isArray(npc.memory) ? npc.memory : [npc.memory || '']).map(m => typeof m === 'string' ? m : m.text || '').join('；')}` });
+  for (const npc of state.npcs) add({ kind: 'people', id: npc.id, title: npcLabel(state, npc), text: `${npc.age}岁 · ${npc.profession || ''} · ${npc.location?.siteName || ''}\n${(npc.memories || (Array.isArray(npc.memory) ? npc.memory : [npc.memory || ''])).filter(m => m?.visible !== false).map(m => typeof m === 'string' ? m : m.text || '').join('；')}` });
   for (const [id, place] of Object.entries(state.locations || {})) add({ kind: 'places', id, title: place.name || id, text: [place.regionTitle, place.terrain, place.economy].filter(Boolean).join(' · ') });
   const status = { active: '进行中', completed: '已完成', cancelled: '已取消', expired: '已过期' };
   for (const task of [...state.player.unfinished, ...state.player.taskHistory]) add({ kind: 'tasks', id: task.id, title: task.text, text: `${status[task.status] || '进行中'}${task.completionText ? ' · ' + task.completionText : ''}${task.needsReview ? ' · 旧事项待核对' : ''}` });

@@ -2,6 +2,7 @@ import { upgradeState, SCHEMA_VERSION } from './engine/schema.js';
 import { cleanRetiredMessages } from './engine/retired-prices.js';
 import { ArchiveStore } from './persistence.js';
 import { textId } from './engine/entities.js';
+import { packPoints, unpackPoints } from './checkpoints.js';
 
 const IDX = 'norn.index';
 const SAVE = id => `norn.save.${id}`;
@@ -76,6 +77,12 @@ export async function loadMessages(id) {
   return getMessages(id);
 }
 export function storageInfo(id) { return { mode: archive ? '扩展存储' : '兼容存储', messages: archive ? records.get(id)?.messageCount || 0 : getMessages(id).length }; }
+export async function storageDetails(id) {
+  const record = readRecord(id);
+  const bytes = record ? new Blob([JSON.stringify(record)]).size : 0;
+  let quota = null; try { quota = await globalThis.navigator?.storage?.estimate?.(); } catch { /* Optional browser information. */ }
+  return { bytes, points: getRewindPoints(id).length, usage: quota?.usage, quota: quota?.quota };
+}
 
 function readIndex() {
   const ids = new Set(parse(localStorage.getItem(IDX), []));
@@ -136,7 +143,7 @@ export function getLastTurn(id) {
 /** Checkpoints share the main message history rather than storing 20 copies. */
 export function getRewindPoints(id) {
   const record = readRecord(id); if (!record) return [];
-  const points = structuredClone(record.rewindPoints || []);
+  const points = unpackPoints(record.state, record.rewindPoints || []);
   const last = getLastTurn(id);
   if (last?.base && !points.some(p => p.turn === last.base.turn)) points.push({ turn: last.base.turn, state: last.base, historyCount: last.messages.length });
   return points.filter(p => Number.isSafeInteger(p.turn) && p.state?.turn === p.turn && Number.isSafeInteger(p.historyCount) && p.historyCount >= 0)
@@ -182,7 +189,7 @@ export function putSave(state, messages, options = {}) {
     diagnostics: old?.diagnostics || [],
     messages: messages ?? old?.messages ?? [], pending: options.pending === undefined ? old?.pending || null : options.pending,
     lastTurn: options.lastTurn === undefined ? old?.lastTurn || null : options.lastTurn,
-    rewindPoints: nextRewindPoints(options.rewindPoint ? { rewindPoints: getRewindPoints(next.saveId) } : old, options) };
+    rewindPoints: packPoints(next, nextRewindPoints({ rewindPoints: getRewindPoints(next.saveId) }, options)) };
   writeRecord(next.saveId, record);
   state.updatedAt = next.updatedAt; state.revision = next.revision;
 }
@@ -202,7 +209,7 @@ export async function putSaveAsync(state, messages, options = {}) {
     const patch = compact({
       pending: options.pending === undefined ? old?.pending || null : options.pending,
       lastTurn: options.lastTurn === undefined ? old?.lastTurn || null : options.lastTurn,
-      rewindPoints: nextRewindPoints(options.rewindPoint ? { rewindPoints: getRewindPoints(id) } : old, options),
+      rewindPoints: packPoints(snapshot, nextRewindPoints({ rewindPoints: getRewindPoints(id) }, options)),
     }, nextMessages);
     const record = await archive.commit(id, { state: snapshot, expectedRevision, patch,
       tail: messages === undefined ? undefined : { start, messages: nextMessages.slice(start) } });
@@ -269,7 +276,7 @@ export function savePackage(state, messages = getMessages(state.saveId), { lastT
       ...(Object.hasOwn(lastTurn, 'randomEvent') ? { randomEvent: lastTurn.randomEvent } : {}),
       ...(lastTurn.minutesOverride != null ? { minutesOverride: lastTurn.minutesOverride } : {}) };
   }
-  if (rewindPoints.length) out.rewindPoints = structuredClone(rewindPoints).slice(-20);
+  if (rewindPoints.length) out.rewindPoints = packPoints(out.state, structuredClone(rewindPoints).slice(-20));
   return out;
 }
 export function exportSave(state) {
@@ -287,11 +294,12 @@ export function decodeSave(payload) {
   const messages = payload.messages || state.messages || [];
   if (!Array.isArray(messages) || messages.some(m => !['user', 'assistant', 'system'].includes(m.role) || typeof m.content !== 'string')) throw new Error('存档的对话记录无效');
   delete state.messages;
+  const pointBase = structuredClone(state);
   const out = { state: upgradeState(state), messages: cleanRetiredMessages(messages) };
   if (payload.rewindPoints != null) {
     if (!Array.isArray(payload.rewindPoints) || payload.rewindPoints.length > 20) throw new Error('回档记录无效');
     let previousTurn = -1, previousCount = -1;
-    out.rewindPoints = payload.rewindPoints.map(row => {
+    out.rewindPoints = unpackPoints(pointBase, payload.rewindPoints).map(row => {
       if (!Number.isSafeInteger(row.turn) || row.turn <= previousTurn || row.turn >= state.turn || row.state?.turn !== row.turn
         || !Number.isSafeInteger(row.historyCount) || row.historyCount < previousCount || row.historyCount > messages.length) throw new Error('回档记录无效');
       previousTurn = row.turn; previousCount = row.historyCount;

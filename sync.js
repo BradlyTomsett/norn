@@ -80,9 +80,14 @@ export function backupSave(state, messages) {
   const checkpoint = getSave(snapshot.saveId)?.revision === snapshot.revision ? getLastTurn(snapshot.saveId) : null;
   const points = checkpoint || getSave(snapshot.saveId)?.revision === snapshot.revision ? getRewindPoints(snapshot.saveId) : [];
   const payload = JSON.stringify(savePackage(snapshot, messages || [], { lastTurn: checkpoint, rewindPoints: points }), null, 2);
+  const markBackup = () => {
+    const now = new Date().toISOString();
+    localStorage.setItem('norn.gh.last', now); localStorage.setItem(`norn.gh.last.${snapshot.saveId}`, now);
+    localStorage.setItem(`norn.gh.progress.${snapshot.saveId}`, JSON.stringify({ turn: snapshot.turn, revision: snapshot.revision, repository: `${c.owner}/${c.repo}/${c.branch}` }));
+  };
   const run = async () => {
     const head = await ghGet(path, c), expected = localStorage.getItem(key);
-    if (head?.text === payload) { localStorage.setItem(key, head.sha); return path; }
+    if (head?.text === payload) { localStorage.setItem(key, head.sha); markBackup(); return path; }
     if (head && !expected) {
       let remote;
       try { remote = decodeSave(JSON.parse(head.text)).state; } catch { /* Unknown data must not be overwritten. */ }
@@ -91,8 +96,7 @@ export function backupSave(state, messages) {
     if (!head && expected) throw new Error('云端原存档已变化或被删除，请另存分支后备份');
     const result = await ghPut(path, payload, `存档 ${snapshot.player.name} · 第 ${snapshot.turn} 回合`, head?.sha || null, c);
     localStorage.setItem(key, result.content.sha);
-    localStorage.setItem('norn.gh.last', new Date().toISOString());
-    localStorage.setItem(`norn.gh.last.${snapshot.saveId}`, new Date().toISOString());
+    markBackup();
     return path;
   };
   const next = (queues.get(key) || Promise.resolve()).catch(() => {}).then(run);

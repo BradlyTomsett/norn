@@ -2,6 +2,7 @@ import { absoluteDay, absoluteMinute, bounded, cleanText, list, closenessOf } fr
 import { applyTasks } from './tasks.js';
 import { entityRefs } from './entities.js';
 import { conditionMet, validCondition } from './conditions.js';
+import { applyCombatProfile } from './combat.js';
 
 const PURPOSES = [
   [/铁匠|锻|矿/, '备齐下一批原料，维持工坊开工', '联系原料商并整理订单', '原料和订单已经安排妥当'],
@@ -86,11 +87,13 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
       location: { ...state.player.location }, following: row.following === true, voice: {}, memories: [] });
     state.player.relations.push({ npcId: id, closeness: 0, observable: '初次相识', lastTouch: absoluteDay(state.clock) });
   }
+  for (const row of list(delta.npcs)) { const npc = state.npcs.find(n => n.id === row?.id); if (npc && row.combat) applyCombatProfile(npc, row.combat); }
   ensureNpcState(state);
   for (const row of list(delta.npcUpdates)) {
     const npc = state.npcs.find(n => n.id === row?.npcId);
     if (!npc) { rejected.push(`未知人物：${row?.npcId}`); continue; }
     if (row.profession) npc.profession = cleanText(row.profession, 60);
+    if (row.combat) applyCombatProfile(npc, row.combat);
     if (row.location?.siteName) npc.location = { siteId: cleanText(row.location.siteId || row.location.siteName), siteName: cleanText(row.location.siteName) };
     if (typeof row.following === 'boolean') npc.following = row.following;
     for (const raw of list(row.goals)) {

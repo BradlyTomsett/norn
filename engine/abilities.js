@@ -1,6 +1,7 @@
 import { gearState, chooseWeapon, GRADE_BONUS } from './equipment.js';
 import { activeEffects } from './effects.js';
 import { actionSkill } from './skills.js';
+import { combatTargets } from './combat.js';
 
 export function talentRules(player) {
   const text = String(player.talent?.effect || '');
@@ -28,8 +29,8 @@ export function talentRuleText(player) {
   return rows;
 }
 function incomingTypes(state, action) {
-  const target = state.npcs.find(npc => action.includes(npc.name));
-  const defined = target?.attackTypes || (target?.attackType ? [target.attackType] : []);
+  const targets = combatTargets(state, action);
+  const defined = targets.flatMap(target => target.combat?.attackTypes || target.attackTypes || (target.attackType ? [target.attackType] : []));
   const valid = defined.filter(type => Object.hasOwn(TYPE_CN, type));
   const defend = action.match(/(?:抵挡|挡住|承受|防御|躲避|迎接)([^，。；]{0,30})/);
   if (defend) {

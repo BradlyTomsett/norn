@@ -7,6 +7,7 @@ import { copperText } from './engine/money.js';
 import { priceBounds } from './price-input.js';
 import { fixedSkills } from './engine/skills.js';
 import { incidentalTask } from './engine/tasks.js';
+import { skillCap } from './engine/progress.js';
 
 /* ---------------- 角色卡 ---------------- */
 
@@ -68,7 +69,7 @@ function viewOverview(u) {
   }
   out.push('</div>');
   out.push('<h3>技能</h3><div class="skill-list">');
-  for (const s of fixedSkills(p.skills)) out.push(bar(s.name, s.level));
+  for (const s of fixedSkills(p.skills)) out.push(bar(s.name, s.level) + `<p class="hint skill-xp">${s.level >= skillCap({ player: p }) ? '已达当前上限' : `本级经验 ${Math.floor((s.xp || 0) * 100)}%`}</p>`);
   out.push('</div>');
   out.push('<h3>状态</h3>');
   out.push(bar('健康', p.body.health, p.body.health < 50 ? 'warn' : 'good'));
@@ -330,7 +331,7 @@ function viewPeople(u) {
         (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
         relationValue(r.closeness) +
         ((r.goals || []).some(g => g.status === 'active' && !g.routine) ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active' && !g.routine).map(g => `${g.text}${g.blockedOn ? `（等待：${g.blockedOn}）` : ''}`).join('；'))}</div>` : '') +
-        `<div class="ob">${esc(r.observable || '')}</div></div>`,
+        `<div class="ob">${esc(r.observable || '')}</div><details><summary>人物回顾</summary><p>最后记录位置：${esc(r.location || '未记录')}${r.following ? ' · 同行' : ''}</p>${(r.memories || []).map(m => `<p>${esc(m.text)}</p>`).join('')}${(r.agreements || []).map(k => `<p>${esc(k.text)}${Number.isInteger(k.sourceTurn) ? ` <button class="chip" data-history-turn="${k.sourceTurn}">查看原文</button>` : ''}</p>`).join('')}</details></div>`,
     );
   }
   out.push('</div>');
@@ -409,18 +410,26 @@ function viewPrices(u) {
 }
 function viewTasks(u) {
   const p = u.player, contracts = p.contracts || [], status = { completed: '已完成', cancelled: '已取消', expired: '已过期', archived: '已归档' };
-  const contractRow = contract => `<article class="task-entry" data-contract-id="${esc(contract.id)}"><p>${esc(contract.label)}</p><p class="hint">${contract.workStatus === 'completed' ? '已完成，待领酬' : '进行中'} · 约定酬劳 ${esc(copperText(contract.copper))}</p><details><summary>调整酬劳</summary><div class="price-row"><label>铜币<input type="number" min="1" step="1" inputmode="numeric" data-contract-pay="${esc(contract.id)}" aria-label="${esc(contract.label)}酬劳（铜）" value="${Math.round(contract.copper)}"></label><button class="chip" data-contract-save="${esc(contract.id)}">保存酬劳</button></div></details></article>`;
+  const notes = id => {
+    const rows = [...(u.taskNotes || []).filter(n => n.taskIds.includes(id)), ...p.taskHistory.filter(t => t.archivedKind === 'substep' && (t.contractId === id || t.parentTaskId === id || t.taskIds?.includes(id)))];
+    return rows.length ? `<details><summary>任务相关安排与线索</summary>${[...new Set(rows.map(r => r.text))].map(text => `<p>${esc(text)}</p>`).join('')}</details>` : '';
+  };
+  const contractRow = contract => `<article class="task-entry" data-contract-id="${esc(contract.id)}"><p>${esc(contract.label)}</p><p class="hint">${contract.workStatus === 'completed' ? '已完成，待领酬' : '进行中'} · 约定酬劳 ${esc(copperText(contract.copper))}</p>${notes(contract.id)}<details><summary>调整酬劳</summary><div class="price-row"><label>铜币<input type="number" min="1" step="1" inputmode="numeric" data-contract-pay="${esc(contract.id)}" aria-label="${esc(contract.label)}酬劳（铜）" value="${Math.round(contract.copper)}"></label><button class="chip" data-contract-save="${esc(contract.id)}">保存酬劳</button></div></details></article>`;
   const active = contracts.filter(row => row.status === 'active' && row.workStatus !== 'completed'), unpaid = contracts.filter(row => row.status === 'active' && row.workStatus === 'completed');
   const row = (task, active) => `<article class="task-entry"><p>${esc(task.text)}</p><p class="hint">${active ? '进行中' : status[task.status] || task.status}${task.dueDay != null ? ` · 截止：${Math.floor(task.dueDay / 365)}年 第${task.dueDay % 365 + 1}天` : ''}${task.completionText ? ` · ${esc(task.completionText)}` : ''}${!active && task.reason ? ` · ${esc(task.reason)}` : ''}</p><div class="chips">${active ? `<button class="chip" data-task="${esc(task.id)}" data-status="completed">标记完成</button><button class="chip" data-task="${esc(task.id)}" data-status="cancelled">取消事项</button>` : incidentalTask(task) ? '' : `<button class="chip" data-task="${esc(task.id)}" data-status="active">重新打开</button>`}</div></article>`;
   const past = contracts.filter(row => row.status !== 'active');
   return '<p class="hint">只保留主要任务、重要调查和关键承诺。碰头、问话、排班等小步骤收进历史，不代表已完成。</p><p id="task-maintenance-status" class="hint" role="status"></p><section id="current-contracts"><h3>当前委托</h3>'
     + (active.map(contractRow).join('') || '<p class="hint">没有进行中的委托。</p>') + '</section>'
     + (unpaid.length ? `<section id="unpaid-contracts"><h3>已完成，待领酬</h3>${unpaid.map(contractRow).join('')}</section>` : '')
-    + '<section id="active-tasks"><h3>其他进行中的事项</h3>' + (p.unfinished.filter(task => !incidentalTask(task)).map(task => row(task, true)).join('') || '<p class="hint">没有其他待办事项。</p>') + '</section>'
+    + '<section id="active-tasks"><h3>其他进行中的事项</h3>' + (p.unfinished.filter(task => !incidentalTask(task)).map(task => row(task, true) + notes(task.id)).join('') || '<p class="hint">没有其他待办事项。</p>') + '</section>'
     + `<details><summary>历史事项（${p.taskHistory.length}）</summary>${[...p.taskHistory].reverse().map(task => row(task, false)).join('')}</details>`
     + (past.length ? `<details><summary>委托记录（${past.length}）</summary>${past.map(contract => `<article class="task-entry"><p>${esc(contract.label)}</p><p class="hint">${contract.status === 'paid' ? '已完成、已结算' : '已结束'}${contract.paidCopper != null ? ` · 实收 ${esc(copperText(contract.paidCopper))}` : ''}</p></article>`).join('')}</details>` : '');
 }
-const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues, prices: viewPrices, tasks: viewTasks };
+function viewJournal(u) {
+  const rows = u.journal || [];
+  return ['约定与决定','重要事件','遭遇进展','编年'].map(kind => `<h3>${kind}</h3>${rows.filter(r => r.kind === kind).slice(-40).reverse().map(r => `<p>${esc(r.text)}${Number.isInteger(r.turn) ? ` <button class="chip" data-history-turn="${r.turn}">第 ${r.turn} 回合原文</button>` : ''}</p>`).join('') || '<p class="hint">没有相关记录。</p>'}`).join('');
+}
+const VIEWS = { overview: viewOverview, items: viewItems, gear: viewGear, people: viewPeople, clues: viewClues, prices: viewPrices, tasks: viewTasks, journal: viewJournal };
 
 
 export { VIEWS, viewOverview, viewItems, viewGear, viewPeople, viewClues, viewPrices };

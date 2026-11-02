@@ -6,6 +6,20 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('输入草稿刷新后恢复，发送后清除；存档显示空间，生成时可看未保存预览', async ({ page }) => {
+  await open(page,'preview'); await page.getByRole('button', {name:'隐藏测试工具',exact:true}).click();
+  await page.locator('#input').fill('看看周围的情况'); await page.reload();
+  await expect(page.locator('#input')).toHaveValue('看看周围的情况');
+  await page.getByRole('button',{name:'隐藏测试工具',exact:true}).click();
+  await page.getByRole('button',{name:'说',exact:true}).click();
+  await expect(page.locator('#log')).toContainText('生成预览（尚未保存）');
+  await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await page.reload(); await expect(page.locator('#input')).toHaveValue('');
+  await page.getByRole('button',{name:'隐藏测试工具',exact:true}).click();
+  await page.getByRole('button',{name:'存档',exact:true}).click();
+  await expect(page.locator('#storage-status')).toContainText('MB');
+});
+
 test('人物死亡后可输入回退回合数，恢复剧情及状态；结束游戏后刷新仍结束', async ({ page }) => {
   await open(page, 'death'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await act(page, '看看周围'); await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
@@ -15,7 +29,7 @@ test('人物死亡后可输入回退回合数，恢复剧情及状态；结束�
   await expect(page.locator('#death-available')).toContainText('1、2、3');
   await page.locator('#death-count').fill('21'); await page.locator('#death-rewind').click();
   await expect(page.locator('#death-message')).toContainText('最多 20 回合');
-  await page.locator('#death-count').fill('2'); await page.locator('#death-rewind').click();
+  await page.locator('#death-count').fill('2'); await expect(page.locator('#death-preview')).toContainText('回到第 1 回合'); await page.locator('#death-rewind').click();
   await expect(page.locator('#fixture-monitor')).toContainText('回合：1');
   await expect(page.locator('#input')).toBeVisible(); await expect(page.locator('#log')).not.toContainText('攻击巫妖皇');
   await act(page, '攻击巫妖皇'); await expect(page.locator('#death-options')).toContainText('人物死亡');
@@ -59,6 +73,7 @@ test('普通回合、状态修改和刷新只存本机，主动云备份才上�
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '备份到云端', exact: true }).click();
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-cloud-writes', '1');
+  await expect(page.locator('#gh-status')).toContainText('云端备份第 1 回合');
   await page.locator('#saves').getByRole('button', { name: '返回', exact: true }).click();
   await act(page, '继续看看'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
   await expect(page.locator('#fixture-controls')).toHaveAttribute('data-cloud-writes', '1');

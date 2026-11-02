@@ -23,7 +23,7 @@ export function normalizeNpcDelta(delta, state) {
       && ['race', 'gender', 'age'].every(key => row[key] == null || String(row[key]) === String(old[key]));
     if (!same) throw new Error(`人物 ${row.id} 的编号与身份不一致，请核对现有人物，不要另建或覆盖。`);
     const update = { npcId: old.id };
-    for (const key of ['profession', 'location', 'following', 'goals', 'memory']) if (row[key] != null) update[key] = row[key];
+    for (const key of ['profession', 'location', 'following', 'goals', 'memory', 'combat']) if (row[key] != null) update[key] = row[key];
     if (Object.keys(update).length > 1) updates.push(update);
   }
   if ('npcs' in out) out.npcs = created;

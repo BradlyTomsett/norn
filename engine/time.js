@@ -1,10 +1,15 @@
 import { OPTION_HEADING } from './actions.js';
 const dayMinute = clock => clock.hour * 60 + clock.minute;
 const numeral = text => {
-  if (/^\d+$/.test(text)) return Number(text);
+  if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text);
   const digits = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
-  const parts = text.split('十');
-  return parts.length > 1 ? (parts[0] ? digits[parts[0]] || 0 : 1) * 10 + (digits[parts[1]] || 0) : digits[text];
+  let total = 0, current = 0;
+  for (const ch of text) {
+    const unit = { 十: 10, 百: 100, 千: 1000 }[ch];
+    if (unit) { total += (current || 1) * unit; current = 0; }
+    else if (ch in digits) current = digits[ch]; else return NaN;
+  }
+  return total + current;
 };
 
 /** An explicit endpoint; null means the text does not specify one. */
@@ -49,6 +54,21 @@ export function narrativeTime(raw, clock) {
     const clauses = sentence.split(/[，,；;]/).map(x => x.trim());
     for (const clause of clauses.reverse()) {
       if (/尚未|还没|不是|未到|如果|将会|预计|明天再|约定|询问|你问|他说|她说|听说|上次|以前|曾经|打算|计划|准备|可以|将要/.test(clause)) continue;
+      const relative = clause.match(/^(?:(?:到了|此时|现在|转眼)(?:是|已是)?\s*)?(\d+|[一二两三四五六七八九十百]+)(?:天|日)后\s*((?:凌晨|早上|上午|中午|下午|晚上|夜里)?\s*(?:\d{1,2}|[一二两三四五六七八九十]+)(?::\d{2}|点(?:半|\d{1,2}分?)?|时))/);
+      if (relative) {
+        const days = numeral(relative[1]);
+        const point = targetMinutes('等到' + relative[2], { ...clock, hour: 0, minute: 0 });
+        const minutes = days * 1440 + point - dayMinute(clock);
+        if (point != null && Number.isSafeInteger(minutes) && minutes >= 0 && minutes <= 3650 * 1440) return { minutes, quote: sentence };
+      }
+      const dated = clause.match(/(?:^|(?:此时|到了|现在)(?:已是|是)?)\s*(?:(\d+)年)?(\d{1,2})月(\d{1,2})日\s*((?:凌晨|早上|上午|中午|下午|晚上|夜里)?\s*\d{1,2}(?::\d{2}|点(?:半|\d{1,2}分?)?|时))/);
+      if (dated) {
+        const year = Number(dated[1] || clock.year), month = Number(dated[2]), date = Number(dated[3]);
+        const point = targetMinutes('等到' + dated[4], { ...clock, hour: 0, minute: 0 });
+        const days = (year - clock.year) * 365 + (month - 1) * 30 + date - clock.doy;
+        const minutes = days * 1440 + point - dayMinute(clock);
+        if (month >= 1 && month <= 12 && date >= 1 && date <= (month === 12 ? 35 : 30) && point != null && minutes >= 0 && minutes <= 3650 * 1440) return { minutes, quote: sentence };
+      }
       const marker = '(?:已经|此时|现在|这时|到了|来到|时间来到|夜已|直至|直到|转眼|守到|等到)';
       const day = '(?:次日|第二天|翌日|明日|明天|今天|当天)?';
       const period = '(?:凌晨|后半夜|天亮|黎明|清晨|早上|上午|中午|下午|晚上|夜里)?';
@@ -60,9 +80,9 @@ export function narrativeTime(raw, clock) {
         const minutes = targetMinutes('等到' + fragment, clock);
         if (minutes != null && minutes <= 3650 * 1440) return { minutes, quote: sentence };
       }
-      const duration = clause.match(/(?:本轮(?:共|总共)?(?:经过|耗时)|总共(?:经过|耗时)?|共(?:经过|耗时)|已经过了|过了)(\d+|[零一二两三四五六七八九十]+)(?:个)?(分钟|小时|天|日)/);
+      const duration = clause.match(/(?:本轮(?:共|总共)?(?:经过|耗时)|总共(?:经过|耗时)?|共(?:经过|耗时)|已经过了|过了)\s*((?:(?:\d+(?:\.\d+)?|[零一二两三四五六七八九十百千]+)(?:个)?(?:天|日|小时|分钟)(?:半)?\s*)+)/);
       if (duration) {
-        const minutes = numeral(duration[1]) * ({ 分钟: 1, 小时: 60, 天: 1440, 日: 1440 }[duration[2]]);
+        const minutes = [...duration[1].matchAll(/(\d+(?:\.\d+)?|[零一二两三四五六七八九十百千]+)(?:个)?(分钟|小时|天|日)(半)?/g)].reduce((sum, part) => sum + (numeral(part[1]) + (part[3] ? 0.5 : 0)) * ({ 分钟: 1, 小时: 60, 天: 1440, 日: 1440 }[part[2]]), 0);
         if (Number.isSafeInteger(minutes) && minutes >= 0 && minutes <= 3650 * 1440) return { minutes, quote: sentence };
       }
     }

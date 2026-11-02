@@ -27,6 +27,8 @@ import { searchArchive } from './search.js';
 import { validateLoadout, gearInventory, weaponSlots } from './engine/equipment.js';
 import { readPriceBounds } from './price-input.js';
 import { completeReply } from './generation.js';
+import { readDraft, writeDraft } from './drafts.js';
+import { dateLine } from './engine/clock.js';
 import { timePreview } from './engine/time.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
@@ -34,6 +36,10 @@ const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl 
 const app = { saveId: null, ui: null, messages: [], regions: REGIONS,
   picked: { regionId: null, family: null, gender: 'male' }, streaming: false, tab: 'overview', rules: '', worldbook: '', controller: null };
 const busy = () => app.streaming || app.preparing;
+const saveInputDraft = () => writeDraft(app.saveId, inputEl.value);
+inputEl.addEventListener('input', saveInputDraft);
+window.addEventListener('pagehide', saveInputDraft);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveInputDraft(); });
 const reportActionError = error => addMessage('error', '操作没有保存：' + (error?.message || String(error)));
 const runAction = action => Promise.resolve().then(action).catch(reportActionError);
 window.addEventListener('unhandledrejection', event => { event.preventDefault(); reportActionError(event.reason || new Error('操作未完成')); });
@@ -260,6 +266,7 @@ applyFont(currentFont(), false);
 
 async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {}) {
   if (busy() && !allowDuringTurn) { turnStatus('请等当前回合结束后再切换存档。'); return; }
+  if (app.saveId && app.saveId !== id) saveInputDraft();
   await store.loadMessages(id);
   const state = store.getSave(id);
   if (!state) return openWizard();
@@ -270,6 +277,7 @@ async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {})
     await store.putSaveAsync(state, undefined, { expectedRevision: state.revision });
   }
   app.saveId = id; app.loadedRevision = state.revision;
+  if (focusIndex == null) inputEl.value = readDraft(id);
   app.messages = messages;
   app.ui = uiState(state);
   for (const panel of ['#menu', '#wizard', '#custom', '#saves', '#restore', '#settings', '#sheet', '#search']) $(panel).classList.add('hidden');
@@ -324,6 +332,11 @@ function showDeathOptions(state) {
   logEl.append(box);
   box.querySelector('#death-available').textContent = counts.length ? `可回退：${counts.join('、')} 回合` : '当前没有可用的回档记录。';
   const input = box.querySelector('#death-count'); input.value = counts[0] || ''; input.disabled = !counts.length;
+  const preview = document.createElement('p'); preview.id = 'death-preview'; preview.className = 'hint'; input.after(preview);
+  const previewTarget = () => {
+    const point = store.getRewindPoints(state.saveId).find(p => p.turn === state.turn - Number(input.value));
+    preview.textContent = point ? `回到第 ${point.turn} 回合 · ${dateLine(point.state.clock)} · ${point.state.player.location.siteName} · 健康 ${point.state.player.body.health}。此后的进度将移除。` : '该回合没有恢复点。';
+  }; input.addEventListener('input', previewTarget); previewTarget();
   box.querySelector('#death-rewind').disabled = !counts.length;
   box.querySelector('#death-rewind').onclick = () => runAction(async () => {
     if (busy()) return;
@@ -383,6 +396,19 @@ $('#btn-saves').onclick = () => {
   markFontChip(currentFont());
   updateGhStatus();
   $('#saves').classList.remove('hidden');
+  refreshStorageInfo();
+};
+async function refreshStorageInfo() {
+  const el = $('#storage-status'); if (!el) return;
+  try {
+    const info = await store.storageDetails(app.saveId);
+    el.textContent = `本机存档约 ${(info.bytes / 1048576).toFixed(2)} MB · 可用恢复点 ${info.points} 个` + (info.quota ? ` · 浏览器空间已用 ${Math.round(info.usage / info.quota * 100)}%` : '') + (info.quota && info.usage / info.quota > 0.9 ? '，空间较少，请导出备份。' : '');
+  } catch { el.textContent = '本机空间信息暂不可用，可导出文件备份。'; }
+}
+$('#btn-persist').onclick = async () => {
+  const el = $('#storage-status');
+  try { const granted = await navigator.storage?.persist?.(); el.textContent = granted ? '已启用浏览器持久保存。清除网站数据仍会删除存档，请保留备份。' : '浏览器暂未允许持久保存，请定期导出或手动备份。'; }
+  catch { el.textContent = '此浏览器暂不支持，请定期导出或手动备份。'; }
 };
 $('#btn-saves-close').onclick = () => $('#saves').classList.add('hidden');
 
@@ -645,7 +671,9 @@ async function send(options = {}) {
   } catch (error) { reportActionError(error); }
   finally {
     app.preparing = false; sendEl.disabled = false;
+    saveInputDraft();
     for (const button of document.querySelectorAll('.action-choice')) button.disabled = false;
+    if (app.updateWaiting) offerUpdate(app.updateWaiting);
   }
 }
 async function sendTurn(options = {}) {
@@ -722,7 +750,7 @@ async function sendTurn(options = {}) {
   const resumeReply = Boolean(options.retry && draft.generationTruncated && draft.raw);
   try { await store.putPendingAsync(app.saveId, { ...draft, raw: reuseReply || resumeReply ? draft.raw : '', replyComplete: reuseReply }); }
   catch (error) { addMessage('error', '无法保存待处理回合：' + error.message + '。原进度已保留。'); return; }
-  inputEl.value = ''; inputEl.style.height = 'auto';
+  inputEl.value = ''; writeDraft(app.saveId, ''); inputEl.style.height = 'auto';
   previewTimeOverride = null; $('#preview-time-edit').classList.add('hidden');
   $('#action-preview').textContent = ''; $('#action-preview').classList.add('hidden');
   app.streaming = true; app.controller = new AbortController(); sendEl.disabled = true;
@@ -730,7 +758,7 @@ async function sendTurn(options = {}) {
   const playerText = draft.input !== draft.text ? `${draft.input}\n${draft.text}` : draft.text;
   addMessage('user', draft.correction || playerText);
   const bubble = addMessage('assistant', ''); bubble.classList.add('cursor'); scrollToElement(bubble);
-  turnStatus('正在生成，完成后更新状态并保存…');
+  turnStatus('正在等待模型回复…');
   let raw = '', timer = null, lastDraftAt = Date.now(), category = 'generation', replyComplete = false, generationTruncated = resumeReply;
   const started = performance.now(); app.metrics = { turn: source.turn + 1, requests: 0, repairs: 0 };
   try {
@@ -740,8 +768,9 @@ async function sendTurn(options = {}) {
     else raw = await completeReply({ system: plan.request.system, messages: plan.request.messages, temperature: 0.35, signal: app.controller.signal },
       { stream: trackedChat, initialRaw: resumeReply ? draft.raw : '', resume: resumeReply,
         onProgress: async text => {
-          raw = text; app.metrics.firstTokenMs ??= performance.now() - started;
-          if (!timer) timer = setTimeout(() => { timer = null; bubble.textContent = '正在生成…（' + raw.length + ' 字）'; }, 100);
+          raw = text;
+          if (app.metrics.firstTokenMs == null) { app.metrics.firstTokenMs = performance.now() - started; turnStatus('正在生成，预览尚未保存…'); }
+          if (!timer) timer = setTimeout(() => { timer = null; bubble.textContent = '生成预览（尚未保存）\n\n' + narrationText(raw); }, 160);
           if (Date.now() - lastDraftAt > 2000) { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete: false, generationTruncated }); lastDraftAt = Date.now(); }
         }, onContinuation: async text => {
           generationTruncated = true; turnStatus('回复较长，正在接着补完…');
@@ -764,6 +793,7 @@ async function sendTurn(options = {}) {
       { role: 'assistant', content: clean, sourceTurn: result.state.turn, entities: entityRefs(result.state, clean + '\n' + plan.text), turnId: draft.id, receipt: result.receipt, choices: extractChoices(clean) }];
     result.state.saveId = app.saveId;
     category = 'storage';
+    turnStatus('正在保存到本机…');
     await store.putSaveAsync(result.state, messages, { expectedRevision: draft.baseRevision, pending: null, replaceFrom: history.length,
       rewindPoint: { turn: plan.base.turn, state: plan.base, historyCount: history.length },
       lastTurn: { id: draft.id, input: draft.text, base: plan.base, messages: history, receipt: result.receipt, corrections: plan.corrections, eventFrequency: draft.eventFrequency, randomEvent: draft.randomEvent,
@@ -784,7 +814,7 @@ async function sendTurn(options = {}) {
     app.streaming = false; sendEl.disabled = false; $('#cancel-turn').classList.add('hidden');
     app.controller = null; app.metrics = null; inputEl.focus(); renderToc();
     if (app.updateWaiting) offerUpdate(app.updateWaiting);
-    if (app.reloadAfterTurn) location.reload();
+    if (app.reloadAfterTurn) { saveInputDraft(); location.reload(); }
   }
 }
 $('#cancel-turn').onclick = () => app.controller?.abort();
@@ -903,6 +933,12 @@ $('#cs-body').addEventListener('change', event => {
   catch (error) { $('#gear-message').textContent = error.message; $('#gear-save').disabled = true; }
 });
 $('#cs-body').addEventListener('click', event => {
+  const source = event.target.closest('[data-history-turn]');
+  if (source) { runAction(async () => {
+    if (busy()) return;
+    const index = app.messages.findLastIndex(m => m.role === 'assistant' && m.sourceTurn === Number(source.dataset.historyTurn));
+    if (index >= 0) await loadGame(app.saveId, { focusIndex: index }); else turnStatus('这条记录没有可定位的原文。');
+  }); return; }
   if (!event.target.closest('#gear-save') || busy()) return;
   runAction(async () => {
     if (store.getPending(app.saveId)) { $('#gear-message').textContent = '请先重试未提交的回合，或输入 /取消重试 后再调整装备。'; return; }
@@ -1034,7 +1070,7 @@ function openSheet(tab) {
 $('#btn-panel').onclick = () => openSheet();
 $('#btn-close').onclick = () => $('#sheet').classList.add('hidden');
 
-$('#btn-refresh').onclick = () => { if (!busy()) location.reload(); };
+$('#btn-refresh').onclick = () => { if (!busy()) { saveInputDraft(); location.reload(); } };
 
 /* ---------------- 账户间转账（不经过模型） ---------------- */
 
@@ -1177,6 +1213,10 @@ function updateGhStatus() {
   const c = sync.ghConfig();
   const last = localStorage.getItem(`norn.gh.last.${app.saveId}`);
   el.textContent = `已连接 ${c.owner}/${c.repo}（${c.branch}）` + (last ? ` · 上次备份 ${new Date(last).toLocaleString()}` : ' · 还没备份过');
+  try {
+    const backed = JSON.parse(localStorage.getItem(`norn.gh.progress.${app.saveId}`) || 'null'), current = store.getSave(app.saveId);
+    if (backed && current && (!backed.repository || backed.repository === `${c.owner}/${c.repo}/${c.branch}`)) el.textContent += ` · 本机第 ${current.turn} 回合，云端备份第 ${backed.turn} 回合` + (current.revision === backed.revision ? '，进度一致' : current.turn > backed.turn ? `，还有 ${current.turn - backed.turn} 回合未备份` : '，本机进度已有变化');
+  } catch { /* Older backup records only have the timestamp. */ }
 }
 
 $('#btn-gh-backup').onclick = async () => {
@@ -1227,7 +1267,7 @@ $('#btn-gh-restore').onclick = async () => {
         .then((state) => {
           const who = `${state.player?.name || f.name} · 第 ${state.turn ?? 0} 回合`;
           const when = state.updatedAt ? new Date(state.updatedAt).toLocaleString() : '';
-          b.innerHTML = `<b>${esc(who)}</b><span>${esc(
+          b.innerHTML = `<b>${esc(who)}</b><span>${esc(dateLine(state.clock))} · 健康 ${esc(state.player.body.health)} · ${esc(
             state.player?.location?.siteName || '',
           )}${when ? ' · ' + esc(when) : ''}</span>`;
           b.onclick = async () => {
@@ -1403,7 +1443,7 @@ boot().catch(error => { addMessage('error', '本机存档暂时无法读取：' 
 // 新版本接管时自动刷新一次，免得手机上一直看到旧文件。
 function offerUpdate(reg) {
   if (!reg?.waiting) return;
-  if (app.streaming) { app.updateWaiting = reg; return; }
+  if (busy() || inputEl.value.trim()) { saveInputDraft(); app.updateWaiting = reg; const el = $('#build-info'); if (el) el.textContent = '有新版本，输入已保留；可在主界面点击刷新更新。'; return; }
   app.updateWaiting = null;
   reg.waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
 }
@@ -1412,8 +1452,9 @@ if ('serviceWorker' in navigator) {
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController || reloaded) return;
-    if (app.streaming) { app.reloadAfterTurn = true; return; }
+    if (busy()) { app.reloadAfterTurn = true; return; }
     reloaded = true;
+    saveInputDraft();
     location.reload();
   });
   window.addEventListener('load', async () => {

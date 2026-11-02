@@ -119,6 +119,8 @@
 <div id="saves" class="sheet hidden">
   <div class="sheet-inner">
     <h1>存档</h1>
+    <p class="hint" id="storage-status"></p>
+    <button id="btn-persist" class="chip">保护本机存档</button>
     <p class="hint">每回合自动保存在本机；点击「备份到云端」才上传。换设备也可以用「导出」。</p>
     <div class="chips" style="margin: 14px 0 16px">
       <button id="btn-snap" class="chip">＋ 存一个快照</button>
@@ -237,6 +239,7 @@
       <button class="tab" data-tab="people">关系</button>
       <button class="tab" data-tab="clues">线索</button>
       <button class="tab" data-tab="tasks">事项</button>
+      <button class="tab" data-tab="journal">回顾</button>
       <button class="tab" data-tab="prices">物价</button>
     </nav>
     <div id="cs-body" class="cs-body"></div>

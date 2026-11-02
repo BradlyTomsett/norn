@@ -52,6 +52,7 @@ export function followNarrativeTime(plan, raw) {
 export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   const state = structuredClone(plan.state);
   const model = structuredClone(delta);
+  const eventUpdate = model.eventUpdate; delete model.eventUpdate;
   if (Array.isArray(model.transactions)) model.transactions = model.transactions.map((tx, index) => ({ ...tx, id: `${plan.id}:tx:${index}`,
     ...(tx.kind === 'gift' && /分成|报酬|酬劳|工钱|分赏/.test(plan.text) ? { reason: tx.reason || '约定酬劳分成' } : {}) }));
   if (model.time) throw new Error('模型改写了引擎时间，请重试本回合');
@@ -64,7 +65,7 @@ export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   applyDelta(state, engineDelta(plan.judged, state), rng, { bump: false });
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });
   if (!result.applied) throw new Error(result.rejected.join('；'));
-  recordRandomEvent(state, plan.randomEvent, plan.id);
+  recordRandomEvent(state, plan.randomEvent, plan.id, eventUpdate);
   trainSkill(state, plan.judged);
   if (['social', 'trade'].includes(plan.judged.kind)) for (const id of entityRefs(state, plan.text).npcIds) {
     const npc = state.npcs.find(n => n.id === id), name = npc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -2,6 +2,7 @@ import { int } from './rng.js';
 import { actionAbilities, abilityBrief } from './abilities.js';
 import { actionSkill, fixedSkills } from './skills.js';
 import { targetMinutes } from './time.js';
+import { targetDifficulty } from './combat.js';
 
 const RULES = [
   ['craft', /维修|修理|修复|制作|打造|锻造|打铁|炼制|制药|配药|配制|调制|烹饪|做饭/],
@@ -81,6 +82,8 @@ function classifyPart(part) {
   if (/^(?:早安|晚安|你好|谢谢|好的?|可以|同意|行|不行|不用|不了)$/.test(part)) return 'social';
   if (delegatedAction(part)) return 'social';
   if (SPEECH.test(part)) return 'social';
+  if (/^(?:我(?:们)?(?:先)?)?(?:让|叫|请|命令|拜托)(?!我)[^，。；]{1,20}(?:攻击|防御|观察|调查|去|赶路|休息)/.test(part)) return 'social';
+  if (/^(?:我(?:们)?(?:先)?)?(?:观察|查看|留意|看看|监视|听听)/.test(part) && !/(?:然后|接着|并且)(?:我)?(?:攻击|砍|刺)/.test(part)) return 'observe';
   if (/^(?:我)?(?:先)?(?:学习|练习|练|研究|阅读|读书|请教)/.test(part)) return 'study';
   if (/^(?:我)?(?:先)?等(?:待|到|一会|\d|[一二两三四五六七八九十])/u.test(part)) return 'rest';
   if (/^(?:我)?(?:先)?(?:去|走到|走向|前往|返回|回到|回屋|出门|赶往|到).+/.test(part)
@@ -153,21 +156,21 @@ export function actionMinutes(text, kind, fallback, clock = null) {
 }
 function difficultyFor(state, text, kind, fallback) {
   if (kind !== 'combat') return fallback;
+  const known = targetDifficulty(state, text); if (known != null) return known;
   if (/巫妖皇|区域灾难|上位深渊|传说神异/.test(text)) return 270;
   if (/深渊领主|地狱公爵|T5/.test(text)) return 190;
   if (/炎魔|亡灵骑士|T4/.test(text)) return 130;
   if (/尸巫|大恶魔|地狱伯爵|T3/.test(text)) return 95;
   if (/角魔|双头犬|幽灵|T2/.test(text)) return 65;
   if (/鸡|小鼠|稻草人/.test(text)) return 10;
-  const target = state.npcs.find(n => text.includes(n.name) && n.stats);
-  return target ? Math.max(10, (target.stats.body || 10) * 0.8 + (target.combatSkill || 0) * 1.5) : fallback;
+  return fallback;
 }
 export function judge(state, text, rng) {
   const kind = classify(text), prof = PROFILE[kind], p = state.player;
   const intent = currentAction(text);
-  const effects = actionAbilities(state, intent.text, kind);
   const segments = actionSchedule(state, text, rng), minutes = segments.reduce((sum, s) => sum + s.minutes, 0);
   const mainText = segments.filter(s => s.kind === kind).map(s => s.text).join('，') || intent.text;
+  const effects = actionAbilities(state, mainText, kind);
   const skillName = actionSkill(kind, mainText), skills = fixedSkills(p.skills);
   const weaponStudy = skillName === '武技' && kind === 'study';
   const statName = weaponStudy ? 'body' : skillName === '魔法' ? 'spirit' : prof.stat;
@@ -191,7 +194,7 @@ export function judge(state, text, rng) {
   const preparations = [...(state.player.preparations || []), ...state.knowledge.filter(k => k.preparation && k.sourceEvent).map(k => ({ ...k.preparation, evidence: k.text }))];
   if (preparations.some(prep => prep.status === 'ready' && prep.evidence && (!prep.expiresDay || prep.expiresDay >= state.clock.year * 365 + state.clock.doy - 1)
     && (prep.kinds || []).includes(kind) && (!prep.target || intent.text.includes(prep.target)))) { ability += 5; mods.push('准备充分'); }
-  const difficulty = difficultyFor(state, intent.text, kind, prof.diff);
+  const difficulty = difficultyFor(state, mainText, kind, prof.diff);
   const margin = ability - difficulty, score = margin + (rng() - 0.5) * 20;
   let outcome = OUTCOMES.find(o => score >= o.min);
   if (outcome.key === 'crush' && margin < 12) outcome = OUTCOMES[1];

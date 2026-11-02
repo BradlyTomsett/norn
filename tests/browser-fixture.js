@@ -226,6 +226,10 @@ window.fetch = async (url, options = {}) => {
   }
   const frame = `data: ${JSON.stringify({ choices: [{ delta: { content: output } }] })}\r\n\r\n`;
   const usage = `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 120, completion_tokens: 40, prompt_cache_hit_tokens: 50 } })}\r\n\r\n`;
+  if (scenario === 'preview') return new Response(new ReadableStream({ start(controller) {
+    const enc = new TextEncoder(); controller.enqueue(enc.encode(frame));
+    setTimeout(() => { controller.enqueue(enc.encode(usage + 'data: [DONE]\r\n\r\n')); controller.close(); }, 900);
+  } }), { headers: { 'Content-Type':'text/event-stream' } });
   return new Response(frame + (mode === 'disconnect' ? '' : usage + 'data: [DONE]\r\n\r\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
 };
 await import('../app.js');
