@@ -11,6 +11,9 @@ const TOPICS = [
   /搭档|同伴|队伍|队员|同行|合作|伙伴/,
   /期限|截止|几天|几夜|何时|什么时候|多久/,
   /守卫|看守|值守|守夜|班次|轮班|排班/,
+  /价格|报价|售价|费用|多少钱|买|购买|交易/,
+  /线索|调查|证据|失窃|丢失|查明|真相/,
+  /位置|在哪里|在哪儿|地点|集合|到达|进入/,
 ];
 const topicIds = text => TOPICS.flatMap((re, i) => re.test(String(text || '')) ? [i] : []);
 
@@ -27,7 +30,8 @@ export function selectRelevant(rows, query = '', limit = 16, textOf = x => typeo
     for (const word of words) if (text.includes(word)) score += 10;
     const sharedTopics = topicIds(text).filter(id => topics.includes(id));
     score += sharedTopics.length * 35;
-    for (const key of ['npcIds', 'siteIds', 'taskIds']) if (row?.[key]?.some(id => context[key]?.includes(id))) score += key === 'npcIds' ? 200 : 120;
+    for (const key of ['npcIds', 'siteIds', 'taskIds']) if (row?.[key]?.some(id => context[key]?.includes(id))) score += key === 'npcIds' ? 200 : key === 'taskIds' ? 240 : 120;
+    if (row?.key && String(query).includes(row.key)) score += 240;
     return { row, index, score: score + (rows.length ? index / rows.length : 0) };
   }).sort((a, b) => b.score - a.score).slice(0, limit).sort((a, b) => a.index - b.index).map(x => x.row);
 }

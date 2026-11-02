@@ -174,8 +174,10 @@ export function correctionBlock(state, current = [], messages = [], input = '') 
     return text ? { ...note, text } : null;
   }).filter(Boolean);
   if (!notes.length) return '';
+  // Merge only text-identical corrections; never infer that differently worded constraints are interchangeable.
+  const unique = [...new Map(notes.map(note => [note.text.trim(), note])).values()];
   return '【玩家已纠正的事实与本轮要求，优先于旧叙述和旧知识】\n'
-    + notes.map(note => `[${note.id}] ${note.text}`).join('\n')
+    + unique.map(note => `[${note.id}] ${note.text}`).join('\n')
     + '\n不能替旧错误找理由。人物是否在队、搭档关系、已约定的分成须按玩家纠正保持一致；纠正不自动改变账户或重发报酬。旧事实有冲突时标明待核对，不把旧记录当作新证据。';
 }
 export class ContinuityError extends Error {}

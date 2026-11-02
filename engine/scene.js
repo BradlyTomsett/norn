@@ -13,6 +13,15 @@ const wholeLines = (value, limit) => {
   }
   return result.join(' ');
 };
+const latestLines = (value, limit) => {
+  const parts = String(value || '').split(/(?<=[。！？\n])/).map(x => x.trim()).filter(Boolean);
+  const result = []; let length = 0;
+  for (const part of parts.reverse()) {
+    if (result.length && length + part.length > limit) break;
+    result.unshift(part); length += part.length;
+  }
+  return result.join(' ');
+};
 const terms = value => { const s = String(value || '').replace(/[\s，。；、：:“”「」！？!?]/g, ''); return new Set([...s].slice(0, -1).map((_, i) => s.slice(i, i + 2))); };
 const overlap = (a, b) => { const left = terms(a); return [...terms(b)].filter(word => left.has(word)).length; };
 
@@ -139,7 +148,11 @@ export function sceneContext(state, history = [], input = '', guards = []) {
   if (sceneLocationUncertain(state, evidence)) {
     lines.push(`近期原文已描述进入${evidence.place}：[history:${evidence.index}] ${evidence.quote}。地点字段可能落后，按已发生的场景承接，不要凭旧地点说玩家退回；如果依据充分，在变化数据中更新地点，不额外增加移动。`);
   }
-  if (latest) lines.push(`最近已发生的场景 [history:${lastIndex}]：${wholeLines(latest, 1100)}`);
+  if (latest) {
+    lines.push(`最近已发生的场景末尾 [history:${lastIndex}]：${latestLines(latest, 1100)}`);
+    const lastQuestion = latest.match(/[^。！？\n]*[？?][”」』"']*\s*$/)?.[0]?.trim();
+    if (lastQuestion) lines.push(`上一次尚待玩家回答的话：${lastQuestion}`);
+  }
   if (people.length) lines.push('相关人物（仅标识已有记录；提到某人不等于确认在场）：' + people.map(n => `[${n.id}] ${npcLabel(state, n)}｜${n.following ? '记录为同行' : n.location?.siteName ? `记录位置 ${n.location.siteName}，可能过时` : '是否在场待核对'}`).join('；'));
   if (contractEvidence.length) lines.push('委托与接洽原文：' + contractEvidence.map(row => `[history:${row.index}] ${row.text}`).join('；'));
   lines.push('态度依据各自身份、委托关系、已知的经历与眼前行为。已确认来完成委托并获准接洽时，先按已有合作关系正常交接；不要凭空写成敌视、拒绝或忘记委托。若有具体冲突依据，仍可按人物动机合理表达顾虑，不预设真凶或强制所有人友好。');

@@ -666,7 +666,7 @@ export function applyDelta(state, delta, rng, opts = {}) {
 }
 
 /** 给模型的紧凑状态块（也是 UI 的数据源之一）。 */
-export function stateBlock(state, query = '', { guards = [], locationUncertain = false, identityHints = new Map() } = {}) {
+export function stateBlock(state, query = '', { guards = [], locationUncertain = false, identityHints = new Map(), compact = false, actionQuery = query } = {}) {
   upgradeState(state);
   ensureNpcState(state);
   ensureAssets(state);
@@ -702,9 +702,14 @@ export function stateBlock(state, query = '', { guards = [], locationUncertain =
   }
   const debts = openDebts(state);
   if (debts.length) lines.push(`【债务】${debts.map((d) => debtText(state, d)).join('；')}`);
-  for (const c of p.contracts) lines.push(`【委托 ${c.id}】${c.label}｜${c.status}${c.status === 'active' && c.workStatus === 'completed' ? '｜工作已完成，酬劳尚未领取，不要再次当作进行中的工作' : ''}｜${copperText(c.copper)}${c.paidCopper != null ? `｜已付 ${copperText(c.paidCopper)}` : ''}`);
-  const bagAll = bagText(state);
+  const contracts = compact ? p.contracts.filter(c => c.status === 'active' || query.includes(c.id) || c.label && query.includes(c.label)) : p.contracts;
+  for (const c of contracts) lines.push(`【委托 ${c.id}】${c.label}｜${c.status}${c.status === 'active' && c.workStatus === 'completed' ? '｜工作已完成，酬劳尚未领取，不要再次当作进行中的工作' : ''}｜${copperText(c.copper)}${c.paidCopper != null ? `｜已付 ${copperText(c.paidCopper)}` : ''}`);
+  const inventoryRequested = /物品|背包|行囊|包裹|携带|装备|武器|库存|清点|购买|买|卖|交易|使用|消耗|药|准备|整理|补给/.test(actionQuery);
+  const bag = bagOf(state);
+  const selectedBag = !compact || inventoryRequested || bag.length <= 20 ? bag : bag.filter(item => item.name && query.includes(item.name));
+  const bagAll = selectedBag.map(item => `${item.name}×${item.qty}`).join('、');
   if (bagAll) lines.push(`【随身货物】${bagAll}`);
+  if (compact && selectedBag.length < bag.length) lines.push(`【其他随身物品】另有${bag.length - selectedBag.length}种，未展开；未列出不代表没有。`);
   const assetsAll = assetsText(state);
   if (assetsAll) lines.push(`【资产】${assetsAll}`);
   const gear = gearState(p);
@@ -712,7 +717,12 @@ export function stateBlock(state, query = '', { guards = [], locationUncertain =
   if (p.equipment?.length) {
     const counts = new Map();
     for (const raw of p.equipment) { const item = parseItemEntry(raw); counts.set(item.label, (counts.get(item.label) || 0) + item.qty); }
-    lines.push(`【拥有的装备，仅为收藏，不叠加判定】${[...counts].map(([name, qty]) => qty > 1 ? `${name}×${qty}` : name).join('、')}`);
+    const rows = [...counts];
+    const selected = !compact || inventoryRequested || rows.length <= 20 ? rows : rows.filter(([name]) => {
+      const item = parseItemEntry(name); return item?.name && query.includes(item.name);
+    });
+    if (selected.length) lines.push(`【拥有的装备，仅为收藏，不叠加判定】${selected.map(([name, qty]) => qty > 1 ? `${name}×${qty}` : name).join('、')}`);
+    if (selected.length < rows.length) lines.push(`【其他收藏】另有${rows.length - selected.length}种，未展开；未列出不代表没有。`);
   }
   if (activeEffects(state).length) lines.push('【正在生效的药剂】' + activeEffects(state).map(e => `${e.label}（到绝对分钟${e.expiresAt}）`).join('；'));
   if (p.talent) lines.push('【已明确的天赋规则】' + talentRuleText(p).join('；'));
@@ -730,14 +740,15 @@ export function stateBlock(state, query = '', { guards = [], locationUncertain =
   if (p.problems.length) lines.push(`【当前问题】${p.problems.join('；')}`);
   if (p.unfinished.length) lines.push('【未完成事项，旧事项如与玩家纠正冲突不得继续催问】', ...p.unfinished.filter(u => !contradictedByCorrection(state, u)).map(u => `[${u.id}] ${u.text}${u.dueDay != null ? `｜截止绝对日${u.dueDay}` : ''}${u.needsReview ? '｜旧事项，状态待核对' : ''}`));
   if (p.taskHistory?.length) lines.push('【相关历史事项，已归档的小步骤仅从清单收起，不表示已完成或取消；不得重新登记】', ...selectRelevant(p.taskHistory, query, 5, row => row.text, context).map(row => `[${row.id}] ${row.text}｜${row.status}`));
-  lines.push(builtinReferenceText(query));
+  const priceRelevant = !compact || /价|钱|金|银|铜|买|卖|交易|报价|费用|酬劳|报酬|赏金|工钱|雇|租|还债|借|赔|收款|付|分成|平分|收入|支出/.test(actionQuery);
+  if (priceRelevant) lines.push(builtinReferenceText(query));
   for (const quote of selectRelevant(state.quotes.filter(q => state.turn - q.turn <= 12), query, 4, q => q.item)) lines.push(`【报价 ${quote.id}】${quote.item}×${quote.qty}，总价${quote.copper}铜${quote.unitCopper ? `，单价${quote.unitCopper}铜` : ''}${quote.sellerId ? `，报价人${quote.sellerId}` : ''}。只有玩家明确同意才结算。`);
-  const priceRows = selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]);
+  const priceRows = priceRelevant ? selectRelevant(Object.entries(state.prices || {}), query, 18, x => x[0]) : [];
   if (priceRows.length) {
     lines.push('【存档物价·物品与服务】（补充游戏物价未收录的条目，供 AI 报价参考，不锁定成交金额）');
     for (const [n2, v] of priceRows) lines.push(`  · ${n2} ${priceEntryText(v)} 铜`);
   }
-  const rates = selectRelevant(Object.entries(state.rates || {}), query, 12, x => x[0]);
+  const rates = priceRelevant ? selectRelevant(Object.entries(state.rates || {}), query, 12, x => x[0]) : [];
   if (rates.length) lines.push('【存档物价·活计】（供 AI 报价参考，不锁定本次报酬）', ...rates.map(([name, v]) => `  · ${name} ${priceEntryText(v)} 铜`));
   if (state.ledgerLog?.length) {
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
@@ -757,8 +768,15 @@ export function stateBlock(state, query = '', { guards = [], locationUncertain =
     const confirmed = facts.filter(row => row.status !== 'unverified');
     const pinned = confirmed.filter(row => row.permanent || ['agreement', 'party', 'relationship', 'decision'].includes(row.kind));
     const selected = selectRelevant(confirmed, query, confirmed.reduce((sum, row) => sum + row.text.length, 0) <= 18000 ? confirmed.length : 36, row => row.text, context);
-    lines.push('【已记录的事实、约定与线索】（结合完整对话使用；玩家最新纠正优先。传闻和推断保留来源，不冒充亲历。）');
-    for (const k of [...new Map([...pinned, ...selected].map(k => [k.id, k])).values()]) lines.push(`  · [${k.id}] ${k.text}（${k.source}${k.kind ? `；${k.kind}` : ''}${k.key ? `；约定键${k.key}` : ''}${k.sourceTurn != null ? `；来源回合${k.sourceTurn}` : ''}${k.uncertainNpcNames?.length ? `；同名人物${k.uncertainNpcNames.join('、')}身份待核对，不得指定` : ''}${k.historicalIdentityEvidence?.length ? `；同名身份参考${k.historicalIdentityEvidence.map(p => `[history:${p.index}] ${p.quote}`).join('、')}` : ''}）`);
+    const rows = [...new Map([...pinned, ...selected].map(k => [k.id, k])).values()];
+    const formatFact = k => `  · [${k.id}] ${k.text}（${k.source || '来源未记录'}${k.kind ? `；${k.kind}` : ''}${k.key ? `；约定键${k.key}` : ''}${k.sourceTurn != null ? `；来源回合${k.sourceTurn}` : ''}${k.uncertainNpcNames?.length ? `；同名人物${k.uncertainNpcNames.join('、')}身份待核对，不得指定` : ''}${k.historicalIdentityEvidence?.length ? `；同名身份参考${k.historicalIdentityEvidence.map(p => `[history:${p.index}] ${p.quote}`).join('、')}` : ''}）`;
+    const uncertainSource = k => /传闻|听说|猜测|推测|推断|怀疑|据说/.test(String(k.source || ''));
+    const agreements = rows.filter(k => ['agreement', 'party', 'relationship', 'decision'].includes(k.kind) && !uncertainSource(k));
+    const claims = rows.filter(uncertainSource);
+    const factsOnly = rows.filter(k => !agreements.includes(k) && !claims.includes(k));
+    if (agreements.length) lines.push('【当前有效约定、队伍关系与决定】（以更新的明确纠正为准）', ...agreements.map(formatFact));
+    if (factsOnly.length) lines.push('【已记录的事实与线索】（按来源理解，未知不作断言）', ...factsOnly.map(formatFact));
+    if (claims.length) lines.push('【传闻与推测】（只代表所记录的说法，不当作已证实事实）', ...claims.map(formatFact));
     const uncertain = selectRelevant(facts.filter(row => row.status === 'unverified'), query, 6, row => row.text, context);
     if (uncertain.length) lines.push('【待核实的说法，不能取代已确认事实】', ...uncertain.map(k => `  · [${k.id}] ${k.text}（${k.disputeReason || '来源待核对'}）`));
   }

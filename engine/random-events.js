@@ -43,9 +43,10 @@ export function selectRandomEvent(state, judged, input, frequency = 'medium') {
   return selected ? { type: selected.id, label: selected.label, prompt: selected.prompt, scene } : null;
 }
 
-export function eventPrompt(event) {
+export function eventPrompt(event, { state, judged } = {}) {
   if (!event) return '';
-  return `【引擎触发的随机事件】类型：${event.label}。${event.prompt}\n根据本轮开始时刻、行动、地点、天气、人物关系、当前任务和相关历史，生成具体经过；发生时刻由你选择，并写清准确的游戏时间。事件发生在正文实际经过的时间内，不得把不在场的人写成在场。需要玩家决定的危机在发生时停下，正文以此时刻结束，等待玩家选择；普通背景变化可继续。不要替玩家付款、交易、接受委托、攻击或决定，不强加新的任务；只把实际发生的状态变化记入JSON，遵守现有装备与天赋。`;
+  const contracts = state?.player?.contracts?.filter(c => c.status === 'active').map(c => c.label) || [];
+  return `【引擎触发的随机事件】类型：${event.label}。${event.prompt}\n场景分类：${event.scene}；起始地点：${state?.player?.location?.siteName || '未知'}；当前行动：${judged?.actionText || '依玩家原文'}；现有委托：${contracts.join('、') || '无已登记委托'}。仅在确实相关时联系这些委托，不制造已有事实之外的关联。先描述迹象或眼前局面；普通背景变化可以结束或继续，必须立即决定的危机停在发生时刻，等待玩家选择。根据本轮开始时刻、天气、人物关系和历史生成具体经过，选择并写清实际经过时间内的发生时刻，不得把不在场的人写成在场。不要替玩家付款、交易、接受委托、攻击或决定，不强加新的任务；只把实际发生的状态变化记入JSON，遵守现有装备与天赋。`;
 }
 
 export function recordRandomEvent(state, event, id) {

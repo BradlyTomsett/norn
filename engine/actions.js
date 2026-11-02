@@ -30,6 +30,7 @@ export function extractChoices(content) {
 export function ensureChoices(content) {
   const text = String(content || '').trim();
   if (extractChoices(text).length) return text;
+  if (/[？?][”」』"']*\s*$/.test(text)) return `${text}\n\n【你现在可以做什么】\n① 请对方进一步说明\n② 先考虑一下再回答`.trim();
   return `${text}\n\n【你现在可以做什么】\n① 观察当前情况\n② 继续当前进程，看看接下来发生什么`.trim();
 }
 
