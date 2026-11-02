@@ -1,4 +1,5 @@
 import { makeRng } from './rng.js';
+import { OPTION_HEADING } from './actions.js';
 
 // Directions, not pre-written facts: the model builds a scene from the actual context.
 export const EVENT_TYPES = [
@@ -17,19 +18,25 @@ export const EVENT_TYPES = [
 ];
 
 export function eventScene(state, judged, input) {
-  const text = `${state.player.location?.siteName || ''} ${input || ''}`;
-  if (/森林|树林|山林|野外|荒野|山洞|矿洞/.test(text)) return 'wild';
-  if (/家中|卧室|自己家|家里|旅店客房/.test(text)) return 'home';
-  if (judged.travelScope === 'journey' || judged.travelScope === 'route' || /赶路|旅途|荒野|野外|山路/.test(text)) return /荒野|野外|森林|树林|山林/.test(text) ? 'wild' : 'road';
-  if (/仓|守夜|值守|调查|委托|工作|工坊|货栈/.test(text)) return 'work';
-  if (/森林|树林|山林|野外|荒野|山洞|矿洞/.test(text)) return 'wild';
-  if (/家中|卧室|自己家|家里/.test(text)) return 'home';
+  const place = state.player.location?.siteName || '', action = String(input || '');
+  if (judged.travelScope === 'journey' || judged.travelScope === 'route') return 'road';
+  if (/森林|树林|山林|野外|荒野|山洞|矿洞/.test(place)) return 'wild';
+  if (/家中|卧室|自己家|家里|旅店客房/.test(place)) return 'home';
+  if (/仓库|库房|工坊|货栈/.test(place) || /(?:在|于)(?:仓库|库房|工坊|货栈)(?:里|内)?(?:守夜|值守|工作)/.test(action)) return 'work';
   return 'town';
+}
+
+const activeEvent = row => ['pending', 'introduced'].includes(row.status);
+function addressesEvent(row, input) {
+  const text = String(input || '');
+  const common = /(?:回应|回答|拒绝|接受)(?:他|她|它|他们|对方|强盗|劫匪|那人|这件事)|(?:交出|交给)(?:钱|财物|货物)|逃跑|逃走|反击|投降|求饶/;
+  const keywords = { road_robbery: /劫匪|强盗|拦路/, animal: /野兽|魔兽|动物/, theft: /小偷|盗贼|盗窃/, magic: /法术|魔法|失控/, incident: /事故|伤者/ };
+  return common.test(text) || Boolean(keywords[row.type]?.test(text));
 }
 
 export function selectRandomEvent(state, judged, input, frequency = 'medium') {
   if (judged.kind === 'meta') return null;
-  const ongoing = state.randomEvents?.findLast(e => ['pending', 'introduced'].includes(e.status));
+  const ongoing = state.randomEvents?.findLast(e => activeEvent(e) && ((e.missingUpdates || 0) < 2 || addressesEvent(e, input)));
   if (ongoing) {
     const type = EVENT_TYPES.find(e => e.id === ongoing.type);
     if (type) return { ...type, type: type.id, id: ongoing.id, scene: ongoing.scene, continuing: true, summary: ongoing.text || type.label };
@@ -63,7 +70,37 @@ export function eventPrompt(event, { state, judged } = {}) {
 export function recordRandomEvent(state, event, id, update) {
   if (!event) return;
   const eventId = event.id || id;
-  const status = ['pending','resolved','left'].includes(update?.status) ? update.status : 'introduced';
+  const previous = (state.randomEvents || []).find(row => row.id === eventId);
+  const validStatus = ['pending','resolved','left'].includes(update?.status);
+  const status = validStatus ? update.status : previous?.status || 'introduced';
   const text = typeof update?.text === 'string' ? update.text.slice(0, 600) : event.summary || event.label;
-  state.randomEvents = [...(state.randomEvents || []).filter(row => row.id !== eventId), { id: eventId, type: event.type, scene: event.scene, text, status, turn: state.turn }].slice(-20);
+  const missingUpdates = validStatus ? 0 : (previous?.missingUpdates || 0) + 1;
+  state.randomEvents = [...(state.randomEvents || []).filter(row => row.id !== eventId), { ...previous, id: eventId, type: event.type, scene: event.scene, text, status, missingUpdates, turn: state.turn }].slice(-20);
+}
+
+// Confirmed travel to a different location ends the encounter, unless the same reply explicitly continues it.
+export function leaveRandomEvent(state, base, judged, input, event, update) {
+  const before = base.player.location, after = state.player.location;
+  const moved = before?.siteId && after?.siteId && before.siteId !== after.siteId;
+  const departure = judged.travelScope === 'route' || judged.travelScope === 'journey' || /(?:离开|逃离|逃出|返回|回到)/.test(input);
+  if (!moved || !departure) return;
+  const old = base.randomEvents?.findLast(activeEvent);
+  if (!old || (event?.id === old.id && ['pending', 'resolved', 'left'].includes(update?.status))) return;
+  const row = state.randomEvents?.find(e => e.id === old.id && activeEvent(e));
+  if (row) { row.status = 'left'; row.turn = state.turn; }
+}
+
+// Only unmistakable, type-specific completed events serve as a fallback when status is missing.
+export function inferEventEnd(event, raw) {
+  if (!event) return null;
+  const patterns = {
+    road_robbery: /(?:劫匪|强盗|拦路者)(?:们)?(?:已经|已|都|被)?(?:逃走了|逃跑了|离开了|击退了|制服了)/,
+    animal: /(?:野兽|魔兽|动物)(?:们)?(?:已经|已|都|被)?(?:逃走了|逃跑了|离开了|击退了|制服了)/,
+    magic: /(?:失控的魔法|魔法失控|失控的法术)(?:已经|已)?(?:平息了|消散了|停止了)/,
+    theft: /(?:小偷|盗贼)(?:已经|已|被)?(?:抓住了|制服了|逃走了|离开了)/,
+  };
+  const pattern = patterns[event.type]; if (!pattern) return null;
+  const prose = String(raw || '').split('```')[0].split(OPTION_HEADING)[0].replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"\n]*"/g, '');
+  const clear = prose.split(/[。！？；\n]/).some(part => !/如果|假如|可能|也许|似乎|打算|准备|希望|没有|并未|尚未|还没|未曾|不会|不要/.test(part) && pattern.test(part.replace(/\s/g, '')));
+  return clear ? { status: 'resolved', text: event.summary || event.label } : null;
 }

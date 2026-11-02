@@ -11,7 +11,7 @@ import { entityRefs } from './entities.js';
 import { absoluteDay } from './schema.js';
 import { rememberCorrections } from './continuity.js';
 import { narrativeTime } from './time.js';
-import { selectRandomEvent, recordRandomEvent } from './random-events.js';
+import { selectRandomEvent, recordRandomEvent, leaveRandomEvent } from './random-events.js';
 
 export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null, eventFrequency = 'medium', randomEventOverride = undefined } = {}) {
   const action = resolveAction(input, messages), text = action.text;
@@ -66,6 +66,7 @@ export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });
   if (!result.applied) throw new Error(result.rejected.join('；'));
   recordRandomEvent(state, plan.randomEvent, plan.id, eventUpdate);
+  leaveRandomEvent(state, plan.base, plan.judged, plan.text, plan.randomEvent, eventUpdate);
   trainSkill(state, plan.judged);
   if (['social', 'trade'].includes(plan.judged.kind)) for (const id of entityRefs(state, plan.text).npcIds) {
     const npc = state.npcs.find(n => n.id === id), name = npc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

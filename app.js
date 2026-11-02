@@ -682,20 +682,24 @@ async function sendTurn(options = {}) {
   if (current?.player.body.health <= 0 || current?.gameEnded) { turnStatus('人物已死亡，请先选择结束游戏或回档。'); return; }
   const pending = store.getPending(app.saveId);
   const typed = inputEl.value.trim();
+  const clearSubmittedInput = () => {
+    if (inputEl.value.trim() === typed) inputEl.value = '';
+    saveInputDraft();
+  };
   if (!options.retry && !typed) return;
-  if (!options.retry && /^\/状态\s*$/.test(typed)) { inputEl.value = ''; openSheet('overview'); return; }
-  if (!options.retry && /^\/时间\s*$/.test(typed)) { inputEl.value = ''; addMessage('assistant', `${app.ui.date}\n${current.player.location.siteName}`); return; }
-  if (!options.retry && /^\/存档\s*$/.test(typed)) { inputEl.value = ''; await store.putSaveAsync(current); app.loadedRevision = current.revision; addMessage('assistant', '已保存当前进度。'); return; }
+  if (!options.retry && /^\/状态\s*$/.test(typed)) { clearSubmittedInput(); openSheet('overview'); return; }
+  if (!options.retry && /^\/时间\s*$/.test(typed)) { clearSubmittedInput(); addMessage('assistant', `${app.ui.date}\n${current.player.location.siteName}`); return; }
+  if (!options.retry && /^\/存档\s*$/.test(typed)) { await store.putSaveAsync(current); clearSubmittedInput(); app.loadedRevision = current.revision; addMessage('assistant', '已保存当前进度。'); return; }
   if (pending && /^\/重试\s*$/.test(typed)) options.retry = true;
   if (pending && !options.retry && !/^\/取消重试\s*$/.test(typed)) { showPending(); addMessage('error', '请先重试未提交的回合，或输入 /取消重试 放弃草稿。'); return; }
-  if (/^\/取消重试\s*$/.test(typed)) { await store.putPendingAsync(app.saveId, null); inputEl.value = ''; turnStatus(); return; }
+  if (/^\/取消重试\s*$/.test(typed)) { await store.putPendingAsync(app.saveId, null); clearSubmittedInput(); turnStatus(); return; }
   if (/^\/撤回\s*$/.test(typed)) {
     const previous = store.getLastTurn(app.saveId);
     if (!previous) { addMessage('error', '还没有可撤回的回合。'); return; }
     const restored = structuredClone(previous.base); restored.saveId = app.saveId;
     await store.putSaveAsync(restored, previous.messages, { expectedRevision: current.revision, lastTurn: null, pending: null,
       rewindPoints: store.getRewindPoints(app.saveId).filter(point => point.turn < restored.turn) });
-    inputEl.value = ''; await loadGame(app.saveId, { allowDuringTurn: true }); addMessage('assistant', '已撤回上一回合，回到结算前。'); return;
+    clearSubmittedInput(); await loadGame(app.saveId, { allowDuringTurn: true }); addMessage('assistant', '已撤回上一回合，回到结算前。'); return;
   }
   if (!llm.hasKey()) { openSettings(); return; }
   let draft;
@@ -712,7 +716,7 @@ async function sendTurn(options = {}) {
       const clean = typed.replace(/^\/(?:纠错|纠正)\s*/, '').trim();
       const note = current.continuity.corrections.find(n => n.text === clean);
       if (note?.scope === 'turn') note.applyBeforeTurn = current.turn + 1;
-      await store.putSaveAsync(current, messages); inputEl.value = '';
+      await store.putSaveAsync(current, messages); clearSubmittedInput();
       await loadGame(app.saveId, { allowDuringTurn: true });
       addMessage('assistant', '已保存这条纠正，后续回复会优先参考。此旧存档没有上一回合快照，已结算的钱款和时间保持原状。');
       return;

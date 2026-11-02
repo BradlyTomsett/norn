@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateWorld } from '../engine/worldgen.js';
 import { upgradeState } from '../engine/schema.js';
-import { EVENT_TYPES, eventScene, selectRandomEvent } from '../engine/random-events.js';
+import { EVENT_TYPES, eventScene, selectRandomEvent, recordRandomEvent, leaveRandomEvent, inferEventEnd } from '../engine/random-events.js';
 import { prepareTurn, followNarrativeTime } from '../engine/turn.js';
 import { settleGeneratedReply } from '../engine/reply.js';
 import { buildTurnRequest } from '../engine/context.js';
@@ -18,12 +18,68 @@ test('事件类型覆盖劫道、动物、魔法与盗窃，并结合场景选�
   const state = fresh();
   assert.equal(eventScene(state, { travelScope: 'journey' }, '赶路'), 'road');
   assert.equal(eventScene(state, {}, '在仓库守夜'), 'work');
-  assert.equal(eventScene(state, {}, '森林里观察'), 'wild');
+  assert.equal(eventScene(state, {}, '调查森林里的劫匪'), 'town');
+  state.player.location.siteName = '森林';
+  assert.equal(eventScene(state, {}, '调查线索'), 'wild');
+  state.player.location.siteName = '灰水镇';
   for (let seed = 1; seed < 150; seed++) {
     state.seed = seed;
     const event = selectRandomEvent(state, { kind: 'travel', travelScope: 'journey', minutes: 2880 }, '赶路', 'high');
     if (event) assert.ok(EVENT_TYPES.find(row => row.id === event.type).scenes.includes('road'));
   }
+});
+
+test('地点取自实际位置，提到远方地点不改变场景，长途行动按路途处理', () => {
+  const state = fresh(); state.player.location = { siteId: 'town', siteName: '灰水镇广场' };
+  assert.equal(eventScene(state, {kind:'observe'}, '在城镇打听森林里的强盗'), 'town');
+  assert.equal(eventScene(state, {travelScope:'route'}, '离开城镇前往森林'), 'road');
+  state.player.location = { siteId: 'woods', siteName: '森林' };
+  assert.equal(eventScene(state, {kind:'observe'}, '调查线索'), 'wild');
+  assert.equal(eventScene(state, {travelScope:'journey'}, '从森林返回城镇'), 'road');
+});
+
+test('事件漏报状态保留进展，连续漏报不再阻塞新事件，相关行动仍可继续', () => {
+  const state = fresh(), judged = {kind:'rest',minutes:480}; state.turn = 5;
+  recordRandomEvent(state, {type:'road_robbery',scene:'road',label:'劫匪'}, 'e1', {status:'pending',text:'劫匪等候答复'});
+  let event = selectRandomEvent(state, judged, '交出钱'); assert.equal(event.id, 'e1');
+  state.turn++; recordRandomEvent(state, event, 'next');
+  assert.equal(state.randomEvents[0].status, 'pending');
+  event = selectRandomEvent(state, judged, '继续行动'); assert.equal(event.id, 'e1');
+  state.turn++; recordRandomEvent(state, event, 'next');
+  state.turn += 3;
+  assert.notEqual(selectRandomEvent(state, judged, '在旅店睡觉', 'high')?.id, 'e1');
+  assert.equal(selectRandomEvent(state, {kind:'social',minutes:5}, '回答劫匪')?.id, 'e1');
+  event = selectRandomEvent(state, judged, '回答劫匪');
+  recordRandomEvent(state, event, 'next', {status:'resolved',text:'劫匪离开'});
+  assert.equal(state.randomEvents[0].status, 'resolved');
+});
+
+test('明确结束或成功离开现场才收起相应事件，其他事件与未知结果保留', () => {
+  const event = {id:'e1',type:'road_robbery',scene:'road',label:'劫匪'};
+  assert.equal(inferEventEnd(event, '劫匪逃走了。\n```json\n{}\n```')?.status, 'resolved');
+  for (const text of ['劫匪没有逃走了。', '如果劫匪逃走了，再追上去。', '他说：“劫匪逃走了。”', '【可执行任务】\n劫匪逃走了。']) assert.equal(inferEventEnd(event, text), null);
+  const base = fresh(); base.turn=10; base.player.location={siteId:'road',siteName:'道路'};
+  recordRandomEvent(base,event,'e1',{status:'pending',text:'劫匪挡路'});
+  const state=structuredClone(base); state.player.location={siteId:'town',siteName:'城镇'};
+  recordRandomEvent(state,{type:'town',scene:'town',label:'市集'},'new',{status:'pending',text:'市集开张'});
+  leaveRandomEvent(state,base,{travelScope:'route'},'逃回城镇',{type:'town'}, {status:'pending'});
+  assert.equal(state.randomEvents.find(e=>e.id==='e1').status,'left');
+  assert.equal(state.randomEvents.find(e=>e.id==='new').status,'pending');
+  const unchanged=structuredClone(base); leaveRandomEvent(unchanged,base,{travelScope:'route'},'尝试逃走',event,null);
+  assert.equal(unchanged.randomEvents[0].status,'pending');
+  const followed=structuredClone(base); followed.player.location={siteId:'town',siteName:'城镇'};
+  leaveRandomEvent(followed,base,{travelScope:'route'},'逃回城镇',event,{status:'pending'});
+  assert.equal(followed.randomEvents[0].status,'pending');
+});
+
+test('实际回合漏写状态时根据明确结束语句更新事件，不增加模型请求', async () => {
+  const state=fresh(); state.turn=8;
+  recordRandomEvent(state,{type:'road_robbery',scene:'road',label:'劫匪'},'e1',{status:'pending',text:'劫匪挡路'});
+  const plan=prepareTurn(state,'回答劫匪','turn:next');
+  assert.equal(plan.randomEvent.id,'e1');
+  const result=await settleGeneratedReply(plan,'劫匪逃走了。\n```json\n{}\n```');
+  assert.equal(result.state.randomEvents.find(e=>e.id==='e1').status,'resolved');
+  assert.equal(state.randomEvents[0].status,'pending');
 });
 
 test('频率档位、短对话、间隔与近期类型排重', () => {

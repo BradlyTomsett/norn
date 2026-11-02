@@ -337,8 +337,20 @@ test('完整上下文保留约定与连续纠错，正文直接保存且纠错�
 test('没有回退快照的旧存档仍可保存事实纠正，不推进时间或请求生成', async ({ page }) => {
   await open(page, 'context'); await act(page, '/纠错 瑟拉一直是我的搭档');
   await expect(page.locator('#log')).toContainText('已保存这条纠正');
+  await expect(page.locator('#input')).toHaveValue('');
+  await page.reload(); await expect(page.locator('#input')).toHaveValue('');
   await expect(page.locator('#fixture-monitor')).toContainText('回合：0');
   await expect(page.locator('#fixture-controls')).not.toHaveAttribute('data-requests', /\d/);
+});
+
+test('撤回成功清除命令草稿，失败则保留输入', async ({ page }) => {
+  await open(page, 'legacy'); await act(page, '/撤回');
+  await expect(page.locator('#log')).toContainText('还没有可撤回的回合');
+  await expect(page.locator('#input')).toHaveValue('/撤回');
+  await act(page, '看看周围'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await act(page, '/撤回'); await expect(page.locator('#log')).toContainText('已撤回上一回合');
+  await expect(page.locator('#input')).toHaveValue('');
+  await page.reload(); await expect(page.locator('#input')).toHaveValue('');
 });
 
 test('旧纠正加载后写入持久存档，立即导出和刷新都保留纠正及冲突标记', async ({ page }) => {

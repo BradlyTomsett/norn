@@ -6,6 +6,7 @@ import { FinanceError, assertFinance, assertFinanceRepair } from './finance.js';
 import { ContinuityError, assertContinuity } from './continuity.js';
 import { validateFactChanges } from './fact-validation.js';
 import { missingSceneLocation, rememberSceneEvidence } from './scene.js';
+import { inferEventEnd } from './random-events.js';
 
 const rows = value => value == null ? [] : Array.isArray(value) ? value : [value];
 const canonical = value => JSON.stringify(value, function (_key, row) {
@@ -50,6 +51,10 @@ export async function settleGeneratedReply(plan, raw, { repairState } = {}) {
   const apply = delta => {
     if (!delta || typeof delta !== 'object' || Array.isArray(delta)) throw new Error('回复缺少状态变化数据');
     const model = normalizeNpcDelta(delta, plan.state);
+    if (!['pending', 'resolved', 'left'].includes(model.eventUpdate?.status)) {
+      const inferred = inferEventEnd(plan.randomEvent, raw);
+      if (inferred) model.eventUpdate = inferred;
+    }
     const dataPlan = { ...plan, state: structuredClone(plan.state) };
     for (const row of rows(model.contractUpdates)) {
       const contract = dataPlan.state.player.contracts.find(c => c.id === row?.id);
