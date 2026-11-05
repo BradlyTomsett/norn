@@ -6,6 +6,7 @@ import { normalizeToolItems } from './items.js';
 import { ensureFacts, reconcileGoals } from './facts.js';
 import { fixedSkills } from './skills.js';
 import { ensureContinuity } from './continuity.js';
+import { compactKnowledge } from './clues.js';
 export const SCHEMA_VERSION = 9;
 export const bounded = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 export const absoluteDay = (clock) => (Number(clock.year) || 0) * 365 + (Number(clock.doy) || 1) - 1;
@@ -57,6 +58,7 @@ export function upgradeState(state) {
   for (const key of ['npcs', 'knowledge', 'history', 'signals', 'worldLog', 'chronicle', 'consequences', 'storyLog']) {
     if (!Array.isArray(state[key])) state[key] = [];
   }
+  compactKnowledge(state);
   for (const event of state.consequences) for (const r of list(event.effects?.relations)) upgradeRelation(r);
   state.processedEvents ||= {};
   state.flags ||= {};

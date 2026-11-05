@@ -18,6 +18,7 @@ import { repText } from './reputation.js';
 import { addItem, effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
 import { chronicleText } from './chronicle.js';
 import { assignState, upgradeState, absoluteDay, closenessOf } from './schema.js';
+import { clueRows, currentPromptFact, mergeRepeatedKnowledge } from './clues.js';
 import { applyTasks } from './tasks.js';
 import { textId } from './entities.js';
 import { applyStoryDelta, ensureNpcState, relevantNpcs } from './npcs.js';
@@ -526,21 +527,24 @@ function applyUnsafe(state, delta, rng, opts = {}) {
           target: String(k.preparation.target || '').slice(0, 80), expiresDay: absoluteDay(state.clock) + Math.min(30, Math.max(1, Math.round(Number(k.preparation.days) || 7))) };
         if (!preparation.kinds.length || !preparation.target) { rejected.push('准备记录需要适用行动与对象'); continue; }
       }
-      state.knowledge.push(linkKnowledge(state, {
+      const added = linkKnowledge(state, {
         ...(typeof k === 'object' ? k : {}),
         text: clean,
         ...(preparation ? { preparation } : {}),
         source: typeof k === 'object' && k.source ? String(k.source).slice(0, 500) : '亲历',
         day: state.clock.doy,
-      }, opts.eventId));
-      const added = state.knowledge.at(-1);
-      if (state.knowledge.slice(0, -1).some(row => row.id === added.id)) added.id += ':' + textId(`${opts.eventId || ''}|${state.knowledge.length}`);
-      if (added.status === 'unverified') continue;
-      for (const old of state.knowledge.slice(0, -1)) {
-        if ((k.key && old.key === k.key) || (Array.isArray(k.supersedes) && k.supersedes.includes(old.id))) {
+        observedDay: absoluteDay(state.clock),
+        sourceTurn: (state.turn || 0) + 1,
+      }, opts.eventId);
+      delete added.aliases;
+      if (mergeRepeatedKnowledge(state, added)) continue;
+      if (state.knowledge.some(row => row.id === added.id || row.aliases?.includes(added.id))) added.id += ':' + textId(`${opts.eventId || ''}|${state.knowledge.length}`);
+      if (added.status !== 'unverified') for (const old of state.knowledge) {
+        if ((k.key && old.key === k.key) || (Array.isArray(k.supersedes) && [old.id, ...(old.aliases || [])].some(id => k.supersedes.includes(id)))) {
           old.status = 'superseded'; old.supersededBy = added.id;
         }
       }
+      state.knowledge.push(added);
     }
   };
   pushKnowledge(delta?.knowledge);
@@ -764,7 +768,7 @@ export function stateBlock(state, query = '', { guards = [], locationUncertain =
     const facts = state.knowledge.map(row => {
       const base = linkKnowledge(state, row), hint = identityHints.get(base.id);
       return hint ? linkKnowledge(state, { ...base, ...hint }) : base;
-    }).filter(row => !contradictedByCorrection(state, row) && !correctionContaminates(row, guards));
+    }).filter(row => currentPromptFact(state, row) && !contradictedByCorrection(state, row) && !correctionContaminates(row, guards));
     const confirmed = facts.filter(row => row.status !== 'unverified');
     const pinned = confirmed.filter(row => row.permanent || ['agreement', 'party', 'relationship', 'decision'].includes(row.kind));
     const selected = selectRelevant(confirmed, query, confirmed.reduce((sum, row) => sum + row.text.length, 0) <= 18000 ? confirmed.length : 36, row => row.text, context);
@@ -916,10 +920,9 @@ export function uiState(state) {
         };
       }),
     },
-    knowledge: state.knowledge.slice(-10),
+    ...clueRows(state),
     ledgerLog: (state.ledgerLog || []).slice(-6),
     worldLog: (state.worldLog || []).slice(-8),
-    storyLog: state.storyLog.filter(e => knownStory(state, e)).slice(-10),
     taskNotes: state.knowledge.filter(k => !contradictedByCorrection(state, k) && k.taskIds?.length),
     journal: [...state.knowledge.filter(k => !contradictedByCorrection(state, k) && ['agreement','party','relationship','decision'].includes(k.kind)).map(k => ({ text: k.text, turn: k.sourceTurn, kind: '约定与决定' })),
       ...state.storyLog.filter(e => knownStory(state, e)).map(e => ({ text: e.text, turn: e.sourceTurn, kind: '重要事件' })),

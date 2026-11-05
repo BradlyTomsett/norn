@@ -32,6 +32,12 @@ state.player.relations = state.player.relations.slice(0, 3);
 state.player.contracts = [{ id: 'nightcart', label: '柳洼夜车调查', copper: 1200000, status: 'active', tier: 3 }];
 state.player.unfinished = [{ text: '到公会领取柳洼调查的报酬' }, { text: '去公会领取柳洼调查的报酬' }];
 let initial = [{ role: 'assistant', content: '这是独立测试存档。柳洼夜车调查已经办妥，可以领取120金币赏金。\n【你现在可以做什么】\n① 睡觉八小时\n② 领取赏金并按约定分钱' }];
+if (scenario === 'clues') {
+  state.turn = 30;
+  state.knowledge = [{ text: '仓门有两把钥匙。', sourceTurn: 28 }, { text: '再次确认：仓门有2把钥匙！', sourceTurn: 29 },
+    { text: '旧车辙已经消失', sourceTurn: 18 }];
+  state.worldLog = [{ text: '路上买干粮花了 1 铜。' }, { text: '路上买干粮花了 1 铜。' }];
+}
 if (scenario === 'gear') {
   state.player.equipment = ['长剑（金）', '大枪（紫）', '长弓（紫）', '弓箭（灰）×500', '弓箭（绿）×30', '飞刀（蓝）×20', '匕首（紫）×20', '飞斧（灰）×10', '标枪（绿）×20', '战斧（紫）', '木盾（灰）', '铁盾（蓝）', '皮甲（紫）', '板甲（金）'];
   state.player.equipment.push('磨刀石（绿）×3');
