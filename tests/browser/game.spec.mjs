@@ -6,6 +6,17 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('线索页打开旧存档时自动合并重复项，并移除过期线索和流水', async ({ page }) => {
+  await open(page, 'clues');
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '线索', exact: true }).click();
+  const clues = page.locator('#cs-body');
+  await expect(clues.locator('.item')).toHaveCount(1);
+  await expect(clues).toContainText('仓门有两把钥匙');
+  await expect(clues).not.toContainText(/旧车辙|干粮/);
+});
+
 test('地图可在移动端查看地区，并把固定路线填入行动草稿', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: '地图', exact: true }).click();

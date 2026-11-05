@@ -53,7 +53,8 @@ export function validateFactChanges(plan, delta, raw) {
       fact.knownByEvidence = knowledgeEvidence;
       if (knowledgeEvidence.length) fact.knownBy = [...new Set(knowledgeEvidence.map(item => item.npcId))];
       const old = plan.state.knowledge.filter(item => !['unverified', 'superseded', 'disputed', 'retracted'].includes(item.status)
-        && ((fact.key && item.key === fact.key) || rows(fact.supersedes).includes(item.id)));
+        && ((fact.key && item.key === fact.key) || [item.id, ...rows(item.aliases)].some(id => rows(fact.supersedes).includes(id))));
+      if (fact.status === 'resolved' && (fact.kind !== 'clue' || !old.length)) return null;
       if (!old.length) return fact;
       const repeated = old.find(item => fact.key && item.key === fact.key && item.text === fact.text);
       if (repeated && knowledgeEvidence.length) {

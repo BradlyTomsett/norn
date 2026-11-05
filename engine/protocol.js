@@ -63,7 +63,7 @@ effects也可用npcUpdates改变人物职业、地点或同一id的目标状态�
 亲近只反映已有互动，不把支付约定酬劳当作赠礼；人物原则、拒绝与合作条件保持连贯，不能用送金币抹去已经发生的仇怨。已完成目标从goals移出，历史与持续说明优先于旧对话中的过时待办。
 事项用 tasks:[{id,text,status:"active",kind:"task|commitment|investigation",importance:"major",npcIds:[],siteIds:[],dueDays:3,completionText:"何时算完成"}]，只登记重要且尚未完成的整体任务、调查主体、交付与关键承诺。碰头时间地点、跑腿摸底、问某个细节、盯窗观察、排班、站位和喊话安排，都是任务小步骤，不论是否跨回合，都不新增待办，也不在【未完成事项】里重复列出。必要事实记入knowledge并关联原任务/委托；已经收起的小步骤不代表完成、取消或忘记，不能改个id重新塞回清单。普通吃饭、问候、闲聊不新增待办；永久保密和行动原则是说明，不是任务。已经登记的委托不再复制成同名任务。期限不明确就不填dueDays。与委托交付绑定可用completionCondition:{type:"contractPaid",contractId}，明确的抵达目标可用{type:"arrival",siteId}。
 每回合根据实际发生的结果，主动核对现有事项：完成或取消使用相同id和status:"completed"/"cancelled"。例如班次已定下，应立即关闭“定下三夜守夜班次”，不能继续列为未完成；排班完成不等于守夜任务已完成。已完成事项不得改写成新待办、也不得自动重开；相近表述沿用同一编号。没有完成依据的任务继续保留，不用单纯经过日期推定完成。未完成事项小节只列重要、尚需后续行动的新变化，不重复抄整张清单。
-knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 简要记录本回合新事实和约定，人物引用固定编号，同名人物按身份区分；碰头时间、分工、任务线索等内部安排必须用taskIds关联所属任务或委托，供详情查看，不另建独立待办。不要为每条事实重复抄长篇原文或证明材料。声望 reputation:[{place,change}]。
+knowledge:[{text,source,npcIds:[],siteIds:[],taskIds:[]}] 只记本回合新得知、值得后续使用的事实和约定。短期调查线索填 kind:"clue" 与稳定 key，同一问题沿用原 key；复述、换说法、闲聊、天气、过路和日常收支不再登记。确有新进展才更新，带上本回合可核对的 sourceQuote。线索明确查清且不再需要跟进时沿用原 key，填 status:"resolved" 并附原文依据。碰头时间、分工和任务线索用 taskIds 关联任务或委托，不另建待办。不要重复抄原文。声望 reputation:[{place,change}]。
 重要的队伍成员、搭档关系、报酬分配、已决定的方案都必须记入knowledge，kind分别为party、relationship、agreement、decision，并提供稳定key（例如contract:委托id:split）、准确source和完整text，不只写气氛与NPC表情。变化时沿用key，或用supersedes:[旧事实id]明确替代错误记录；不得覆写不相干事实。已确认的人、数量、期限、分工、分成不能漏记。玩家纠正不是NPC刚刚改主意，不要编造公会名单替旧错误辩护。
 只有本回合实际完成侦察、备好工具、布置埋伏等准备，才可在该knowledge里加preparation:{kinds:["combat"],target:"明确对象或地点",days:3}，供后续相应行动读取；不能仅凭玩家自称“准备过”新增既成事实。
 稀有度只用于武器护甲，默认普通；珍奇需要具体事件，史诗不随机，传说仅在玩家明确追求时出现。

@@ -340,20 +340,15 @@ function viewPeople(u) {
 
 function viewClues(u) {
   const out = [];
-  if (u.storyLog?.length) {
-    out.push('<h3>选择留下的后果</h3>');
-    for (const e of [...u.storyLog].reverse()) out.push(`<div class="item">${esc(e.text)}${e.cause ? `<span class="hint"> — 起因：${esc(e.cause)}</span>` : ''}</div>`);
-  }
   if (u.knowledge?.length) {
-    out.push('<h3>已知</h3>');
-    const status = { unverified: '待核实', disputed: '有争议', superseded: '已更新', retracted: '已撤回' };
-    for (const k of [...u.knowledge].reverse()) out.push(`<div class="item">${esc(k.text)}<span class="hint"> — ${esc([status[k.status], k.source].filter(Boolean).join(' · '))}</span></div>`);
+    out.push('<h3>待跟进</h3>');
+    for (const k of u.knowledge) out.push(`<div class="item">${esc(k.text)}${k.status === 'unverified' || k.source ? `<span class="hint"> — ${esc([k.status === 'unverified' ? '待核实' : '', k.source].filter(Boolean).join(' · '))}</span>` : ''}</div>`);
   }
-  if (u.worldLog?.length) {
-    out.push('<h3>世界动态</h3>');
-    for (const e of [...u.worldLog].reverse()) out.push(`<div class="item">${esc(e.text)}</div>`);
+  if (u.storyLog?.length) {
+    out.push('<h3>近期后果</h3>');
+    for (const e of u.storyLog) out.push(`<div class="item">${esc(e.text)}<span class="hint"> — 起因：${esc(e.cause)}</span></div>`);
   }
-  if (!out.length) out.push('<p class="hint">还没有什么线索。</p>');
+  if (!out.length) out.push('<p class="hint">目前没有待跟进的线索。</p>');
   return out.join('');
 }
 

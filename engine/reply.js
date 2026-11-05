@@ -50,7 +50,7 @@ export async function settleGeneratedReply(plan, raw, { repairState } = {}) {
   plan = followNarrativeTime(plan, raw);
   const apply = delta => {
     if (!delta || typeof delta !== 'object' || Array.isArray(delta)) throw new Error('回复缺少状态变化数据');
-    const model = normalizeNpcDelta(delta, plan.state);
+    const model = validateFactChanges(plan, normalizeNpcDelta(delta, plan.state), raw);
     if (!['pending', 'resolved', 'left'].includes(model.eventUpdate?.status)) {
       const inferred = inferEventEnd(plan.randomEvent, raw);
       if (inferred) model.eventUpdate = inferred;
