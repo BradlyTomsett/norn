@@ -55,6 +55,7 @@ test('地图支持缩放、拖动及重置，同时保留地点点击', async ({
   await open(page);
   await page.getByRole('button', { name: '地图', exact: true }).click();
   const map = page.locator('#atlas-map');
+  await expect(map.locator('image')).toHaveAttribute('href', './icons/norn-world.jpg');
   const initial = await map.getAttribute('viewBox');
   await page.getByRole('button', { name: '放大地图' }).click();
   const zoomed = await map.getAttribute('viewBox');

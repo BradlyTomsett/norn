@@ -1,6 +1,7 @@
 import { PLACES, REGIONAL_PROFILES, ATLAS_PROFILES, TERRAIN, ROUTES } from './engine/atlas-data.js';
 import { SEA_BENDS } from './engine/atlas-expansion.js';
 import { drawAtlasArt } from './atlas-art.js';
+import { projectPlace, projectPoint } from './atlas-projection.js';
 import { atlasLocation, atlasPlace, atlasTitle, atlasVisible, findRoute, routeLegs, routePosition, MODES, PLACE_CATEGORIES, placeCategory, routeLabel, durationLabel } from './engine/atlas.js';
 
 const svgNode = (tag, attrs, text) => {
@@ -19,12 +20,15 @@ const roads = new Map(ROUTES.map(road => [road.id, road]));
 function routePoints(road) {
   const a = atlasPlace(road.a), b = atlasPlace(road.b);
   const bends = (SEA_BENDS[road.id] || '').split(' ').filter(Boolean).map(point => point.split(',').map(Number));
-  return [[a.x, a.y], ...bends, [b.x, b.y]];
+  return [[a.x, a.y], ...bends, [b.x, b.y]].map(([x, y]) => {
+    const point = projectPoint(x, y);
+    return [point.x, point.y];
+  });
 }
 
 function positionAlong(leg, fraction) {
   const road = roads.get(leg.id);
-  if (!road) return atlasPlace(leg.from);
+  if (!road) return projectPlace(atlasPlace(leg.from));
   const points = routePoints(road);
   if (leg.from !== road.a) points.reverse();
   const lengths = points.slice(1).map(([x, y], i) => Math.hypot(x - points[i][0], y - points[i][1]));
@@ -35,7 +39,7 @@ function positionAlong(leg, fraction) {
     const part = length ? remaining / length : 0;
     return { x: x + (nextX - x) * part, y: y + (nextY - y) * part };
   }
-  return atlasPlace(leg.to);
+  return projectPlace(atlasPlace(leg.to));
 }
 
 export function setupAtlas({ onPlan, onLocate }) {
@@ -136,7 +140,7 @@ export function setupAtlas({ onPlan, onLocate }) {
   function drawMap(reset = false) {
     const visible = visiblePlaces();
     const focus = ATLAS_PROFILES[region.value], local = visible.filter(place => place.region === region.value);
-    const points = local.length ? local : focus ? [focus] : [];
+    const points = (local.length ? local : focus ? [focus] : []).map(projectPlace);
     if (points.length) {
       const xs = points.map(p => p.x), ys = points.map(p => p.y);
       const x = Math.min(...xs) - 100, y = Math.min(...ys) - 68;
@@ -146,7 +150,8 @@ export function setupAtlas({ onPlan, onLocate }) {
     map.replaceChildren();
     drawAtlasArt(map);
     for (const feature of TERRAIN) {
-      map.append(svgNode('text', { x: feature.x, y: feature.y, class: 'atlas-terrain ' + feature.type }, feature.name));
+      const point = projectPlace(feature);
+      map.append(svgNode('text', { x: point.x, y: point.y, class: 'atlas-terrain ' + feature.type }, feature.name));
     }
     const ids = new Set(visible.map(place => place.id));
     const active = new Set((state?.journey?.route || plannedRoute())?.legs.map(leg => leg.id));
@@ -161,7 +166,8 @@ export function setupAtlas({ onPlan, onLocate }) {
         class: ['atlas-link', (route.sea || route.river) && 'sea', route.river && 'river', route.footOnly && 'foot-only', active.has(route.id) && 'active'].filter(Boolean).join(' ') }));
     }
     if (!focus) for (const row of REGIONAL_PROFILES) {
-      const label = svgNode('text', { x: row.x, y: row.y - 15, class: 'atlas-region-label' }, row.name);
+      const point = projectPlace(row);
+      const label = svgNode('text', { x: point.x, y: point.y - 15, class: 'atlas-region-label' }, row.name);
       label.onclick = () => { region.value = row.id; selected = null; render(true); };
       map.append(label);
     }
@@ -169,16 +175,17 @@ export function setupAtlas({ onPlan, onLocate }) {
     const priority = [...new Set([selected, here, ...shown].filter(Boolean))];
     const labels = [];
     for (const place of priority) {
+      const point = projectPlace(place);
       const type = placeCategory(place);
       const wantedLabel = focus && (category.value || mainPlace(place) || place === selected || place === here);
-      const mark = place.kind === '主城' ? svgNode('path', { d: `M${place.x - 7} ${place.y + 4}v-8h3v-4h3v4h3v-4h3v4h3v8z` })
-        : ['城', '镇', '边镇', '村'].includes(place.kind) ? svgNode('path', { d: `M${place.x - 5} ${place.y}l5-5 5 5v5h-10z` })
-        : type === 'heritage' ? svgNode('path', { d: `M${place.x} ${place.y - 5}l5 5-5 5-5-5z` })
-          : svgNode('circle', { cx: place.x, cy: place.y, r: focus ? 4.3 : 3.5 });
+      const mark = place.kind === '主城' ? svgNode('path', { d: `M${point.x - 7} ${point.y + 4}v-8h3v-4h3v4h3v-4h3v4h3v8z` })
+        : ['城', '镇', '边镇', '村'].includes(place.kind) ? svgNode('path', { d: `M${point.x - 5} ${point.y}l5-5 5 5v5h-10z` })
+        : type === 'heritage' ? svgNode('path', { d: `M${point.x} ${point.y - 5}l5 5-5 5-5-5z` })
+          : svgNode('circle', { cx: point.x, cy: point.y, r: focus ? 4.3 : 3.5 });
       const group = svgNode('g', { class: 'atlas-mark ' + type + (selected?.id === place.id ? ' selected' : '') });
       group.append(mark);
       group.append(svgNode('title', {}, place.name));
-      const label = { x: place.x + 7, y: place.y + 4, width: place.name.length * 12 };
+      const label = { x: point.x + 7, y: point.y + 4, width: place.name.length * 12 };
       if (wantedLabel && !labels.some(other => Math.abs(other.y - label.y) < 13
         && other.x < label.x + label.width && label.x < other.x + other.width)) {
         group.append(svgNode('text', { x: label.x, y: label.y }, place.name));
@@ -188,7 +195,7 @@ export function setupAtlas({ onPlan, onLocate }) {
       map.append(group);
     }
     const traveling = state?.journey && routePosition(state.journey, 0);
-    let point = here;
+    let point = here && projectPlace(here);
     if (traveling?.leg) {
       const { leg, remaining } = traveling;
       point = positionAlong(leg, remaining / leg.minutes);

@@ -8,9 +8,20 @@ import { DOCK_SCENARIO, startScenario } from '../engine/scenario.js';
 import { prepareTurn, finishTurn, followNarrativeTime } from '../engine/turn.js';
 import { buildTurnRequest } from '../engine/context.js';
 import { absoluteMinute } from '../engine/schema.js';
+import { projectPoint } from '../atlas-projection.js';
 
 const start = (regionId = 'greywater', seed = 82) => generateWorld({ regionId, seed }).state;
 const prepare = (state, input, extra = {}) => prepareTurn(state, input, `atlas:${state.turn + 1}`, { randomEventOverride: null, ...extra });
+
+test('插画定位只改变地图显示，所有已登记地点仍有可用的显示坐标', () => {
+  for (const place of PLACES) {
+    const point = projectPoint(place.x, place.y);
+    assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y), place.name);
+    assert.ok(point.x >= 0 && point.x <= 1000 && point.y >= 0 && point.y <= 650, place.name);
+  }
+  assert.ok(projectPoint(228, 145).x > 228, '森岭巨湖与插画森林对齐');
+  assert.ok(projectPoint(534, 130).y < 130, '高原靠近插画北方雪山');
+});
 
 test('图册与原有主城、地理方位、开局地点一致，所有公开道路连通', () => {
   const worldbook = readFileSync(new URL('../prompt/worldbook.md', import.meta.url), 'utf8');
