@@ -82,6 +82,7 @@ test('地图支持缩放、拖动及重置，同时保留地点点击', async ({
 
 test('旧存档的临河城和当前地点可见，待核实地点允许玩家自行定位', async ({ page }) => {
   await open(page, 'unmapped-home');
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await page.getByRole('button', { name: '地图', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '诺恩地图' }), map = dialog.locator('#atlas-map');
   await expect(map.locator('.atlas-current-marker circle')).toHaveCount(1);
@@ -89,8 +90,7 @@ test('旧存档的临河城和当前地点可见，待核实地点允许玩家�
   await dialog.getByRole('button', { name: '临河城', exact: true }).click();
   await expect(dialog.locator('#atlas-info')).toContainText('位置待核实');
   await dialog.getByRole('button', { name: '调整地图位置' }).click();
-  const rect = await map.boundingBox();
-  await page.mouse.click(rect.x + rect.width * .4, rect.y + rect.height * .5);
+  await map.click();
   await expect(dialog.locator('#atlas-info')).toContainText('已为当前存档设置位置');
 });
 
