@@ -88,10 +88,14 @@ test('旧存档的临河城和当前地点可见，待核实地点允许玩家�
   await expect(map.locator('.atlas-current-marker circle')).toHaveCount(1);
   await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '临河城' }) })).toContainText('临河城 · 家');
   await dialog.getByRole('button', { name: '临河城', exact: true }).click();
+  await expect(dialog.locator('#atlas-info')).toContainText('昊明王国');
   await expect(dialog.locator('#atlas-info')).toContainText('位置待核实');
   await dialog.getByRole('button', { name: '调整地图位置' }).click();
   await map.click();
   await expect(dialog.locator('#atlas-info')).toContainText('已为当前存档设置位置');
+  await dialog.getByLabel('查看区域').selectOption('weituo');
+  await expect(dialog.getByRole('button', { name: '加隆城', exact: true })).toBeVisible();
+  await expect(map.locator('.atlas-current-marker circle')).toHaveCount(1);
 });
 
 test('关系列表可以移出和恢复人物，保留原有人物关系', async ({ page }) => {

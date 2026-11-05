@@ -13,7 +13,7 @@ for (const route of ROUTES) {
 
 export const atlasPlace = id => byId.get(id);
 export const atlasName = name => byName.get(name);
-export const atlasTitle = place => place.approximate ? '位置待核实' : [place.district, ATLAS_PROFILES[place.region].name].filter(Boolean).join(' · ');
+export const atlasTitle = place => [place.district, ATLAS_PROFILES[place.region].name, place.approximate && place.region !== 'unmapped' ? '位置待核实' : ''].filter(Boolean).join(' · ');
 export const atlasVisible = (place, state) => !place.hidden || Boolean(state?.atlasDiscovered?.includes(place.id)
   || place.discoverVia && state?.locations?.[place.discoverVia]?.id === place.discoverVia);
 
