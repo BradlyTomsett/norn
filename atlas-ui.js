@@ -17,39 +17,6 @@ const node = (tag, text, cls) => {
   return el;
 };
 const roads = new Map(ROUTES.map(road => [road.id, road]));
-function placeIllustration(place, point) {
-  const group = svgNode('g', { transform: `translate(${point.x} ${point.y})`, class: 'atlas-illustration' });
-  const add = (tag, attrs) => group.append(svgNode(tag, attrs));
-  if (place.kind === '主城') {
-    add('path', { class: 'icon-shadow', d: 'M-11 8q11 4 22 0' });
-    add('path', { class: 'icon-stone', d: 'M-9 7V-4h4v-5h3v5h4v-5h3v5h4V7z' });
-    add('path', { class: 'icon-roof', d: 'M-10-4l3-5 3 5z M4-4l3-5 3 5z M-4-9l4-6 4 6z' });
-    add('path', { class: 'icon-stone', d: 'M-4 7V-9h8V7z' });
-    add('path', { class: 'icon-door', d: 'M-2 7V2a2 2 0 0 1 4 0v5z' });
-    add('path', { class: 'icon-line', d: 'M0-15v-4m0 0h5l-2 2 2 2H0' });
-  } else if (['城', '边镇'].includes(place.kind)) {
-    add('path', { class: 'icon-shadow', d: 'M-9 7q9 3 18 0' });
-    add('path', { class: 'icon-stone', d: 'M-8 6V-3h3v-4h3v4h4v-4h3v4h3v9z' });
-    add('path', { class: 'icon-roof', d: 'M-9-3l3-5 3 5z M3-3l3-5 3 5z' });
-    add('path', { class: 'icon-door', d: 'M-2 6V2a2 2 0 0 1 4 0v4z' });
-  } else if (place.kind === '港口') {
-    add('path', { class: 'icon-water', d: 'M-10 7q3 2 6 0t6 0 6 0' });
-    add('path', { class: 'icon-wood', d: 'M-8 2h16l-3 4h-9z' });
-    add('path', { class: 'icon-line', d: 'M0 2v-13' });
-    add('path', { class: 'icon-sail', d: 'M-1-10v10h-7z M1-9l6 8H1z' });
-  } else if (place.kind === '镇') {
-    add('path', { class: 'icon-shadow', d: 'M-7 6q7 3 14 0' });
-    add('path', { class: 'icon-stone', d: 'M-6 6V-1L0-6l6 5v7z' });
-    add('path', { class: 'icon-roof', d: 'M-8 0L0-8l8 8-2 1-6-5-6 5z' });
-    add('path', { class: 'icon-door', d: 'M-1 6V2h3v4z' });
-  } else if (['遗迹', '废墟'].includes(place.kind)) {
-    add('path', { class: 'icon-shadow', d: 'M-8 7q8 3 16 0' });
-    add('path', { class: 'icon-ruin', d: 'M-7 6V-5h3v2h3v9 M1 6V-8h3v3h3v11z' });
-  } else {
-    add('circle', { r: 3.5, class: 'icon-dot' });
-  }
-  return group;
-}
 function routePoints(road) {
   const a = atlasPlace(road.a), b = atlasPlace(road.b);
   const bends = (SEA_BENDS[road.id] || '').split(' ').filter(Boolean).map(point => point.split(',').map(Number));
@@ -75,16 +42,28 @@ function positionAlong(leg, fraction) {
   return projectPlace(atlasPlace(leg.to));
 }
 
-export function setupAtlas({ onPlan, onLocate }) {
+export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
   const $ = id => document.getElementById('atlas-' + id);
   const sheet = $('sheet'), close = $('close'), region = $('region'), category = $('category'), search = $('search');
+  const showRoads = $('roads');
   const map = $('map'), places = $('places'), info = $('info');
-  let state, selected, mode = 'walk', lastFocus, view = null, homeView = null, drag = null, pinch = null, suppressClick = false;
+  let state, selected, mode = 'walk', lastFocus, view = null, homeView = null, drag = null, pinch = null, suppressClick = false, relocating = null;
   const pointers = new Map();
+  const fixed = (x, y, className) => svgNode('g', { class: className, 'data-fixed-x': x, 'data-fixed-y': y });
+  const syncFixed = () => {
+    const scale = map.getScreenCTM()?.a;
+    if (!scale || !Number.isFinite(scale)) return;
+    for (const element of map.querySelectorAll('[data-fixed-x]')) {
+      const x = element.getAttribute('data-fixed-x'), y = element.getAttribute('data-fixed-y');
+      element.setAttribute('transform', `translate(${x} ${y}) scale(${1 / scale})`);
+    }
+  };
   const setView = next => {
     view = next;
     map.setAttribute('viewBox', [view.x, view.y, view.width, view.height].join(' '));
+    syncFixed();
   };
+  new ResizeObserver(syncFixed).observe(map);
   const svgPoint = (clientX, clientY) => {
     const matrix = map.getScreenCTM();
     if (!matrix) return { x: view.x + view.width / 2, y: view.y + view.height / 2 };
@@ -150,6 +129,11 @@ export function setupAtlas({ onPlan, onLocate }) {
   region.replaceChildren(new Option('大陆总览', ''), ...REGIONAL_PROFILES.map(row => new Option(row.name, row.id)));
   category.replaceChildren(new Option('全部类型', ''), ...Object.entries(PLACE_CATEGORIES).map(([id, name]) => new Option(name, id)));
   const visiblePlaces = () => PLACES.filter(place => atlasVisible(place, state));
+  const displayPlace = place => {
+    const saved = place.approximate && state?.atlasSitePositions?.[place.id];
+    return saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
+      ? { ...place, x: saved.x, y: saved.y } : projectPlace(place);
+  };
   const matchesCategory = place => !category.value || placeCategory(place) === category.value;
   const mainPlace = place => ['主城', '城', '边镇', '港口'].includes(place.kind);
   const plannedRoute = () => {
@@ -158,11 +142,13 @@ export function setupAtlas({ onPlan, onLocate }) {
   };
   function hide() {
     sheet.classList.add('hidden');
+    relocating = null;
     lastFocus?.focus();
   }
   close.onclick = hide;
   sheet.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });
   function selectPlace(place) {
+    relocating = null;
     const changedRegion = region.value !== place.region;
     selected = place;
     region.value = place.region;
@@ -173,18 +159,37 @@ export function setupAtlas({ onPlan, onLocate }) {
   function drawMap(reset = false) {
     const visible = visiblePlaces();
     const focus = ATLAS_PROFILES[region.value], local = visible.filter(place => place.region === region.value);
-    const points = (local.length ? local : focus ? [focus] : []).map(projectPlace);
+    const points = (local.length ? local : focus ? [focus] : []).map(displayPlace);
+    const artPoints = focus ? PLACES.filter(place => place.region === focus.id && !place.hidden).map(projectPlace) : [];
+    if (focus && !artPoints.length) artPoints.push(projectPlace(focus));
+    let artBounds = null;
+    if (artPoints.length) {
+      const xs = artPoints.map(p => p.x), ys = artPoints.map(p => p.y);
+      const x = Math.min(...xs) - 100, y = Math.min(...ys) - 68;
+      artBounds = { x, y, width: Math.max(220, Math.max(...xs) - x + 105), height: Math.max(152, Math.max(...ys) - y + 75) };
+    }
     if (points.length) {
       const xs = points.map(p => p.x), ys = points.map(p => p.y);
       const x = Math.min(...xs) - 100, y = Math.min(...ys) - 68;
       homeView = { x, y, width: Math.max(220, Math.max(...xs) - x + 105), height: Math.max(152, Math.max(...ys) - y + 75) };
     } else homeView = { x: 0, y: 0, width: 1000, height: 650 };
+    const fit = box => {
+      const ratio = map.clientWidth / map.clientHeight;
+      if (!box || !ratio) return box;
+      const width = Math.max(box.width, box.height * ratio);
+      const height = Math.max(box.height, box.width / ratio);
+      return { x: box.x - (width - box.width) / 2, y: box.y - (height - box.height) / 2, width, height };
+    };
+    if (focus) { homeView = fit(homeView); artBounds = fit(artBounds); }
     if (reset || !view) setView({ ...homeView });
     map.replaceChildren();
-    drawAtlasArt(map);
-    for (const feature of TERRAIN) {
+    drawAtlasArt(map, region.value, artBounds);
+    // 大陆地形注记与各区域独立插画并非同一张图，避免把邻区地名叠到区域图上。
+    for (const feature of focus ? [] : TERRAIN) {
       const point = projectPlace(feature);
-      map.append(svgNode('text', { x: point.x, y: point.y, class: 'atlas-terrain ' + feature.type }, feature.name));
+      const label = fixed(point.x, point.y, 'atlas-fixed-label');
+      label.append(svgNode('text', { class: 'atlas-terrain ' + feature.type }, feature.name));
+      map.append(label);
     }
     const ids = new Set(visible.map(place => place.id));
     const active = new Set((state?.journey?.route || plannedRoute())?.legs.map(leg => leg.id));
@@ -192,6 +197,7 @@ export function setupAtlas({ onPlan, onLocate }) {
     const shownIds = new Set(shown.map(place => place.id));
     for (const route of ROUTES) {
       if (!ids.has(route.a) || !ids.has(route.b) || route.restricted && !state?.atlasPasses?.includes(route.id)) continue;
+      if (!showRoads.checked && !active.has(route.id)) continue;
       if (!active.has(route.id) && !shownIds.has(route.a) && !shownIds.has(route.b)) continue;
       if (!active.has(route.id) && !focus && !category.value && !(route.sea || route.river || shownIds.has(route.a) && shownIds.has(route.b))) continue;
       const points = routePoints(route).map(point => point.join(',')).join(' ');
@@ -200,37 +206,44 @@ export function setupAtlas({ onPlan, onLocate }) {
     }
     if (!focus) for (const row of REGIONAL_PROFILES) {
       const point = projectPlace(row);
-      const label = svgNode('text', { x: point.x, y: point.y - 15, class: 'atlas-region-label' }, row.name);
+      const label = fixed(point.x, point.y, 'atlas-fixed-label');
+      label.append(svgNode('text', { y: -15, class: 'atlas-region-label' }, row.name));
       label.onclick = () => { region.value = row.id; selected = null; render(true); };
       map.append(label);
     }
     const here = atlasLocation(state);
-    const priority = [...new Set([selected, here, ...shown].filter(Boolean))];
+    const showHere = !focus || here?.region === focus.id;
+    const priority = [...new Set([selected, showHere && here, ...shown].filter(Boolean))];
     const labels = [];
     for (const place of priority) {
-      const point = projectPlace(place);
+      const point = displayPlace(place);
       const type = placeCategory(place);
-      const wantedLabel = focus && (category.value || mainPlace(place) || place === selected || place === here);
-      const mark = placeIllustration(place, point);
-      const group = svgNode('g', { class: 'atlas-mark ' + type + (selected?.id === place.id ? ' selected' : '') });
-      group.append(mark);
+      const isHome = place.id === 'linhe-city' && state?.npcs?.some(npc => npc.id === 'npc_father' && /临河城/.test(npc.profession || ''));
+      const wantedLabel = isHome || place.approximate || (focus && (category.value || mainPlace(place) || place === selected || place === here));
+      const group = fixed(point.x, point.y, 'atlas-mark ' + type + (place.approximate && !state?.atlasSitePositions?.[place.id] ? ' approximate' : '') + (selected?.id === place.id ? ' selected' : ''));
+      group.append(svgNode('circle', { r: place === selected ? 4 : 3, class: 'atlas-place-dot' }));
       group.append(svgNode('title', {}, place.name));
       const label = { x: point.x + 11, y: point.y + 4, width: place.name.length * 12 };
       if (wantedLabel && !labels.some(other => Math.abs(other.y - label.y) < 13
         && other.x < label.x + label.width && label.x < other.x + other.width)) {
-        group.append(svgNode('text', { x: label.x, y: label.y }, place.name));
+        group.append(svgNode('text', { x: 9, y: 4 }, place.name + (isHome ? ' · 家' : '')));
         labels.push(label);
       }
       group.onclick = () => selectPlace(place);
       map.append(group);
     }
     const traveling = state?.journey && routePosition(state.journey, 0);
-    let point = here && projectPlace(here);
+    let point = showHere && here && displayPlace(here);
     if (traveling?.leg) {
       const { leg, remaining } = traveling;
-      point = positionAlong(leg, remaining / leg.minutes);
+      point = !focus || [leg.from, leg.to].some(id => atlasPlace(id)?.region === focus.id) ? positionAlong(leg, remaining / leg.minutes) : null;
     }
-    if (point) map.append(svgNode('circle', { cx: point.x, cy: point.y, r: 10, class: 'atlas-you' }));
+    if (point) {
+      const marker = fixed(point.x, point.y, 'atlas-current-marker');
+      marker.append(svgNode('circle', { r: 5, class: 'atlas-you' }));
+      map.append(marker);
+    }
+    syncFixed();
   }
   function action(label, value) {
     const button = node('button', label, 'ghost');
@@ -243,6 +256,17 @@ export function setupAtlas({ onPlan, onLocate }) {
     const row = ATLAS_PROFILES[selected?.region || region.value];
     if (selected) {
       info.append(node('h2', selected.name), node('p', `${selected.kind} · ${atlasTitle(selected)}`, 'hint'), node('p', selected.description));
+      if (selected.approximate && state) {
+        const status = node('p', state.atlasSitePositions?.[selected.id] ? '已为当前存档设置位置。' : '图中是暂定位置，请根据存档实际情况调整。', 'hint');
+        const setPosition = node('button', relocating ? '取消调整' : '调整地图位置', 'ghost');
+        setPosition.type = 'button';
+        setPosition.onclick = () => {
+          relocating = relocating ? null : selected.id;
+          drawInfo();
+        };
+        info.append(status, setPosition);
+        if (relocating) info.append(node('p', '点击地图选择位置；拖动地图不会保存位置。', 'hint'));
+      }
       const nearby = routeLegs(selected.id, state);
       if (nearby.length) {
         const details = node('details');
@@ -317,13 +341,28 @@ export function setupAtlas({ onPlan, onLocate }) {
     }));
     if (!filtered.length) places.append(node('p', terms.length ? '没有找到符合条件的地点。' : '这里暂无这类公开地点。', 'hint'));
   }
+  map.addEventListener('click', async event => {
+    if (!relocating || suppressClick || !state) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    const point = svgPoint(event.clientX, event.clientY);
+    if (point.x < 0 || point.x > 1000 || point.y < 0 || point.y > 650) return;
+    try {
+      state = await onSetPosition(relocating, point, state);
+      relocating = null;
+      render();
+    } catch (error) {
+      info.append(node('p', error.message, 'hint'));
+    }
+  }, true);
   function render(reset = false) { drawMap(reset); drawPlaces(); drawInfo(); }
   region.onchange = () => { selected = null; search.value = ''; render(true); };
+  showRoads.onchange = () => drawMap();
   category.onchange = () => { if (selected && !matchesCategory(selected)) selected = null; render(); };
   search.oninput = drawPlaces;
   return current => {
     state = current;
     selected = null;
+    relocating = null;
     region.value = category.value = search.value = '';
     lastFocus = document.activeElement;
     $('current').textContent = state ? `当前位置 · ${state.player.location.siteName}` + (!state.journey && !atlasLocation(state) ? '（未定位到共用地图）' : '') : '大陆总览';

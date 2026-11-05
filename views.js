@@ -323,18 +323,20 @@ function relationValue(raw) {
 function viewPeople(u) {
   const list = [...(u.player.relations || [])].sort((a, b) => (b.closeness ?? 0) - (a.closeness ?? 0));
   if (!list.length) return '<p class="hint">还没有记下来的人。</p>';
-  const out = [`<p class="hint">共 ${list.length} 人，按亲近程度排。</p><div class="two-col people">`];
-  for (const r of list) {
+  const visible = list.filter(r => !r.listHidden), hidden = list.filter(r => r.listHidden);
+  const out = [`<p class="hint">显示 ${visible.length} 人，按亲近程度排。</p><div class="two-col people">`];
+  for (const r of visible) {
     const who = [r.race, r.profession].filter(Boolean).join(' · ');
     out.push(
       `<div class="person"><div class="nm">${esc(r.name)}<span>${esc(who)}</span></div>` +
         (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
         relationValue(r.closeness) +
         ((r.goals || []).some(g => g.status === 'active' && !g.routine) ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active' && !g.routine).map(g => `${g.text}${g.blockedOn ? `（等待：${g.blockedOn}）` : ''}`).join('；'))}</div>` : '') +
-        `<div class="ob">${esc(r.observable || '')}</div><details><summary>人物回顾</summary><p>最后记录位置：${esc(r.location || '未记录')}${r.following ? ' · 同行' : ''}</p>${(r.memories || []).map(m => `<p>${esc(m.text)}</p>`).join('')}${(r.agreements || []).map(k => `<p>${esc(k.text)}${Number.isInteger(k.sourceTurn) ? ` <button class="chip" data-history-turn="${k.sourceTurn}">查看原文</button>` : ''}</p>`).join('')}</details></div>`,
+        `<div class="ob">${esc(r.observable || '')}</div><details><summary>人物回顾</summary><p>最后记录位置：${esc(r.location || '未记录')}${r.following ? ' · 同行' : ''}</p>${(r.memories || []).map(m => `<p>${esc(m.text)}</p>`).join('')}${(r.agreements || []).map(k => `<p>${esc(k.text)}${Number.isInteger(k.sourceTurn) ? ` <button class="chip" data-history-turn="${k.sourceTurn}">查看原文</button>` : ''}</p>`).join('')}<button class="ghost" data-relation-hide="${esc(r.npcId)}">从关系列表移除</button></details></div>`,
     );
   }
   out.push('</div>');
+  if (hidden.length) out.push(`<details class="relation-hidden"><summary>已收起的人物（${hidden.length}）</summary><p class="hint">人物记录仍保留，之后可重新显示。</p>${hidden.map(r => `<div class="relation-hidden-row"><span>${esc(r.name)}</span><button class="ghost" data-relation-show="${esc(r.npcId)}">重新显示</button></div>`).join('')}</details>`);
   return out.join('');
 }
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { ATLAS_PROFILES, PLACES, ROUTES } from '../engine/atlas-data.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { ATLAS_PROFILES, PLACES, ROUTES, REGIONAL_PROFILES } from '../engine/atlas-data.js';
 import { atlasLocation, atlasVisible, atlasPlace, findRoute } from '../engine/atlas.js';
 import { generateWorld } from '../engine/worldgen.js';
 import { DOCK_SCENARIO, startScenario } from '../engine/scenario.js';
@@ -9,9 +9,17 @@ import { prepareTurn, finishTurn, followNarrativeTime } from '../engine/turn.js'
 import { buildTurnRequest } from '../engine/context.js';
 import { absoluteMinute } from '../engine/schema.js';
 import { projectPoint } from '../atlas-projection.js';
+import { REGION_IMAGES } from '../atlas-regions.js';
 
 const start = (regionId = 'greywater', seed = 82) => generateWorld({ regionId, seed }).state;
 const prepare = (state, input, extra = {}) => prepareTurn(state, input, `atlas:${state.turn + 1}`, { randomEventOverride: null, ...extra });
+
+test('每个已有区域都有独立的地图图像', () => {
+  for (const region of REGIONAL_PROFILES) {
+    assert.ok(REGION_IMAGES[region.id], region.name);
+    assert.ok(existsSync(new URL('../' + REGION_IMAGES[region.id].replace(/^\.\//, ''), import.meta.url)), region.name);
+  }
+});
 
 test('插画定位只改变地图显示，所有已登记地点仍有可用的显示坐标', () => {
   for (const place of PLACES) {
@@ -37,13 +45,15 @@ test('图册与原有主城、地理方位、开局地点一致，所有公开�
   assert.ok(atlasPlace('eastern-seat').x > atlasPlace('greywater').x);
   assert.equal(atlasPlace('tideport').region, 'gewen');
   assert.equal(atlasPlace('anvilford').region, 'dwarves');
+  assert.equal(atlasPlace('linhe-city').name, '临河城');
+  assert.equal(atlasPlace('linhe-city').approximate, true);
   assert.equal(new Set(PLACES.map(place => place.id)).size, PLACES.length);
   assert.equal(new Set(PLACES.map(place => place.name)).size, PLACES.length);
   assert.equal(new Set(ROUTES.map(route => [route.a, route.b].sort().join('|'))).size, ROUTES.length);
   for (const route of ROUTES) {
     assert.ok(atlasPlace(route.a) && atlasPlace(route.b) && route.a !== route.b && route.km > 0, route.id);
   }
-  for (const place of PLACES.filter(place => !place.hidden)) assert.ok(findRoute('greywater', place.id));
+  for (const place of PLACES.filter(place => !place.hidden && !place.approximate)) assert.ok(findRoute('greywater', place.id));
 });
 
 test('新增的河运、岛间航线、沙海与遗址支路由同一地图结算', () => {
@@ -115,6 +125,7 @@ test('旧场景可定位，未知场景保留，自定义锚点不进入共用�
   const state = start();
   assert.equal(atlasLocation(state, { siteId: 'legacy-inn', siteName: '灰水镇旅店' }).id, 'greywater');
   assert.equal(atlasLocation(state, { siteId: 'legacy-city', siteName: '尚未测绘的地方' }), null);
+  assert.equal(atlasLocation(state, { siteId: 'jialong_guild_hall', siteName: '加隆城冒险者公会大厅' }).name, '加隆城');
   assert.equal(atlasLocation(state, { siteId: 'greywater', siteName: '旧自定义开局' }), null);
   assert.throws(() => finishTurn(prepare(state, '观察街道'), { location: { siteId: 'tideport', siteName: '潮汐港' } }), /城际移动/);
   const { state: custom } = startScenario({ ...DOCK_SCENARIO, place: '北崖渡口', atlasAnchor: 'tideport' });

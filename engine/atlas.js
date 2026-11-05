@@ -13,7 +13,7 @@ for (const route of ROUTES) {
 
 export const atlasPlace = id => byId.get(id);
 export const atlasName = name => byName.get(name);
-export const atlasTitle = place => [place.district, ATLAS_PROFILES[place.region].name].filter(Boolean).join(' · ');
+export const atlasTitle = place => place.approximate ? '位置待核实' : [place.district, ATLAS_PROFILES[place.region].name].filter(Boolean).join(' · ');
 export const atlasVisible = (place, state) => !place.hidden || Boolean(state?.atlasDiscovered?.includes(place.id)
   || place.discoverVia && state?.locations?.[place.discoverVia]?.id === place.discoverVia);
 
@@ -28,7 +28,7 @@ export function placeCategory(place) {
 
 function knownScene(name) {
   return PLACES.find(place => name?.startsWith(place.name) &&
-    /^(?:[·・／/ -]|内|外|旅店|酒馆|仓库|公会|城门|街|码头|郊外|广场|集市|工坊|客房|港区)/.test(name.slice(place.name.length)));
+    (place.approximate || /^(?:[·・／/ -]|内|外|旅店|酒馆|仓库|公会|冒险者公会|城门|街|码头|郊外|广场|集市|工坊|客房|港区)/.test(name.slice(place.name.length))));
 }
 
 export function atlasLocation(state, location = state?.player?.location) {

@@ -24,6 +24,7 @@ test('地图可在移动端查看地区，并把固定路线填入行动草稿',
   await expect(map).toBeVisible();
   await expect(map.locator('#atlas-current')).toContainText('灰水镇');
   await map.getByLabel('查看区域').selectOption('shengyan');
+  await expect(map.locator('#atlas-map image').nth(1)).toHaveAttribute('href', './maps/shengyan.jpg');
   await expect(map.getByText('圣言王国设定')).toBeVisible();
   await map.getByRole('button', { name: '东境郡城', exact: true }).click();
   await expect(map.getByText('31 公里 · 7小时45分钟 · 步行')).toBeVisible();
@@ -56,10 +57,14 @@ test('地图支持缩放、拖动及重置，同时保留地点点击', async ({
   await page.getByRole('button', { name: '地图', exact: true }).click();
   const map = page.locator('#atlas-map');
   await expect(map.locator('image')).toHaveAttribute('href', './icons/norn-world.jpg');
-  await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '圣洁白塔' }) }).locator('.icon-door')).toHaveCount(1);
-  await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '潮汐港' }) }).locator('.icon-sail')).toHaveCount(1);
+  await expect(map.locator('.atlas-illustration')).toHaveCount(0);
+  await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '圣洁白塔' }) }).locator('.atlas-place-dot')).toHaveCount(1);
+  await expect(map.locator('.atlas-current-marker circle')).toHaveAttribute('r', '5');
+  const label = map.locator('.atlas-region-label').filter({ hasText: '昊明王国' });
+  const textSize = (await label.boundingBox()).height;
   const initial = await map.getAttribute('viewBox');
   await page.getByRole('button', { name: '放大地图' }).click();
+  expect(Math.abs((await label.boundingBox()).height - textSize)).toBeLessThan(1.5);
   const zoomed = await map.getAttribute('viewBox');
   expect(zoomed).not.toBe(initial);
   const rect = await map.boundingBox();
@@ -73,6 +78,35 @@ test('地图支持缩放、拖动及重置，同时保留地点点击', async ({
   await page.getByLabel('查看区域').selectOption('shengyan');
   await map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '东境郡城' }) }).click();
   await expect(page.getByRole('heading', { name: '东境郡城' })).toBeVisible();
+});
+
+test('旧存档的临河城和当前地点可见，待核实地点允许玩家自行定位', async ({ page }) => {
+  await open(page, 'unmapped-home');
+  await page.getByRole('button', { name: '地图', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '诺恩地图' }), map = dialog.locator('#atlas-map');
+  await expect(map.locator('.atlas-current-marker circle')).toHaveCount(1);
+  await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '临河城' }) })).toContainText('临河城 · 家');
+  await dialog.getByRole('button', { name: '临河城', exact: true }).click();
+  await expect(dialog.locator('#atlas-info')).toContainText('位置待核实');
+  await dialog.getByRole('button', { name: '调整地图位置' }).click();
+  const rect = await map.boundingBox();
+  await page.mouse.click(rect.x + rect.width * .4, rect.y + rect.height * .5);
+  await expect(dialog.locator('#atlas-info')).toContainText('已为当前存档设置位置');
+});
+
+test('关系列表可以移出和恢复人物，保留原有人物关系', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '关系', exact: true }).click();
+  const panel = page.locator('#cs-body');
+  const person = panel.locator('.person').filter({ hasText: '老杜' });
+  await person.locator('summary').click();
+  await person.getByRole('button', { name: '从关系列表移除' }).click();
+  await expect(panel.locator('.person').filter({ hasText: '老杜' })).toHaveCount(0);
+  await panel.getByText(/已收起的人物/).click();
+  await panel.locator('.relation-hidden-row').filter({ hasText: '老杜' }).getByRole('button', { name: '重新显示' }).click();
+  await expect(panel.locator('.person').filter({ hasText: '老杜' })).toBeVisible();
 });
 
 test('输入草稿刷新后恢复，发送后清除；存档显示空间，生成时可看未保存预览', async ({ page }) => {

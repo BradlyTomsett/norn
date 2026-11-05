@@ -895,6 +895,23 @@ async function autoMaintainTasks() {
 }
 
 $('#cs-body').addEventListener('click', event => {
+  const button = event.target.closest('[data-relation-hide], [data-relation-show]');
+  if (!button || busy()) return;
+  runAction(async () => {
+    if (store.getPending(app.saveId)) { turnStatus('请先处理待完成的回合，再整理关系列表。'); return; }
+    const state = store.getSave(app.saveId);
+    const id = button.dataset.relationHide || button.dataset.relationShow;
+    const relation = state?.player.relations.find(row => row.npcId === id);
+    if (!relation) return;
+    relation.listHidden = Boolean(button.dataset.relationHide);
+    await store.putSaveAsync(state, undefined, { expectedRevision: state.revision });
+    app.loadedRevision = state.revision;
+    app.ui = uiState(state);
+    renderSheet('people');
+  });
+});
+
+$('#cs-body').addEventListener('click', event => {
   const button = event.target.closest('[data-contract-save]'); if (!button || busy()) return;
   runAction(async () => {
     if (store.getPending(app.saveId)) { taskNotice('请先处理未提交的回合，再调整酬劳。'); return; }
@@ -1083,6 +1100,14 @@ const openAtlas = setupAtlas({ async onLocate(place, baseline) {
   const location = state.player.location;
   location.atlasPlaceId = place.id;
   state.locations[location.siteId] = { ...state.locations[location.siteId], id: location.siteId, name: location.siteName, atlasPlaceId: place.id };
+  await store.putSaveAsync(state, undefined, { expectedRevision: baseline.revision });
+  return store.getSave(app.saveId);
+}, async onSetPosition(id, point, baseline) {
+  if (busy() || app.saveId !== baseline.saveId) throw new Error('请在当前存档的回合结束后再调整位置。');
+  const state = store.getSave(app.saveId);
+  if (state.revision !== baseline.revision || store.getPending(app.saveId)) throw new Error('请先处理待完成的回合，再重新打开地图。');
+  state.atlasSitePositions ||= {};
+  state.atlasSitePositions[id] = { x: Math.round(point.x * 10) / 10, y: Math.round(point.y * 10) / 10 };
   await store.putSaveAsync(state, undefined, { expectedRevision: baseline.revision });
   return store.getSave(app.saveId);
 }, onPlan(text) {
