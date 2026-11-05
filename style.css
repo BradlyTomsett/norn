@@ -462,17 +462,25 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 #turn-status { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(112px + env(safe-area-inset-bottom)); z-index:20; max-width:90vw; padding:8px 12px; background:var(--bg2); border:1px solid var(--line); border-radius:10px; font-size:12px; }
 .atlas-inner { max-width: 880px; }
 .atlas-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.atlas-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .atlas-map { display: block; width: 100%; height: clamp(230px, 48vw, 490px); border: 1px solid var(--line); border-radius: 12px; background: #17252b; margin-top: 12px; }
 .atlas-land { fill: #374037; stroke: #a19b6f; stroke-width: 2; }
 .atlas-terrain { fill: #b4c498; font-size: 13px; pointer-events: none; text-anchor: middle; }
 .atlas-terrain.mountain { fill: #d5c7ad; }
 .atlas-terrain.water { fill: #a5d1e1; }
+.atlas-terrain.sand { fill: #f0ce8c; }
+.atlas-river { fill: none; stroke: #699baa; stroke-width: 2; opacity: .65; }
 .atlas-region-label { fill: #fbebc9; text-anchor: middle; font-size: 16px; paint-order: stroke; stroke: #222720; stroke-width: 3; cursor: pointer; }
 .atlas-mark { fill: #f1ce8a; cursor: pointer; }
 .atlas-mark text { fill: #fff5db; font-size: 12px; paint-order: stroke; stroke: #1c251e; stroke-width: 3; }
 .atlas-mark.selected { fill: #8ed0ff; }
-.atlas-link { stroke: #9a9278; stroke-width: 1.5; }
+.atlas-mark.heritage:not(.selected) { fill: #dca7ee; }
+.atlas-mark.nature:not(.selected) { fill: #b4d697; }
+.atlas-mark.transport:not(.selected) { fill: #9ed7ee; }
+.atlas-link { fill: none; stroke: #9a9278; stroke-width: 1.5; }
 .atlas-link.sea { stroke: #92bdcf; stroke-dasharray: 6 5; }
+.atlas-link.river { stroke: #a2e5c6; }
+.atlas-link.foot-only { stroke-dasharray: 2 4; }
 .atlas-link.active, .atlas-you { stroke: #81caff; stroke-width: 3; }
 .atlas-you { fill: none; pointer-events: none; }
 .atlas-columns { display: grid; grid-template-columns: minmax(130px, .35fr) minmax(0, 1fr); gap: 18px; margin-top: 12px; }
@@ -481,4 +489,5 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .atlas-info dt { margin-top: .7em; font-weight: bold; }
 .atlas-info dd { margin: .25em 0 0; }
 .atlas-info details { margin-top: .9em; }
+.atlas-neighbor { display: block; margin-top: .35em; text-align: left; }
 @media (max-width: 600px) { .atlas-columns { grid-template-columns: minmax(0, 1fr); } .atlas-map { height: 240px; } }

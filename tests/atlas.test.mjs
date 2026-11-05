@@ -27,8 +27,38 @@ test('图册与原有主城、地理方位、开局地点一致，所有公开�
   assert.equal(atlasPlace('tideport').region, 'gewen');
   assert.equal(atlasPlace('anvilford').region, 'dwarves');
   assert.equal(new Set(PLACES.map(place => place.id)).size, PLACES.length);
-  assert.equal(new Set(ROUTES.map(route => route.id)).size, ROUTES.length);
+  assert.equal(new Set(PLACES.map(place => place.name)).size, PLACES.length);
+  assert.equal(new Set(ROUTES.map(route => [route.a, route.b].sort().join('|'))).size, ROUTES.length);
+  for (const route of ROUTES) {
+    assert.ok(atlasPlace(route.a) && atlasPlace(route.b) && route.a !== route.b && route.km > 0, route.id);
+  }
   for (const place of PLACES.filter(place => !place.hidden)) assert.ok(findRoute('greywater', place.id));
+});
+
+test('新增的河运、岛间航线、沙海与遗址支路由同一地图结算', () => {
+  const state = start();
+  const river = findRoute('greywater-quay', 'eastern-quay', state, 'ship');
+  assert.deepEqual(river.legs.map(leg => [leg.mode, leg.terrain]), [['ship', '灰水河航线']]);
+  assert.equal(river.minutes, 348);
+  assert.ok(findRoute('tideport', 'pearl-shoal', state, 'ship').legs.every(leg => leg.mode === 'ship'));
+  assert.ok(findRoute('wind-quay', 'gull-rock', state, 'ship'));
+  assert.ok(findRoute('east-reef', 'river-mouth', state, 'ship'));
+  assert.ok(findRoute('northwind', 'rainshadow-sands', state).legs.some(leg => leg.terrain === '沙砾道'));
+  assert.ok(findRoute('blackrock-pass', 'echo-vault', state, 'horse').legs.every(leg => leg.mode === 'walk'));
+  assert.equal(findRoute('gull-rock', 'dragon', state, 'ship'), null);
+  const request = buildTurnRequest(prepare(state, '步行前往灰烬礼拜堂'));
+  assert.match(request.system, /灰烬礼拜堂（废墟/);
+  assert.match(request.system, /屋顶已塌/);
+});
+
+test('进入屏障后才会发现镜湖新地点，旧通行许可仍然有效', () => {
+  const { state } = startScenario({ ...DOCK_SCENARIO, place: '松影边镇' });
+  state.atlasPasses = ['pinewatch~lake-haven'];
+  state.atlasDiscovered = ['lake-haven'];
+  assert.equal(findRoute('pinewatch', 'lake-reeds', state), null);
+  const lake = finishTurn(prepare(state, '前往镜湖聚落'), {}).state;
+  assert.ok(findRoute('lake-haven', 'lake-reeds', lake));
+  assert.ok(findRoute('lake-haven', 'mirror-spring', lake));
 });
 
 test('不同存档用同一路程；分别核对步行、骑马、乘船和本地移动', () => {

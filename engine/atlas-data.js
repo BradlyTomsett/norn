@@ -1,3 +1,5 @@
+import { SURVEY_PLACES, SURVEY_ROUTES, SURVEY_TERRAIN } from './atlas-expansion.js';
+
 // 地理底稿。canon 对照世界设定；details 和未见于原设定的地名是固定补充。
 const profile = (id, name, x, y, canon, details) => ({ id, name, x, y, canon, details });
 
@@ -77,7 +79,7 @@ export const REGIONAL_PROFILES = [
     治理: '与外界接触稀少，内部政治与居住地只随可靠剧情揭示。',
     生计: '外来贸易罕见；岛上物资、设施与习惯暂无可靠的公开记录。',
     风俗: '龙裔擅长元素与血脉力量，高阶者密度较大，出生率低。',
-    往来: '第一版仅标注悬空岛方位。没有可规划的公共航线或陆路，登岛需有明确剧情依据。',
+    往来: '图册标注悬空岛方位。没有可规划的公共航线或陆路，登岛需有明确剧情依据。',
   }),
   profile('west-sea', '西海', 94, 405, '龙岛所在海域，航线凶险。', {
     地形: '大陆西侧海面和外海风带。', 生计: '沿岸近海捕鱼，驶出近海要看风向和补给。', 往来: '图册只记录近岸地标；远海与龙岛的通路没有公开航线。',
@@ -89,7 +91,7 @@ export const REGIONAL_PROFILES = [
     地形: '黑岩山脉以东的海面与东南河口。', 生计: '矿料和锻造品在东礁港与河口栈镇转运。', 往来: '沿岸航线优先，外海裂隙位置不作为公开航点。',
   }),
   profile('outer', '外陆', 900, 82, '世界仍有大片未绘制、未宣称的土地，是探险家的疆域。', {
-    地形: '边缘以外的地形与国界未可靠测绘。', 往来: '已知路线到边缘即止。各存档发现可以记录为地方线索，需经设定修订才能成为共用地图。',
+    地形: '图册只标几处测绘边缘和临时营地。边缘以外的地形与国界未可靠测绘。', 往来: '已知路线到界石或林线即止。各存档发现可以记录为地方线索，需经设定修订才能成为共用地图。',
   }),
 ];
 
@@ -132,6 +134,7 @@ export const PLACES = [
   place('split-hoof', '裂蹄营地', 'orcs', '营地', 691, 488, '牛羊裂蹄部落经营开阔草坡。'),
   place('dusk-claw', '暮爪营地', 'orcs', '营地', 779, 514, '暮爪部落居于南部密林与河湾之间。'),
   place('river-mouth', '河口栈镇', 'orcs', '港口', 847, 466, '东南河口的公开转运点，可沿东海岸航行。'),
+  ...SURVEY_PLACES,
 ];
 
 const route = (a, b, km, terrain, extra = {}) => ({ id: `${a}~${b}`, a, b, km, terrain, ...extra });
@@ -156,6 +159,7 @@ export const ROUTES = [
   route('gold-mane', 'southern-market', 28, '丘地小路'), route('blood-axe', 'southern-market', 51, '林道'),
   route('wild-howl', 'southern-market', 31, '林道'), route('split-hoof', 'southern-market', 38, '牧道'),
   route('dusk-claw', 'southern-market', 60, '林道'), route('southern-market', 'river-mouth', 95, '河谷道'),
+  ...SURVEY_ROUTES,
 ];
 
 export const TERRAIN = [
@@ -164,4 +168,5 @@ export const TERRAIN = [
   { name: '石灰岩缓丘', x: 245, y: 316, type: 'mountain' }, { name: '西南平原', x: 361, y: 429, type: 'plain' },
   { name: '南缘林带与湿地', x: 579, y: 516, type: 'forest' }, { name: '东南丘陵与丛林', x: 761, y: 552, type: 'forest' },
   { name: '歌温群岛', x: 406, y: 607, type: 'water' },
+  ...SURVEY_TERRAIN,
 ];
