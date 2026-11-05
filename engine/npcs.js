@@ -3,6 +3,7 @@ import { applyTasks } from './tasks.js';
 import { entityRefs } from './entities.js';
 import { conditionMet, validCondition } from './conditions.js';
 import { applyCombatProfile } from './combat.js';
+import { atlasPlace, atlasWorld } from './atlas.js';
 
 const PURPOSES = [
   [/铁匠|锻|矿/, '备齐下一批原料，维持工坊开工', '联系原料商并整理订单', '原料和订单已经安排妥当'],
@@ -66,15 +67,18 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
     if (!name) rejected.push('地点需要名称');
     else {
       const siteId = cleanText(delta.location.siteId || name, 100);
-      state.player.location = { siteId, siteName: name };
+      const fixed = atlasPlace(delta.location.atlasPlaceId);
+      state.player.location = { siteId, siteName: name, ...(fixed ? { atlasPlaceId: fixed.id } : {}) };
       const place = { ...(state.locations[siteId] || {}), id: siteId, name };
       for (const key of ['regionTitle', 'terrain', 'economy', 'politics', 'risk']) {
         if (delta.location[key]) place[key] = cleanText(delta.location[key], 300);
       }
+      if (fixed) Object.assign(place, atlasWorld(fixed), { id: siteId, name });
+      if (siteId.startsWith('atlas-road:')) delete place.atlasPlaceId;
       place.regionTitle ||= name;
       state.locations[siteId] = place;
       state.world = { ...place, priceIndex: place.priceIndex || state.world.priceIndex || 1 };
-      state.storyLog.push({ id: `${eventId}:move`, day: absoluteDay(state.clock), text: `抵达${name}` });
+      state.storyLog.push({ id: `${eventId}:move`, day: absoluteDay(state.clock), text: siteId.startsWith('atlas-road:') ? `在${name}停留` : `抵达${name}` });
     }
   }
   for (const row of list(delta.npcs)) {

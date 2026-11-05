@@ -6,6 +6,23 @@ const open = async (page, scenario = 'legacy') => {
 };
 const act = async (page, text) => { await page.locator('#input').fill(text); await page.getByRole('button', { name: '说', exact: true }).click(); };
 
+test('地图可在移动端查看地区，并把固定路线填入行动草稿', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: '地图', exact: true }).click();
+  const map = page.getByRole('dialog', { name: '诺恩地图' });
+  await expect(map).toBeVisible();
+  await expect(map.locator('#atlas-current')).toContainText('灰水镇');
+  await map.getByLabel('查看区域').selectOption('shengyan');
+  await expect(map.getByText('圣言王国设定')).toBeVisible();
+  await map.getByRole('button', { name: '东境郡城', exact: true }).click();
+  await expect(map.getByText('31 公里 · 7小时45分钟 · 步行')).toBeVisible();
+  await map.getByRole('button', { name: '规划前往' }).click();
+  await expect(map).toBeHidden();
+  await expect(page.locator('#input')).toHaveValue('步行前往东境郡城');
+  await expect(page.locator('#action-preview')).toContainText('7小时45分钟');
+  await expect(page.locator('#preview-time-edit')).toBeHidden();
+});
+
 test('输入草稿刷新后恢复，发送后清除；存档显示空间，生成时可看未保存预览', async ({ page }) => {
   await open(page,'preview'); await page.getByRole('button', {name:'隐藏测试工具',exact:true}).click();
   await page.locator('#input').fill('看看周围的情况'); await page.reload();

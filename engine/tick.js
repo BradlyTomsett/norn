@@ -116,9 +116,11 @@ export function advanceWorld(state, minutes, rng, judged) {
 
   // 赶路：只算吃喝，1 天 2 铜的干粮钱
   if (judged?.kind === 'travel' && ['journey', 'route'].includes(judged.travelScope)) {
-    const fee = Math.max(1, Math.round((elapsed / 1440) * 2));
+    const charge = minutes => minutes > 0 ? Math.max(1, Math.round(minutes / 720)) : 0;
+    const previous = judged.trip?.elapsed || 0;
+    const fee = charge(previous + elapsed) - charge(previous);
     const cash = state.player.accounts.find((a) => a.id === 'cash');
-    if (cash && cash.copper >= fee) {
+    if (fee && cash && cash.copper >= fee) {
       addCopper(state, 'cash', -fee);
       addLedger([{ level: 'local', text: `路上买干粮花了 ${copperText(fee)}。` }]);
     }

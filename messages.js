@@ -23,6 +23,7 @@ export function receiptText(receipt) {
     ...(receipt.items || []).map(i => `${i.name} ${i.change >= 0 ? '+' : '−'}${Math.abs(i.change)}`),
     ...(receipt.health?.change ? [`健康 ${receipt.health.change >= 0 ? '+' : '−'}${Math.abs(receipt.health.change)}；当前 ${receipt.health.after}`] : []),
     ...(receipt.effects || []),
+    ...(receipt.travel ? [`${receipt.travel.inTransit ? '途中停留' : '抵达'} · ${receipt.travel.location}（本轮推进 ${receipt.travel.minutes} 分钟）`] : []),
   ].join('\n') || '本回合没有账户或物品变化。';
 }
 

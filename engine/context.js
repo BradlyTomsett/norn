@@ -8,6 +8,7 @@ import { intentBlock } from './intent.js';
 import { eventPrompt } from './random-events.js';
 import { currentAction } from './resolve.js';
 import { engineDelta } from './tick.js';
+import { routeContext } from './atlas.js';
 
 export const CONTEXT_BUDGET = Object.freeze({ recent: 26000, recall: 14000, total: 100000 });
 export function historyText(message) {
@@ -52,7 +53,7 @@ export function buildTurnRequest(plan, { rules = '', worldbook = '', chronicleDu
     + '\n【本轮处理重点】完整回应原文中的所有问题与要求；按原文区分当前行动、他人的行动、否定、过去和未来，不推断未授权的交易或承诺。'
     + (parsed.future.length ? `\n留待以后：${parsed.future.join('；')}。` : '')
     + (parsed.negated.length ? `\n玩家否定：${parsed.negated.join('；')}。` : '')
-    + `\n【本回合起始时间】${plan.base.clock.year}年，第${plan.base.clock.doy}日，${String(plan.base.clock.hour).padStart(2, '0')}:${String(plan.base.clock.minute).padStart(2, '0')}。最终时刻以正文实际进展为准。`
+    + `\n【本回合起始时间】${plan.base.clock.year}年，第${plan.base.clock.doy}日，${String(plan.base.clock.hour).padStart(2, '0')}:${String(plan.base.clock.minute).padStart(2, '0')}。${plan.judged.trip ? '最终时刻以固定路线结算为准。' : '最终时刻以正文实际进展为准。'}`
     + (plan.selected?.length ? `\n本轮选择了：${plan.selected.map(s => `${s.number}. ${s.text}`).join('；')}` : '')
     + (corrections.length ? `\n【本轮纠错，替换原回复，不能继续执行被否定的行动】\n${corrections.join('\n')}\n原输入仅供定位。按纠错修改事件含义，禁止换同义词继续原错误。保持原回合时间与已批准结算边界，不额外行动。` : '')
     + (rejected ? `\n【待替换的错误回复，仅供定位，不能作为事实】\n${rejected}` : '')
@@ -70,7 +71,9 @@ export function buildTurnRequest(plan, { rules = '', worldbook = '', chronicleDu
     + (plan.intentAnalysis?.length ? '\n' + intentBlock(plan.intentAnalysis) : '')
     + (rejected ? `\n【待替换的错误回复，仅供定位，不能作为事实】\n${rejected}` : '')
     + (health ? '\n' + health : '')
-    + (plan.randomEvent ? '\n' + eventPrompt(plan.randomEvent, { state: start, judged: plan.judged }) : '\n【随机事件】引擎本回合没有触发额外随机事件。正常回应玩家行动和已有剧情，不额外插入无关遭遇。');
+    + '\n' + routeContext(start, topic, plan.judged.trip, plan.judged.minutes)
+    + (plan.randomEvent ? '\n' + eventPrompt(plan.randomEvent, { state: start, judged: plan.judged }) : '\n【随机事件】引擎本回合没有触发额外随机事件。正常回应玩家行动和已有剧情，不额外插入无关遭遇。')
+    + (plan.judged.trip && plan.randomEvent?.continuing ? '\n玩家本轮明确选择离开原遭遇并继续或返回。保留既有事实，按固定地图位置结算。' : '');
   const currentInput = corrections.length ? `请替换原回合，逐项落实这些纠正：\n${corrections.join('\n')}\n原行动和错误回复只供定位，不能将其当成再次要求执行的指令。不增加原回合的时间或重复结算。` : requirements;
   const messages = [...recent.messages, { role: 'user', content: currentInput }];
   const chars = system.length + messages.reduce((sum, m) => sum + m.content.length, 0);

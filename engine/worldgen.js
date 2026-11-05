@@ -44,7 +44,7 @@ export const REGIONS = [
   {
     id: 'tideport',
     name: '潮汐港',
-    title: '歌温城邦 · 南海口岸',
+    title: '南海口岸 · 歌温王国',
     population: 12000,
     terrain: '海湾与礁石，码头、船坞、一座旧灯塔；涨潮时半个下城泡在水里',
     economy: '海运、鱼、船具、绳索；也做一点见不得光的转运',
@@ -105,6 +105,28 @@ function makeNpc(rng, { id, name, age, gender, race, profession, traits, obsessi
     obsession,
     attitude,
     memory: [],
+  };
+}
+
+export function startingStats(rng, race) {
+  const base = race === 'dwarf' ? { body: 9, agility: 9, wisdom: 8 } : race === 'elf' ? { body: 7, agility: 9, wisdom: 10 } : race === 'orc' ? { body: 10, agility: 9, wisdom: 7 } : { body: 8, agility: 8, wisdom: 8 };
+  return {
+    body: base.body + int(rng, 0, 2), agility: base.agility + int(rng, 0, 2), wisdom: base.wisdom + int(rng, 0, 2),
+    spirit: 20, trainingCap: race === 'dwarf' ? 80 : 100,
+  };
+}
+
+export function createInitialState({ seed, world, clock, player, npcs, knowledge }) {
+  return {
+    version: 'm1', saveId: null, createdAt: new Date().toISOString(), seed,
+    world, clock, turn: 0,
+    player: {
+      body: { health: 96 }, mind: { mood: '有点茫然' }, bag: [], bills: [],
+      skills: fixedSkills([]), debts: [], assets: [], goals: [], problems: [], unfinished: [],
+      ...player,
+    },
+    npcs, knowledge, history: [], signals: [], worldLog: [],
+    flags: { awakeningAsked: false, pendingAwakening: false },
   };
 }
 
@@ -213,8 +235,6 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
     }),
   );
 
-  const base = race === 'dwarf' ? { body: 9, agility: 9, wisdom: 8 } : race === 'elf' ? { body: 7, agility: 9, wisdom: 10 } : race === 'orc' ? { body: 10, agility: 9, wisdom: 7 } : { body: 8, agility: 8, wisdom: 8 };
-
   const debts = [];
   if (!isOrphan && chance(rng, 0.6)) {
     debts.push({
@@ -226,10 +246,7 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
 
   const weather = rollWeather(rng, 300 + int(rng, 0, 30));
 
-  const state = {
-    version: 'm1',
-    saveId: null,
-    createdAt: new Date().toISOString(),
+  const state = createInitialState({
     seed: seed || 0,
     world: {
       id: region.id,
@@ -243,7 +260,6 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
       priceIndex: 1,
     },
     clock: { year: 222, doy: 300 + int(rng, 0, 20), hour: 6, minute: 30, weather },
-    turn: 0,
     player: {
       name,
       age: 12,
@@ -251,22 +267,11 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
       race,
       profession: '孩子',
       professionState: 'none',
-      stats: {
-        body: base.body + int(rng, 0, 2),
-        agility: base.agility + int(rng, 0, 2),
-        wisdom: base.wisdom + int(rng, 0, 2),
-        spirit: 20,
-        trainingCap: race === 'dwarf' ? 80 : 100,
-      },
-      body: { health: 96 },
-      mind: { mood: '有点茫然' },
+      stats: startingStats(rng, race),
       wallet: { gold: 0, silver: 0, copper: fam.money },
-      bag: [],
-      bills: [],
       work: { ...workOf('孩子', 'none'), profession: '孩子', state: 'none' },
       debts,
       assets: isOrphan ? ['一件旧外套'] : ['一间土屋的居住权'],
-      skills: fixedSkills([]),
       relations: npcs.map((n) => ({
         npcId: n.id,
         closeness: n.id === 'npc_mother' ? 81.5 : n.id === 'npc_father' ? 52.5 : n.id === 'npc_sibling' ? 65 : 7.5,
@@ -277,18 +282,13 @@ export function generateWorld({ regionId, race = 'human', familyKey, seed, playe
       location: { siteId: region.id, siteName: region.name },
       goals: ['活下去，别给家里添麻烦'],
       problems: debts.length ? [`家里欠着${debts[0].to}的钱`] : ['家里不太宽裕'],
-      unfinished: [],
     },
     npcs,
     knowledge: [
       { text: `${region.name}在东境一带算是能活下去的地方`, source: '亲历', day: 300 },
       { text: `家里${fam.tag === '孤儿' ? '没有大人撑着' : '靠' + fam.tag + '吃饭'}`, source: '亲历', day: 300 },
     ],
-    history: [],
-    signals: [],
-    worldLog: [],
-    flags: { awakeningAsked: false, pendingAwakening: false },
-  };
+  });
 
   for (const npc of state.npcs) npc.location = { ...state.player.location };
   return { state, family: fam, region };

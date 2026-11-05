@@ -3,6 +3,7 @@ import { actionAbilities, abilityBrief } from './abilities.js';
 import { actionSkill, fixedSkills } from './skills.js';
 import { targetMinutes } from './time.js';
 import { targetDifficulty } from './combat.js';
+import { travelIntent } from './atlas.js';
 
 const RULES = [
   ['craft', /维修|修理|修复|制作|打造|锻造|打铁|炼制|制药|配药|配制|调制|烹饪|做饭/],
@@ -103,7 +104,11 @@ export function actionSchedule(state, text, rng) {
   if (classify(text) === 'meta') return [];
   let elapsed = 0;
   return currentAction(text).parts.map(part => {
-    const kind = classifyPart(part), scope = kind === 'travel' ? travelScope(state, part) : null;
+    const candidate = classifyPart(part);
+    const trip = ['travel', 'observe'].includes(candidate) ? travelIntent(state, part) : null;
+    if (trip?.error) throw new Error(trip.error);
+    if (trip) return { text: part, kind: 'travel', travelScope: 'route', minutes: trip.route.minutes - trip.elapsed, trip };
+    const kind = candidate, scope = kind === 'travel' ? travelScope(state, part) : null;
     const range = scope === 'local' ? [1, 3] : scope === 'city' ? [5, 30]
       : kind === 'social' && /问候|打招呼|晚安|早安|谢谢|^好的?$/.test(part) ? [1, 5] : PROFILE[kind].minutes;
     const route = scope === 'route' && Object.values(state.locations).find(p => part.includes(p.name))?.travelMinutes;
@@ -166,9 +171,11 @@ function difficultyFor(state, text, kind, fallback) {
   return fallback;
 }
 export function judge(state, text, rng) {
-  const kind = classify(text), prof = PROFILE[kind], p = state.player;
   const intent = currentAction(text);
   const segments = actionSchedule(state, text, rng), minutes = segments.reduce((sum, s) => sum + s.minutes, 0);
+  const trip = segments.find(segment => segment.trip)?.trip;
+  if (trip && segments.length > 1) throw new Error('请把这次城际旅行单独发送，到达或途中停下后再进行其他行动。');
+  const kind = trip ? 'travel' : classify(text), prof = PROFILE[kind], p = state.player;
   const mainText = segments.filter(s => s.kind === kind).map(s => s.text).join('，') || intent.text;
   const effects = actionAbilities(state, mainText, kind);
   const skillName = actionSkill(kind, mainText), skills = fixedSkills(p.skills);
@@ -209,7 +216,7 @@ export function judge(state, text, rng) {
   return { kind, label: prof.label, skill: skillName, statName, stat, skillLevel: Number(skill.toFixed(1)), effects,
     ability: Math.round(ability), difficulty: Math.round(difficulty), margin, score: Math.round(score),
     outcome: outcome.key, outcomeCn: outcome.cn, modifiers: mods, minutes, segments,
-    travelScope: segments.find(s => s.kind === 'travel')?.travelScope, actionText: intent.text, futurePlans: intent.future };
+    travelScope: segments.find(s => s.kind === 'travel')?.travelScope, trip, actionText: intent.text, futurePlans: intent.future };
 }
 export function judgeBrief(d) {
   return `当前行动：${d.actionText || '只作计划，不执行未来行动'}\n判定：${d.label}｜${d.outcomeCn}${d.modifiers.length ? `（${d.modifiers.join('、')}）` : ''}\n依据：${d.statName} ${d.stat} + ${d.skill || '生活行动'} ${d.skillLevel}，难度 ${d.difficulty}\n${abilityBrief(d.effects)}\n行动顺序：${(d.segments || []).map(s => `${s.text}（${s.minutes}分钟）`).join(' → ')}\n本回合${d.timeSource === 'narrative' ? '正文' : '预计'}耗时：${d.minutes} 分钟${d.futurePlans?.length ? `\n留待以后、这回合不得执行：${d.futurePlans.join('；')}` : ''}`;
