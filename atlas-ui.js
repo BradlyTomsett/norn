@@ -17,6 +17,39 @@ const node = (tag, text, cls) => {
   return el;
 };
 const roads = new Map(ROUTES.map(road => [road.id, road]));
+function placeIllustration(place, point) {
+  const group = svgNode('g', { transform: `translate(${point.x} ${point.y})`, class: 'atlas-illustration' });
+  const add = (tag, attrs) => group.append(svgNode(tag, attrs));
+  if (place.kind === '主城') {
+    add('path', { class: 'icon-shadow', d: 'M-11 8q11 4 22 0' });
+    add('path', { class: 'icon-stone', d: 'M-9 7V-4h4v-5h3v5h4v-5h3v5h4V7z' });
+    add('path', { class: 'icon-roof', d: 'M-10-4l3-5 3 5z M4-4l3-5 3 5z M-4-9l4-6 4 6z' });
+    add('path', { class: 'icon-stone', d: 'M-4 7V-9h8V7z' });
+    add('path', { class: 'icon-door', d: 'M-2 7V2a2 2 0 0 1 4 0v5z' });
+    add('path', { class: 'icon-line', d: 'M0-15v-4m0 0h5l-2 2 2 2H0' });
+  } else if (['城', '边镇'].includes(place.kind)) {
+    add('path', { class: 'icon-shadow', d: 'M-9 7q9 3 18 0' });
+    add('path', { class: 'icon-stone', d: 'M-8 6V-3h3v-4h3v4h4v-4h3v4h3v9z' });
+    add('path', { class: 'icon-roof', d: 'M-9-3l3-5 3 5z M3-3l3-5 3 5z' });
+    add('path', { class: 'icon-door', d: 'M-2 6V2a2 2 0 0 1 4 0v4z' });
+  } else if (place.kind === '港口') {
+    add('path', { class: 'icon-water', d: 'M-10 7q3 2 6 0t6 0 6 0' });
+    add('path', { class: 'icon-wood', d: 'M-8 2h16l-3 4h-9z' });
+    add('path', { class: 'icon-line', d: 'M0 2v-13' });
+    add('path', { class: 'icon-sail', d: 'M-1-10v10h-7z M1-9l6 8H1z' });
+  } else if (place.kind === '镇') {
+    add('path', { class: 'icon-shadow', d: 'M-7 6q7 3 14 0' });
+    add('path', { class: 'icon-stone', d: 'M-6 6V-1L0-6l6 5v7z' });
+    add('path', { class: 'icon-roof', d: 'M-8 0L0-8l8 8-2 1-6-5-6 5z' });
+    add('path', { class: 'icon-door', d: 'M-1 6V2h3v4z' });
+  } else if (['遗迹', '废墟'].includes(place.kind)) {
+    add('path', { class: 'icon-shadow', d: 'M-8 7q8 3 16 0' });
+    add('path', { class: 'icon-ruin', d: 'M-7 6V-5h3v2h3v9 M1 6V-8h3v3h3v11z' });
+  } else {
+    add('circle', { r: 3.5, class: 'icon-dot' });
+  }
+  return group;
+}
 function routePoints(road) {
   const a = atlasPlace(road.a), b = atlasPlace(road.b);
   const bends = (SEA_BENDS[road.id] || '').split(' ').filter(Boolean).map(point => point.split(',').map(Number));
@@ -178,14 +211,11 @@ export function setupAtlas({ onPlan, onLocate }) {
       const point = projectPlace(place);
       const type = placeCategory(place);
       const wantedLabel = focus && (category.value || mainPlace(place) || place === selected || place === here);
-      const mark = place.kind === '主城' ? svgNode('path', { d: `M${point.x - 7} ${point.y + 4}v-8h3v-4h3v4h3v-4h3v4h3v8z` })
-        : ['城', '镇', '边镇', '村'].includes(place.kind) ? svgNode('path', { d: `M${point.x - 5} ${point.y}l5-5 5 5v5h-10z` })
-        : type === 'heritage' ? svgNode('path', { d: `M${point.x} ${point.y - 5}l5 5-5 5-5-5z` })
-          : svgNode('circle', { cx: point.x, cy: point.y, r: focus ? 4.3 : 3.5 });
+      const mark = placeIllustration(place, point);
       const group = svgNode('g', { class: 'atlas-mark ' + type + (selected?.id === place.id ? ' selected' : '') });
       group.append(mark);
       group.append(svgNode('title', {}, place.name));
-      const label = { x: point.x + 7, y: point.y + 4, width: place.name.length * 12 };
+      const label = { x: point.x + 11, y: point.y + 4, width: place.name.length * 12 };
       if (wantedLabel && !labels.some(other => Math.abs(other.y - label.y) < 13
         && other.x < label.x + label.width && label.x < other.x + other.width)) {
         group.append(svgNode('text', { x: label.x, y: label.y }, place.name));

@@ -551,6 +551,18 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .atlas-mark.nature:not(.selected) { fill: #ceec9e; }
 .atlas-mark.transport:not(.selected) { fill: #a1edf0; }
 .atlas-mark.selected { fill: #ffb35c; stroke: #673624; stroke-width: 2; }
+.atlas-illustration { stroke: #473527; stroke-width: .9; stroke-linejoin: round; stroke-linecap: round; }
+.atlas-illustration .icon-shadow { fill: none; stroke: #182d2a; stroke-width: 2; opacity: .7; }
+.atlas-illustration .icon-stone { fill: #f2dca6; }
+.atlas-illustration .icon-roof { fill: #a74732; }
+.atlas-illustration .icon-door { fill: #59402d; }
+.atlas-illustration .icon-line { fill: #dfac50; stroke: #49332a; }
+.atlas-illustration .icon-wood { fill: #9e5a35; }
+.atlas-illustration .icon-sail { fill: #fff1c9; }
+.atlas-illustration .icon-water { fill: none; stroke: #d6f1e9; stroke-width: 1.5; }
+.atlas-illustration .icon-ruin { fill: #c5b5ab; }
+.atlas-illustration .icon-dot { fill: #f7d88e; stroke: #624631; }
+.atlas-mark.selected .atlas-illustration { filter: drop-shadow(0 0 4px #fff5ac); }
 .atlas-link { stroke: #f4d49a; stroke-width: 1.5; opacity: .82; }
 .atlas-link.sea { stroke: #b5f3f0; stroke-dasharray: 5 4; }
 .atlas-link.river { stroke: #a9f4e8; }
