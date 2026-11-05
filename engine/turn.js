@@ -12,6 +12,7 @@ import { absoluteDay } from './schema.js';
 import { rememberCorrections } from './continuity.js';
 import { narrativeTime } from './time.js';
 import { selectRandomEvent, recordRandomEvent, leaveRandomEvent } from './random-events.js';
+import { AtlasNarrativeError, checkTravelNarrative, mapSettlement, travelLocation } from './atlas.js';
 
 export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null, eventFrequency = 'medium', randomEventOverride = undefined } = {}) {
   const action = resolveAction(input, messages), text = action.text;
@@ -20,7 +21,7 @@ export function prepareTurn(source, input, id, { messages = [], corrections = []
   const state = structuredClone(base);
   const rng = makeRng((state.seed || 1) + (state.turn || 0) * 7919 + 13);
   const judged = judge(state, text, rng);
-  if (minutesOverride != null) {
+  if (minutesOverride != null && !judged.trip) {
     if (!Number.isSafeInteger(minutesOverride) || minutesOverride < 0 || minutesOverride > 3650 * 1440) throw new Error('指定时间无效');
     let remaining = minutesOverride;
     judged.segments = judged.segments.map((segment, index, all) => {
@@ -29,9 +30,13 @@ export function prepareTurn(source, input, id, { messages = [], corrections = []
     });
     judged.minutes = minutesOverride;
   }
+  const randomEvent = randomEventOverride === undefined ? selectRandomEvent(base, judged, text, eventFrequency) : randomEventOverride;
+  if (judged.trip && randomEvent && !randomEvent.continuing && judged.minutes > 1) {
+    judged.minutes = Math.min(240, Math.floor(judged.minutes / 2));
+    judged.segments[0].minutes = judged.minutes;
+  }
   const events = advanceWorld(state, judged.minutes, rng, judged);
   advanceTasks(state);
-  const randomEvent = randomEventOverride === undefined ? selectRandomEvent(base, judged, text, eventFrequency) : randomEventOverride;
   const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, randomEvent, eventFrequency, rng, history: messages, corrections, rejectedReply };
   plan.finance = financeTerms(plan);
   return plan;
@@ -40,6 +45,11 @@ export function prepareTurn(source, input, id, { messages = [], corrections = []
 /** Rebuild from the uncommitted baseline, never advance the already-previewed world twice. */
 export function followNarrativeTime(plan, raw) {
   const timing = narrativeTime(raw, plan.base.clock);
+  if (plan.judged.trip) {
+    checkTravelNarrative(plan.judged.trip, plan.judged.minutes, raw);
+    if (timing && timing.minutes !== plan.judged.minutes) throw new AtlasNarrativeError('正文时间与固定路线不符。请重新生成本回合，原进度已保留。');
+    return plan;
+  }
   if (!timing) return plan;
   const next = timing.minutes === plan.judged.minutes ? { ...plan, judged: { ...plan.judged } }
     : prepareTurn(plan.base, plan.text, plan.id, { messages: plan.history, corrections: plan.corrections,
@@ -52,7 +62,11 @@ export function followNarrativeTime(plan, raw) {
 export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   const state = structuredClone(plan.state);
   const model = structuredClone(delta);
-  const eventUpdate = model.eventUpdate; delete model.eventUpdate;
+  let eventUpdate = model.eventUpdate; delete model.eventUpdate;
+  if (plan.judged.trip && plan.randomEvent?.continuing && eventUpdate?.status !== 'resolved') {
+    eventUpdate = { status: 'left', text: plan.randomEvent.summary || plan.randomEvent.label };
+  }
+  mapSettlement(state, model, plan.judged.trip, plan.judged.minutes, plan.text);
   if (Array.isArray(model.transactions)) model.transactions = model.transactions.map((tx, index) => ({ ...tx, id: `${plan.id}:tx:${index}`,
     ...(tx.kind === 'gift' && /分成|报酬|酬劳|工钱|分赏/.test(plan.text) ? { reason: tx.reason || '约定酬劳分成' } : {}) }));
   if (model.time) throw new Error('模型改写了引擎时间，请重试本回合');
@@ -61,10 +75,16 @@ export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   if (enforceTerms && /^(我(?:要|想)?|请帮我)?(?:买|购买|卖掉|卖出|出售)/.test(plan.text) && ['success', 'critical', 'crush'].includes(plan.judged.outcome)
     && !model.transactions?.length && !model.trade) throw new Error('本次买卖缺少交易记录，请重试');
   if (enforceTerms && /领取.*赏金|领赏/.test(plan.text) && !model.transactions?.some(tx => tx.kind === 'reward') && !model.bounty) throw new Error('领取赏金缺少委托结算记录，请重试');
-  const rng = prepareTurn(plan.base, plan.text, plan.id, { minutesOverride: plan.judged.minutes }).rng;
+  const rng = prepareTurn(plan.base, plan.text, plan.id, { minutesOverride: plan.judged.minutes,
+    randomEventOverride: plan.randomEvent }).rng;
   applyDelta(state, engineDelta(plan.judged, state), rng, { bump: false });
   const result = applyDelta(state, model, rng, { eventId: plan.id, judged: plan.judged });
   if (!result.applied) throw new Error(result.rejected.join('；'));
+  if (plan.judged.trip) {
+    const location = travelLocation(plan.judged.trip, plan.judged.minutes);
+    for (const npc of state.npcs) if (npc.following) npc.location = { ...location };
+    result.receipt.travel = { location: location.siteName, inTransit: Boolean(state.journey), minutes: plan.judged.minutes };
+  }
   recordRandomEvent(state, plan.randomEvent, plan.id, eventUpdate);
   leaveRandomEvent(state, plan.base, plan.judged, plan.text, plan.randomEvent, eventUpdate);
   trainSkill(state, plan.judged);

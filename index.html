@@ -21,8 +21,24 @@
   <button id="btn-saves" class="saves-primary">存档</button>
   <button id="btn-refresh" class="ghost">刷新</button>
   <div class="date" id="date">——</div>
+  <button id="btn-map" class="ghost" type="button">地图</button>
   <button id="btn-panel" class="ghost">状态</button>
 </header>
+
+<div id="atlas-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="atlas-title">
+  <div class="sheet-inner atlas-inner">
+    <div class="atlas-heading"><h1 id="atlas-title">诺恩地图</h1><button id="atlas-close" class="ghost" type="button">关闭</button></div>
+    <p id="atlas-current" class="hint"></p>
+    <label>查看区域<select id="atlas-region" class="name-input"></select></label>
+    <svg id="atlas-map" class="atlas-map" viewBox="0 0 1000 650" aria-hidden="true"></svg>
+    <p class="hint">▲ 主城 · ● 城镇与地标 · 虚线为航线。方位为示意，路程按道路计算。</p>
+    <label>查找地点<input id="atlas-search" class="name-input" type="search" placeholder="输入城镇或港口名称" /></label>
+    <div class="atlas-columns">
+      <div id="atlas-places" class="atlas-places" aria-label="地点列表"></div>
+      <section id="atlas-info" class="atlas-info" aria-label="地点和路线"></section>
+    </div>
+  </div>
+</div>
 
 <main id="log" class="log"></main>
 <nav id="toc" class="toc hidden" aria-label="快速索引"></nav>
@@ -46,6 +62,7 @@
     <h2>模型</h2>
     <input id="gate-model" class="name-input" placeholder="deepseek-flash" autocomplete="off" />
     <button id="gate-go" class="primary">开始</button>
+    <button id="gate-skip" class="primary secondary">先进入主菜单</button>
     <p class="hint" style="margin-top:14px">没有 Key 的话，去 platform.deepseek.com 申请一个。</p>
   </div>
 </div>
@@ -65,8 +82,8 @@
         <span>在诺恩大陆上挑一个地方，十二岁开始</span>
       </button>
       <button id="menu-custom" class="card">
-        <b>自定义</b>
-        <span>自己写地方、出身和名字</span>
+        <b>自定义开局</b>
+        <span>选一张剧本，或设计自己的开场</span>
       </button>
     </div>
     <p class="hint" id="build" style="margin-top:26px;opacity:.55"></p>
@@ -75,25 +92,75 @@
 
 <!-- 自定义开局 -->
 <div id="custom" class="sheet hidden">
-  <div class="sheet-inner">
+  <div class="sheet-inner scenario-editor">
     <h1>自定义开局</h1>
-    <h2>地方叫什么</h2>
-    <input id="cu-place" class="name-input" placeholder="例：灰港 / 北境·铁砧堡" autocomplete="off" />
-    <h2>这里是什么样子</h2>
-    <textarea id="cu-desc" class="name-input" rows="3" placeholder="例：海边的小城，靠捕鲸和走私过活；城主是个瘸腿的老船长，教堂的钟二十年没响过。"></textarea>
-    <h2>你的出身</h2>
-    <input id="cu-origin" class="name-input" placeholder="例：渔户的女儿 / 孤儿 / 铁匠学徒" autocomplete="off" />
-    <h2>名字（可留空）</h2>
-    <input id="cu-name" class="name-input" placeholder="留空就随机取一个" autocomplete="off" />
-    <h2>你是</h2>
-    <div id="cu-genders" class="chips">
-      <button class="chip" data-gender="male">男孩</button>
-      <button class="chip" data-gender="female">女孩</button>
-    </div>
-    <button id="cu-start" class="primary">出生</button>
-    <button id="cu-back" class="primary" style="background:transparent;color:var(--ink-dim);border:1px solid var(--line)">返回</button>
+    <p id="cu-status" class="hint" role="status"></p>
+    <button id="cu-cancel-draft" class="ghost hidden" type="button">取消草拟</button>
+    <fieldset id="cu-fields">
+      <label>选择剧本<select id="cu-library" class="name-input"></select></label>
+      <details id="cu-ai">
+        <summary>用 AI 草拟开场</summary>
+        <label>你的想法
+          <textarea id="cu-idea" class="name-input" rows="2" maxlength="1200" placeholder="例：我想当潮汐港的码头工，第一班船离岸前发现一件怪事"></textarea>
+        </label>
+        <p class="hint">使用你配置的 DeepSeek 模型。生成后可以检查和修改，再决定是否开局。</p>
+        <button id="cu-draft" class="ghost" type="button">生成草稿</button>
+      </details>
+      <label>剧本名称<input id="cu-title" class="name-input" maxlength="48" /></label>
+      <label>起始地点<input id="cu-place" class="name-input" list="cu-atlas-places" maxlength="48" placeholder="选择地图地点，或输入原创地名" /></label>
+      <datalist id="cu-atlas-places"></datalist>
+      <label id="cu-anchor-row">原创地点靠近哪里<select id="cu-anchor" class="name-input"></select></label>
+      <label>开场场所补充（可留空）<textarea id="cu-desc" class="name-input" rows="2" maxlength="800"></textarea></label>
+      <div class="scenario-pair">
+        <label>角色姓名（可留空）<input id="cu-name" class="name-input" maxlength="40" placeholder="留空则随机取名" /></label>
+        <label>年龄<input id="cu-age" class="name-input" type="number" min="1" max="120" /></label>
+      </div>
+      <div class="scenario-pair">
+        <label>性别<select id="cu-gender" class="name-input"><option value="male">男</option><option value="female">女</option></select></label>
+        <label>职业或身份<input id="cu-origin" class="name-input" maxlength="48" placeholder="例：码头工" /></label>
+      </div>
+      <label>职业阶段<select id="cu-work" class="name-input">
+        <option value="none">无等级</option><option value="apprentice">学徒</option><option value="journeyman">熟手</option>
+        <option value="master">大师</option><option value="guildmaster">会长</option>
+      </select></label>
+      <div class="scenario-pair">
+        <label>随身钱（铜）<input id="cu-cash" class="name-input" type="number" min="0" max="10000000" /></label>
+        <label>开局时刻<input id="cu-time" class="name-input" type="time" /></label>
+      </div>
+      <label>开局事件<textarea id="cu-event" class="name-input" rows="3" maxlength="800" placeholder="写下眼前发生的事，把下一步留给玩家"></textarea></label>
+      <h2>初始人物</h2>
+      <div id="cu-npcs"></div>
+      <button id="cu-add-npc" class="ghost" type="button">＋ 添加人物</button>
+      <h2>随身物品</h2>
+      <div id="cu-items"></div>
+      <button id="cu-add-item" class="ghost" type="button">＋ 添加物品</button>
+      <div class="scenario-actions">
+        <button id="cu-save" class="ghost" type="button">保存剧本</button>
+        <button id="cu-start" class="primary" type="button">开始这局</button>
+      </div>
+    </fieldset>
+    <button id="cu-back" class="primary secondary" type="button">返回</button>
   </div>
 </div>
+<template id="cu-npc-row">
+  <div class="scenario-row">
+    <div class="scenario-pair">
+      <label>人物姓名<input class="name-input" data-field="name" maxlength="40" /></label>
+      <label>人物年龄<input class="name-input" data-field="age" type="number" min="1" max="300" /></label>
+    </div>
+    <label>人物身份<input class="name-input" data-field="profession" maxlength="48" /></label>
+    <button class="ghost" type="button" data-remove>移除人物</button>
+  </div>
+</template>
+<template id="cu-item-row">
+  <div class="scenario-row">
+    <div class="scenario-pair">
+      <label>物品名称<input class="name-input" data-field="name" maxlength="40" /></label>
+      <label>数量<input class="name-input" data-field="qty" type="number" min="1" max="100" /></label>
+    </div>
+    <button class="ghost" type="button" data-remove>移除物品</button>
+  </div>
+</template>
 
 <!-- 开局向导 -->
 <div id="wizard" class="sheet hidden">

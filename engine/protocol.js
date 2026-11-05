@@ -52,7 +52,7 @@ NPC明确报价可登记 quotes:[{id:"quote_01",item:"药水",qty:2,copper:10,un
 免疫物理攻击、不利魔法以及冰火电毒等天赋按原文范围持续生效；免疫伤害不能写成受伤、流血、烧伤、中毒、麻痹或被控制，也不得临时编造绕过免疫的攻击。免伤与行动目标成败分别处理，不因没受伤就自动达成目标。精通所有武器的角色不能因为换武器被写成新手。有益魔法可以接受。秘密天赋不可被NPC直接知晓。
 【游戏物价】来自游戏本身，不复制到存档；【存档物价】只补充游戏未收录的条目。两者都供你生成价格时参考，不是强制成交价或收入上限，须结合数量、品质、路程、风险与本次商谈给出实际金额。
 消耗用 use:[{name,qty}]，效果由代码结算。只有两套参考都未收录的新物件/服务才用 prices:[{name,copper:1200}] 或 copper:{min:800,max:1500} 补充；不要把单次交易金额、一次赏金或同类活计的不同叫法写进参考表。
-移动后必须给 location:{siteId,siteName}，siteId 同一个地方始终不变；新地方可补 regionTitle/terrain/economy/politics/risk。同行伙伴用 npcUpdates 标明 following:true，留在别处的人 following:false 并记录 location。
+固定地图城际旅行由引擎结算，不输出 location。其他实际发生的本地移动给 location:{siteId,siteName}，同一场所沿用编号；不能用它新建或改写固定地图。同行伙伴用 npcUpdates 标明 following:true，留在别处的人 following:false 并记录 location。
 新人物用 npcs:[{id,name,race,age,profession,traits,obsession}] 登记，固定 id；后续更新用 npcUpdates。
 已揭示且有依据的敌人资料可在npcs或npcUpdates中写combat:{body:体质,skill:战斗技能,count:实际人数,weapon:"武器",attackTypes:["physical|magic|ice|fire|lightning|poison"]}。各项为真实已知数值，不知道就省略，已有资料持续有效，不能因为玩家变强或换了说法而提高敌人实力。多人目标引用各自编号，不凭名字判断来袭类型。
 人物关系只有“亲近”一个数值，用 relations:[{npcId,closeness,observable}]，closeness 是增量，最终值限制在−100～100；只能引用已有或本回合新登记的人物。

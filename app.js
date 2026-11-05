@@ -30,6 +30,9 @@ import { completeReply } from './generation.js';
 import { readDraft, writeDraft } from './drafts.js';
 import { dateLine } from './engine/clock.js';
 import { timePreview } from './engine/time.js';
+import { setupScenarioEditor } from './scenario-ui.js';
+import { setupAtlas } from './atlas-ui.js';
+import { AtlasNarrativeError, durationLabel, routeLabel } from './engine/atlas.js';
 const listOf = v => !v ? [] : Array.isArray(v) ? v : [v];
 const $ = s => document.querySelector(s);
 const logEl = $('#log'), inputEl = $('#input'), sendEl = $('#send'), composerEl = $('#composer'), dateEl = $('#date');
@@ -44,7 +47,7 @@ const reportActionError = error => addMessage('error', '操作没有保存：' +
 const runAction = action => Promise.resolve().then(action).catch(reportActionError);
 window.addEventListener('unhandledrejection', event => { event.preventDefault(); reportActionError(event.reason || new Error('操作未完成')); });
 document.addEventListener('click', event => {
-  if (busy() && event.target.closest('#btn-saves, #btn-refresh, #btn-panel, .turn-actions, #sheet, #saves, #wizard, #custom, #restore')) {
+  if (busy() && event.target.closest('#btn-saves, #btn-refresh, #btn-panel, #btn-map, #atlas-sheet, .turn-actions, #sheet, #saves, #wizard, #custom, #restore')) {
     event.preventDefault(); event.stopImmediatePropagation(); turnStatus('请等当前回合结束，或先停止生成。');
   }
 }, true);
@@ -280,7 +283,7 @@ async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {})
   if (focusIndex == null) inputEl.value = readDraft(id);
   app.messages = messages;
   app.ui = uiState(state);
-  for (const panel of ['#menu', '#wizard', '#custom', '#saves', '#restore', '#settings', '#sheet', '#search']) $(panel).classList.add('hidden');
+  for (const panel of ['#menu', '#wizard', '#custom', '#saves', '#restore', '#settings', '#sheet', '#search', '#atlas-sheet']) $(panel).classList.add('hidden');
   $('#menu-load').disabled = false; $('#menu-load').style.opacity = '1';
   composerEl.classList.remove('hidden'); logEl.innerHTML = '';
   const end = focusIndex == null ? app.messages.length : Math.min(app.messages.length, focusIndex + 16);
@@ -807,6 +810,7 @@ async function sendTurn(options = {}) {
     turnStatus('已在本机保存。');
   } catch (error) {
     clearTimeout(timer);
+    if (error instanceof AtlasNarrativeError) { replyComplete = false; delete draft.timeConflict; }
     try { await store.putPendingAsync(app.saveId, { ...draft, raw, replyComplete, generationTruncated }); } catch { /* The original committed save is still intact. */ }
     bubble.textContent = raw ? narrationText(raw) || '本回合回复已保留。' : '本回合尚未生成完成，原进度已保留。';
     await store.recordDiagnostic(app.saveId, { ...app.metrics, outcome: app.controller.signal.aborted ? 'cancelled' : 'failed', category: app.controller.signal.aborted ? 'cancelled' : category, durationMs: performance.now() - started, outputChars: raw.length }).catch(() => {});
@@ -845,10 +849,10 @@ function updateActionPreview() {
   try {
     const source = store.getSave(app.saveId), action = resolveAction(text, app.messages);
     const result = judge(source, action.text, makeRng((source.seed || 1) + (source.turn || 0) * 7919 + 13));
-    const minutes = previewTimeOverride?.text === text ? previewTimeOverride.minutes : result.minutes;
-    node.textContent = timePreview(source.clock, minutes);
+    const minutes = !result.trip && previewTimeOverride?.text === text ? previewTimeOverride.minutes : result.minutes;
+    node.textContent = result.trip ? `${routeLabel(result.trip.route)} · 预计 ${durationLabel(minutes)}，途中遇事会停下` : timePreview(source.clock, minutes);
     node.classList.remove('hidden');
-    $('#preview-time-edit').classList.remove('hidden');
+    if (!result.trip) $('#preview-time-edit').classList.remove('hidden');
   } catch { /* Incomplete typing is not a failed action. */ }
 }
 
@@ -1072,6 +1076,27 @@ function openSheet(tab) {
 }
 
 $('#btn-panel').onclick = () => openSheet();
+const openAtlas = setupAtlas({ async onLocate(place, baseline) {
+  if (busy() || app.saveId !== baseline.saveId) throw new Error('请在当前存档的回合结束后再关联地图。');
+  const state = store.getSave(app.saveId);
+  if (state.revision !== baseline.revision || store.getPending(app.saveId)) throw new Error('请先处理待完成的回合，再重新打开地图。');
+  const location = state.player.location;
+  location.atlasPlaceId = place.id;
+  state.locations[location.siteId] = { ...state.locations[location.siteId], id: location.siteId, name: location.siteName, atlasPlaceId: place.id };
+  await store.putSaveAsync(state, undefined, { expectedRevision: baseline.revision });
+  return store.getSave(app.saveId);
+}, onPlan(text) {
+  if (busy() || !app.saveId || composerEl.classList.contains('hidden')) return;
+  if (inputEl.value.trim() && inputEl.value.trim() !== text) {
+    turnStatus('输入框里已有草稿。请先处理草稿，再从地图规划前往。');
+    inputEl.focus();
+    return;
+  }
+  inputEl.value = text;
+  inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  inputEl.focus();
+} });
+$('#btn-map').onclick = () => openAtlas(app.saveId && !composerEl.classList.contains('hidden') ? store.getSave(app.saveId) : null);
 $('#btn-close').onclick = () => $('#sheet').classList.add('hidden');
 
 $('#btn-refresh').onclick = () => { if (!busy()) { saveInputDraft(); location.reload(); } };
@@ -1333,6 +1358,10 @@ async function boot() {
 
   if (!llm.hasKey() && !store.listSaves().length) {
     $('#gate').classList.remove('hidden');
+    $('#gate-skip').onclick = async () => {
+      $('#gate').classList.add('hidden');
+      await boot2();
+    };
     $('#gate-go').onclick = async () => {
       llm.setKey($('#gate-key').value);
       llm.setModel($('#gate-model').value);
@@ -1358,7 +1387,7 @@ function showMenu() {
   logEl.innerHTML = '';
   $('#toc').classList.add('hidden');
   $('#toc').innerHTML = '';
-  for (const id of ['#wizard', '#custom', '#saves', '#settings', '#sheet']) {
+  for (const id of ['#wizard', '#custom', '#saves', '#settings', '#sheet', '#atlas-sheet']) {
     const el = $(id);
     if (el) el.classList.add('hidden');
   }
@@ -1385,60 +1414,20 @@ $('#menu-new').onclick = () => {
   openWizard();
 };
 
-$('#menu-custom').onclick = () => {
-  $('#menu').classList.add('hidden');
-  app.customGender = 'male';
-  for (const b of $('#cu-genders').children) b.classList.toggle('selected', b.dataset.gender === 'male');
-  $('#custom').classList.remove('hidden');
-};
-
-$('#cu-back').onclick = () => {
-  $('#custom').classList.add('hidden');
-  showMenu();
-};
-
-$('#cu-genders').addEventListener('click', (e) => {
-  const b = e.target.closest('.chip');
-  if (!b) return;
-  app.customGender = b.dataset.gender;
-  [...$('#cu-genders').children].forEach((c) => c.classList.remove('selected'));
-  b.classList.add('selected');
+const openScenarioEditor = setupScenarioEditor({
+  onBack: showMenu,
+  async onStart({ state, opening }) {
+    state.saveId = store.newId();
+    state.updatedAt = new Date().toISOString();
+    await store.putSaveAsync(state, [{ role: 'assistant', content: opening }]);
+    await loadGame(state.saveId);
+  },
 });
 
-$('#cu-start').onclick = async () => {
-  const place = $('#cu-place').value.trim() || '无名之地';
-  const desc = $('#cu-desc').value.trim();
-  const origin = $('#cu-origin').value.trim();
-  const name = $('#cu-name').value.trim();
-  const gender = app.customGender || 'male';
-  const seed = Math.floor(Math.random() * 1e9);
-
-  const { state } = generateWorld({ regionId: 'greywater', familyKey: 'npc_farmer', name, gender, seed });
-  state.world.name = place;
-  state.world.regionTitle = '自定义';
-  if (desc) {
-    state.world.terrain = desc;
-    state.world.economy = '（玩家设定）';
-    state.world.politics = '（玩家设定）';
-    state.world.risk = '（玩家设定）';
-  }
-  state.customSetting = [desc && `地方：${desc}`, origin && `玩家出身：${origin}`].filter(Boolean).join('\n');
-  state.player.location.siteName = place;
-  if (origin) state.player.profession = origin;
-  state.saveId = store.newId();
-  state.updatedAt = new Date().toISOString();
-  state.prices ||= {};
-  state.rates ||= {};
-
-  const opening = [
-    `你十二岁。家在${place}。`,
-    desc ? desc : '',
-    origin ? `你是${origin}。` : '',
-    '今天要做点什么？',
-  ].filter(Boolean).join('\n\n');
-
-  await store.putSaveAsync(state, [{ role: 'assistant', content: opening }]);
-  await loadGame(state.saveId);
+$('#menu-custom').onclick = () => {
+  $('#menu').classList.add('hidden');
+  $('#custom').classList.remove('hidden');
+  openScenarioEditor();
 };
 
 boot().catch(error => { addMessage('error', '本机存档暂时无法读取：' + error.message); });
