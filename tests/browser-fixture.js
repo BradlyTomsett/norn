@@ -38,6 +38,11 @@ if (scenario === 'clues') {
     { text: '旧车辙已经消失', sourceTurn: 18 }];
   state.worldLog = [{ text: '路上买干粮花了 1 铜。' }, { text: '路上买干粮花了 1 铜。' }];
 }
+if (scenario === 'unmapped-home') {
+  state.player.location = { siteId: 'jialong_guild_hall', siteName: '加隆城冒险者公会大厅' };
+  state.npcs[0].id = 'npc_father';
+  state.npcs[0].profession = '临河城城主（伯爵）';
+}
 if (scenario === 'gear') {
   state.player.equipment = ['长剑（金）', '大枪（紫）', '长弓（紫）', '弓箭（灰）×500', '弓箭（绿）×30', '飞刀（蓝）×20', '匕首（紫）×20', '飞斧（灰）×10', '标枪（绿）×20', '战斧（紫）', '木盾（灰）', '铁盾（蓝）', '皮甲（紫）', '板甲（金）'];
   state.player.equipment.push('磨刀石（绿）×3');

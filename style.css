@@ -451,6 +451,8 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .relation-stat { display:flex; align-items:center; gap:10px; margin:10px 0; font-size:12px; color:var(--ink-dim); }
 .relation-value { display:inline-flex; align-items:center; justify-content:center; min-width:64px; min-height:32px; padding:4px 10px; border:1px solid currentColor; border-radius:7px; background:var(--bg2); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
 .npc-goal { border-top:1px dashed var(--line); margin-top:10px; padding-top:8px; }
+.relation-hidden { margin-top: 18px; color: var(--ink-dim); }
+.relation-hidden-row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); }
 .game-prices { margin:14px 0 20px; padding:10px; border:1px solid var(--line); border-radius:10px; }
 .game-prices summary { color:var(--accent); cursor:pointer; font-size:13px; }
 .game-price-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; border-bottom:1px solid var(--line); padding:5px 0; font-size:12px; }
@@ -517,6 +519,7 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .atlas-filters { gap: 10px; }
 .atlas-sidebar .name-input { margin: 6px 0 0; border-color: #48564b; background: #111b18; color: #eee6d2; }
 .atlas-search-label { margin-top: 15px; }
+.atlas-road-toggle { display: flex !important; align-items: center; gap: 7px; margin-top: 13px; color: #cbd6bd !important; }
 .atlas-info { margin-top: 18px; color: #d9dfcb; line-height: 1.7; overflow-wrap: anywhere; }
 .atlas-info h2 { color: #f5e4ba; margin: 0 0 5px; font-size: 21px; }
 .atlas-info p { margin: 8px 0; }
@@ -551,23 +554,15 @@ textarea.name-input { resize: vertical; line-height: 1.6; min-height: 84px; }
 .atlas-mark.nature:not(.selected) { fill: #ceec9e; }
 .atlas-mark.transport:not(.selected) { fill: #a1edf0; }
 .atlas-mark.selected { fill: #ffb35c; stroke: #673624; stroke-width: 2; }
-.atlas-illustration { stroke: #473527; stroke-width: .9; stroke-linejoin: round; stroke-linecap: round; }
-.atlas-illustration .icon-shadow { fill: none; stroke: #182d2a; stroke-width: 2; opacity: .7; }
-.atlas-illustration .icon-stone { fill: #f2dca6; }
-.atlas-illustration .icon-roof { fill: #a74732; }
-.atlas-illustration .icon-door { fill: #59402d; }
-.atlas-illustration .icon-line { fill: #dfac50; stroke: #49332a; }
-.atlas-illustration .icon-wood { fill: #9e5a35; }
-.atlas-illustration .icon-sail { fill: #fff1c9; }
-.atlas-illustration .icon-water { fill: none; stroke: #d6f1e9; stroke-width: 1.5; }
-.atlas-illustration .icon-ruin { fill: #c5b5ab; }
-.atlas-illustration .icon-dot { fill: #f7d88e; stroke: #624631; }
-.atlas-mark.selected .atlas-illustration { filter: drop-shadow(0 0 4px #fff5ac); }
+.atlas-place-dot { fill: #f9e9bf; stroke: #29352c; stroke-width: 1.2; }
+.atlas-mark.approximate .atlas-place-dot { fill: none; stroke: #fff2c8; stroke-dasharray: 2 1; stroke-width: 1.5; }
+.atlas-mark.selected .atlas-place-dot { fill: #ffbc5c; stroke: #fff; }
+.atlas-legend .atlas-legend-you { margin: 0; color: #73e7ff; }
 .atlas-link { stroke: #f4d49a; stroke-width: 1.5; opacity: .82; }
 .atlas-link.sea { stroke: #b5f3f0; stroke-dasharray: 5 4; }
 .atlas-link.river { stroke: #a9f4e8; }
 .atlas-link.active { stroke: #ff6e30; stroke-width: 3; opacity: 1; }
-.atlas-you { fill: #f4c86588; stroke: #fff3c3; stroke-width: 2; }
+.atlas-you { fill: #69e4ff; stroke: #102d37; stroke-width: 1.6; }
 .atlas-compass { fill: #ede0bd; stroke: #3c6157; stroke-width: 1; opacity: .8; }
 .atlas-compass text { fill: #e8e2c5; stroke: none; text-anchor: middle; font: 13px Georgia, serif; }
 .atlas-cartouche path { fill: #e4d4aa; stroke: #9d8b66; stroke-width: 1; }

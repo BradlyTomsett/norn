@@ -907,6 +907,11 @@ export function uiState(state) {
         return {
           name: npc ? npcLabel(state, npc) : r.npcId,
           npcId: r.npcId,
+          listHidden: r.listHidden === true || (r.listHidden !== false && Math.abs(r.closeness || 0) < 20
+            && !npc?.following && (npc?.memories?.length || 0) <= 1
+            && /^(?:初次相识|（无变化）|无变化)$/.test(r.observable || '')
+            && !(state.player.unfinished || []).some(task => task.npcIds?.includes(r.npcId))
+            && !(state.player.contracts || []).some(contract => contract.status === 'active' && contract.npcIds?.includes(r.npcId))),
           race: RACE_CN[npc?.race] || npc?.race || '',
           profession: npc?.profession || '',
           loadout: npc?.loadout || [],

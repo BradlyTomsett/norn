@@ -18,6 +18,11 @@ self.addEventListener('fetch', event => {
   event.respondWith(caches.open(CACHE).then(async cache => {
     const request = event.request.mode === 'navigate' ? new Request(new URL('./index.html', self.registration.scope)) : event.request;
     const cached = await cache.match(request);
-    return cached || fetch(event.request);
+    if (cached) return cached;
+    const response = await fetch(event.request);
+    if (response.ok && url.pathname.startsWith(new URL('./maps/', self.registration.scope).pathname)) {
+      try { await cache.put(request, response.clone()); } catch { /* A full cache must not block the displayed map. */ }
+    }
+    return response;
   }));
 });

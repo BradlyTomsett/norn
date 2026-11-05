@@ -96,6 +96,9 @@ export const REGIONAL_PROFILES = [
 ];
 
 export const ATLAS_PROFILES = Object.fromEntries(REGIONAL_PROFILES.map(row => [row.id, row]));
+ATLAS_PROFILES.unmapped = profile('unmapped', '位置待核实', 330, 425, '旧存档提到的城镇，国家归属和地图坐标尚未核实。', {
+  地形: '参考位置可以在地图中调整；该位置不构成国家归属或路程的设定依据。',
+});
 
 const place = (id, name, region, kind, x, y, description, extra = {}) => ({ id, name, region, kind, x, y, description, ...extra });
 export const PLACES = [
@@ -134,6 +137,8 @@ export const PLACES = [
   place('split-hoof', '裂蹄营地', 'orcs', '营地', 691, 488, '牛羊裂蹄部落经营开阔草坡。'),
   place('dusk-claw', '暮爪营地', 'orcs', '营地', 779, 514, '暮爪部落居于南部密林与河湾之间。'),
   place('river-mouth', '河口栈镇', 'orcs', '港口', 847, 466, '东南河口的公开转运点，可沿东海岸航行。'),
+  place('linhe-city', '临河城', 'unmapped', '城', 310, 416, '存档中玩家的家乡，城中有领主府及冒险者公会。其国家归属和准确地图位置尚待核实。', { approximate: true }),
+  place('galon-city', '加隆城', 'unmapped', '城', 355, 430, '存档中记载的城镇，设有冒险者公会与北关仓区。其国家归属和准确地图位置尚待核实。', { approximate: true }),
   ...SURVEY_PLACES,
 ];
 
