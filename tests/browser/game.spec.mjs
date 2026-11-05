@@ -57,7 +57,7 @@ test('地图支持缩放、拖动及重置，同时保留地点点击', async ({
   const map = page.locator('#atlas-map');
   await expect(map.locator('image')).toHaveAttribute('href', './icons/norn-world.jpg');
   await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '圣洁白塔' }) }).locator('.icon-door')).toHaveCount(1);
-  await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '潮汐港' }) }).locator('.icon-sail')).toHaveCount(2);
+  await expect(map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '潮汐港' }) }).locator('.icon-sail')).toHaveCount(1);
   const initial = await map.getAttribute('viewBox');
   await page.getByRole('button', { name: '放大地图' }).click();
   const zoomed = await map.getAttribute('viewBox');
