@@ -29,10 +29,14 @@
   <div class="sheet-inner atlas-inner">
     <div class="atlas-heading"><h1 id="atlas-title">诺恩地图</h1><button id="atlas-close" class="ghost" type="button">关闭</button></div>
     <p id="atlas-current" class="hint"></p>
-    <label>查看区域<select id="atlas-region" class="name-input"></select></label>
+    <div class="atlas-filters">
+      <label>查看区域<select id="atlas-region" class="name-input"></select></label>
+      <label>地点类型<select id="atlas-category" class="name-input"></select></label>
+    </div>
     <svg id="atlas-map" class="atlas-map" viewBox="0 0 1000 650" aria-hidden="true"></svg>
-    <p class="hint">▲ 主城 · ● 城镇与地标 · 虚线为航线。方位为示意，路程按道路计算。</p>
-    <label>查找地点<input id="atlas-search" class="name-input" type="search" placeholder="输入城镇或港口名称" /></label>
+    <p class="hint">▲ 主城 · ◆ 遗迹 · ● 其他地点。虚线为水路，点线为步道。方位为示意。</p>
+    <label>查找地点<input id="atlas-search" class="name-input" type="search" placeholder="输入地名、地形或地区" /></label>
+    <p id="atlas-count" class="hint" aria-live="polite"></p>
     <div class="atlas-columns">
       <div id="atlas-places" class="atlas-places" aria-label="地点列表"></div>
       <section id="atlas-info" class="atlas-info" aria-label="地点和路线"></section>

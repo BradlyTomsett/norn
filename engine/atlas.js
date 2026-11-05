@@ -14,7 +14,17 @@ for (const route of ROUTES) {
 export const atlasPlace = id => byId.get(id);
 export const atlasName = name => byName.get(name);
 export const atlasTitle = place => [place.district, ATLAS_PROFILES[place.region].name].filter(Boolean).join(' · ');
-export const atlasVisible = (place, state) => !place.hidden || state?.atlasDiscovered?.includes(place.id);
+export const atlasVisible = (place, state) => !place.hidden || Boolean(state?.atlasDiscovered?.includes(place.id)
+  || place.discoverVia && state?.locations?.[place.discoverVia]?.id === place.discoverVia);
+
+export const PLACE_CATEGORIES = { settlements: '聚落', transport: '港口与路站', nature: '自然地形', heritage: '遗迹与废墟', landmarks: '其他地标' };
+export function placeCategory(place) {
+  if (['主城', '城', '镇', '边镇', '村', '营地', '集市'].includes(place.kind)) return 'settlements';
+  if (['港口', '渡口', '驿站', '关口', '哨站'].includes(place.kind)) return 'transport';
+  if (['遗迹', '废墟'].includes(place.kind)) return 'heritage';
+  if (['森林', '丘陵', '草原', '草地', '山峰', '山岭', '峡谷', '河流', '沙漠', '海湾', '海崖', '岛屿', '湿地', '湖岸', '水源'].includes(place.kind)) return 'nature';
+  return 'landmarks';
+}
 
 function knownScene(name) {
   return PLACES.find(place => name?.startsWith(place.name) &&
@@ -38,12 +48,18 @@ export function atlasWorld(place) {
 export function routeLegs(id, state, mode = 'walk') {
   if (!Object.hasOwn(MODES, mode)) return [];
   return (links.get(id) || []).flatMap(([road, to]) => {
-    if (mode === 'ship' && !road.sea) return [];
+    const byWater = road.sea || road.river;
+    if (mode === 'ship' && !byWater) return [];
     if (road.restricted && !state?.atlasPasses?.includes(road.id)) return [];
     if (!atlasVisible(atlasPlace(to), state)) return [];
-    const actualMode = road.sea ? 'ship' : mode;
-    const factor = road.terrain === '山道' ? 1.65 : /丘地|林道|牧道/.test(road.terrain) ? 1.28 : 1;
-    const moving = Math.ceil(60 * road.km * factor / ({ walk: 4, horse: 7, ship: 10 }[actualMode]));
+    const actualMode = byWater ? 'ship' : road.footOnly ? 'walk' : mode;
+    let factor = 1;
+    if (/山径|峡谷/.test(road.terrain)) factor = 1.9;
+    else if (road.terrain === '山道') factor = 1.65;
+    else if (/沼泽|沙砾/.test(road.terrain)) factor = 1.55;
+    else if (/丘地|林道|牧道|步道/.test(road.terrain)) factor = 1.28;
+    const speed = road.river ? 5 : { walk: 4, horse: 7, ship: 10 }[actualMode];
+    const moving = Math.ceil(60 * road.km * factor / speed);
     const rest = actualMode === 'ship' ? 0 : Math.floor((moving - 1) / 480) * 960;
     return [{ id: road.id, from: id, to, km: road.km, terrain: road.terrain, mode: actualMode, minutes: moving + rest }];
   });
@@ -113,7 +129,7 @@ export function travelIntent(state, text) {
       || /(?:王国|联邦|群岛|高原|山脉|部落|龙岛|[东西南]海)$/.test(target)
       || (/^[\p{Script=Han}]{2,14}(?:城|镇|村|港|岛)$/u.test(target)
         && !knownScene(target) && !Object.values(state.locations || {}).some(row => row.name === target && atlasLocation(state, { siteId: row.id, siteName: row.name })?.id === here?.id)))) {
-      return { error: '请先在地图上选择一个已标注的城镇或港口。未测绘地点需要先查明位置和通路。' };
+      return { error: '请先在地图上选择一个已标注的地点。未测绘地点需要先查明位置和通路。' };
     }
     return null;
   }
@@ -202,7 +218,7 @@ export function routeContext(state, query, trip, minutes = 0) {
   const mentioned = PLACES.filter(place => atlasVisible(place, state) && query.includes(place.name));
   const regions = new Set([current?.region, end?.place?.region, ...mentioned.map(place => place.region),
     ...Object.values(ATLAS_PROFILES).filter(row => query.includes(row.name)).map(row => row.id)].filter(Boolean));
-  const lines = ['【固定世界地图】地名、方位和道路以此为准。AI可写城镇内的店铺、街道与附近场景，不能新增或改写国家、城镇、城际路线。未测绘地区不推断其归属或耗时。'];
+  const lines = ['【固定世界地图】地名、方位和道路以此为准。可写地点内或附近的局部场景，不能新增或改写固定地点或地点之间的路线。标注遗址入口、山脚或岸边不代表可进入遗址、登顶或穿过未测绘区域。'];
   if (current) {
     lines.push(`地图锚点：[${current.id}] ${current.name}（${atlasTitle(current)}）。${current.description}`);
     lines.push('相邻可通行地点：' + routeLegs(current.id, state).map(leg =>
@@ -211,6 +227,8 @@ export function routeContext(state, query, trip, minutes = 0) {
       lines.push('只有玩家明确向有权引路的人请求入林、且正文中已获得具体许可时，输出 atlasAccess:"pinewatch~lake-haven"。此字段仅开放通路，不移动玩家。');
     }
   }
+  const named = [...new Set([...mentioned, end?.place])].filter(place => place && place.id !== current?.id).slice(0, 8);
+  if (named.length) lines.push('相关地点：' + named.map(place => `[${place.id}] ${place.name}（${place.kind} · ${atlasTitle(place)}）${place.description}`).join('；'));
   for (const id of [...regions].slice(0, 5)) {
     const region = ATLAS_PROFILES[id];
     lines.push(`${region.name}：${region.canon}` + Object.entries(region.details).map(([key, value]) => `${key}：${value}`).join(' '));

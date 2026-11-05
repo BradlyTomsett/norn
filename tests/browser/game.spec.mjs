@@ -34,6 +34,23 @@ test('地图可在移动端查看地区，并把固定路线填入行动草稿',
   await expect(page.locator('#preview-time-edit')).toBeHidden();
 });
 
+test('移动端地图可筛选遗迹、查看支路并跨区搜索地形', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: '地图', exact: true }).click();
+  const map = page.getByRole('dialog', { name: '诺恩地图' });
+  await map.getByLabel('查看区域').selectOption('shengyan');
+  await map.getByLabel('地点类型').selectOption('heritage');
+  await expect(map.getByRole('button', { name: '钟田村', exact: true })).toHaveCount(0);
+  await map.getByRole('button', { name: '灰烬礼拜堂', exact: true }).click();
+  await map.getByText('相邻地点与道路', { exact: true }).click();
+  await expect(map.getByRole('button', { name: /牧铃岗 · 丘地小路/ })).toBeVisible();
+  await map.getByLabel('地点类型').selectOption('nature');
+  await map.getByLabel('查找地点').fill('背雨沙海');
+  await map.getByRole('button', { name: '背雨沙海', exact: true }).click();
+  await expect(map.getByRole('heading', { name: '背雨沙海' })).toBeVisible();
+  await expect(map.locator('#atlas-info')).toContainText('雨影形成的高地沙漠');
+});
+
 test('输入草稿刷新后恢复，发送后清除；存档显示空间，生成时可看未保存预览', async ({ page }) => {
   await open(page,'preview'); await page.getByRole('button', {name:'隐藏测试工具',exact:true}).click();
   await page.locator('#input').fill('看看周围的情况'); await page.reload();

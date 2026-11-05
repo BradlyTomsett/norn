@@ -1,5 +1,6 @@
 import { makeRng } from './rng.js';
 import { OPTION_HEADING } from './actions.js';
+import { atlasLocation, placeCategory } from './atlas.js';
 
 // Directions, not pre-written facts: the model builds a scene from the actual context.
 export const EVENT_TYPES = [
@@ -23,6 +24,8 @@ export function eventScene(state, judged, input) {
   if (/森林|树林|山林|野外|荒野|山洞|矿洞/.test(place)) return 'wild';
   if (/家中|卧室|自己家|家里|旅店客房/.test(place)) return 'home';
   if (/仓库|库房|工坊|货栈/.test(place) || /(?:在|于)(?:仓库|库房|工坊|货栈)(?:里|内)?(?:守夜|值守|工作)/.test(action)) return 'work';
+  const fixed = atlasLocation(state);
+  if (fixed && ['nature', 'heritage'].includes(placeCategory(fixed))) return 'wild';
   return 'town';
 }
 
