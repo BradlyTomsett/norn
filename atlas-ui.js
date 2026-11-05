@@ -1,5 +1,6 @@
 import { PLACES, REGIONAL_PROFILES, ATLAS_PROFILES, TERRAIN, ROUTES } from './engine/atlas-data.js';
-import { SEA_BENDS, SURVEY_LAND, SURVEY_WATERWAYS } from './engine/atlas-expansion.js';
+import { SEA_BENDS } from './engine/atlas-expansion.js';
+import { drawAtlasArt } from './atlas-art.js';
 import { atlasLocation, atlasPlace, atlasTitle, atlasVisible, findRoute, routeLegs, routePosition, MODES, PLACE_CATEGORIES, placeCategory, routeLabel, durationLabel } from './engine/atlas.js';
 
 const svgNode = (tag, attrs, text) => {
@@ -41,7 +42,74 @@ export function setupAtlas({ onPlan, onLocate }) {
   const $ = id => document.getElementById('atlas-' + id);
   const sheet = $('sheet'), close = $('close'), region = $('region'), category = $('category'), search = $('search');
   const map = $('map'), places = $('places'), info = $('info');
-  let state, selected, mode = 'walk', lastFocus;
+  let state, selected, mode = 'walk', lastFocus, view = null, homeView = null, drag = null, pinch = null, suppressClick = false;
+  const pointers = new Map();
+  const setView = next => {
+    view = next;
+    map.setAttribute('viewBox', [view.x, view.y, view.width, view.height].join(' '));
+  };
+  const svgPoint = (clientX, clientY) => {
+    const matrix = map.getScreenCTM();
+    if (!matrix) return { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+    const point = map.createSVGPoint();
+    point.x = clientX; point.y = clientY;
+    return point.matrixTransform(matrix.inverse());
+  };
+  const zoom = (factor, clientX, clientY) => {
+    if (!view) return;
+    const anchor = clientX == null ? { x: view.x + view.width / 2, y: view.y + view.height / 2 } : svgPoint(clientX, clientY);
+    const width = Math.max(65, Math.min(1400, view.width * factor));
+    const ratio = width / view.width, height = view.height * ratio;
+    setView({ x: anchor.x - (anchor.x - view.x) * ratio, y: anchor.y - (anchor.y - view.y) * ratio, width, height });
+  };
+  $('zoom-in').onclick = () => zoom(.7);
+  $('zoom-out').onclick = () => zoom(1 / .7);
+  $('reset').onclick = () => { if (homeView) setView({ ...homeView }); };
+  map.addEventListener('wheel', event => {
+    event.preventDefault();
+    zoom(event.deltaY < 0 ? .85 : 1 / .85, event.clientX, event.clientY);
+  }, { passive: false });
+  map.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 1) {
+      drag = { x: event.clientX, y: event.clientY, view: { ...view }, moved: false };
+      suppressClick = false;
+    } else if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y) };
+      drag = null; suppressClick = true;
+    }
+  });
+  map.addEventListener('pointermove', event => {
+    if (!pointers.has(event.pointerId)) return;
+    const previous = pointers.get(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2 && pinch) {
+      const [a, b] = [...pointers.values()], distance = Math.hypot(a.x - b.x, a.y - b.y);
+      if (distance > 0 && pinch.distance > 0) zoom(pinch.distance / distance, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      pinch.distance = distance;
+    } else if (drag && pointers.size === 1) {
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (Math.hypot(dx, dy) > 4) drag.moved = true;
+      if (drag.moved) {
+        if (!map.hasPointerCapture(event.pointerId)) map.setPointerCapture(event.pointerId);
+        const before = svgPoint(previous.x, previous.y), after = svgPoint(event.clientX, event.clientY);
+        setView({ ...view, x: view.x + before.x - after.x, y: view.y + before.y - after.y });
+        suppressClick = true;
+      }
+    }
+  });
+  const endPointer = event => {
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (!pointers.size) drag = null;
+  };
+  map.addEventListener('pointerup', endPointer);
+  map.addEventListener('pointercancel', endPointer);
+  map.addEventListener('click', event => {
+    if (suppressClick) { event.preventDefault(); event.stopImmediatePropagation(); suppressClick = false; }
+  }, true);
   region.replaceChildren(new Option('大陆总览', ''), ...REGIONAL_PROFILES.map(row => new Option(row.name, row.id)));
   category.replaceChildren(new Option('全部类型', ''), ...Object.entries(PLACE_CATEGORIES).map(([id, name]) => new Option(name, id)));
   const visiblePlaces = () => PLACES.filter(place => atlasVisible(place, state));
@@ -58,24 +126,25 @@ export function setupAtlas({ onPlan, onLocate }) {
   close.onclick = hide;
   sheet.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });
   function selectPlace(place) {
+    const changedRegion = region.value !== place.region;
     selected = place;
     region.value = place.region;
     if (!matchesCategory(place)) category.value = '';
     search.value = '';
-    render();
+    render(changedRegion);
   }
-  function drawMap() {
+  function drawMap(reset = false) {
     const visible = visiblePlaces();
     const focus = ATLAS_PROFILES[region.value], local = visible.filter(place => place.region === region.value);
     const points = local.length ? local : focus ? [focus] : [];
     if (points.length) {
       const xs = points.map(p => p.x), ys = points.map(p => p.y);
       const x = Math.min(...xs) - 100, y = Math.min(...ys) - 68;
-      map.setAttribute('viewBox', [x, y, Math.max(220, Math.max(...xs) - x + 105), Math.max(152, Math.max(...ys) - y + 75)].join(' '));
-    } else map.setAttribute('viewBox', '0 0 1000 650');
-    map.replaceChildren(svgNode('path', { d: 'M170 290L154 204 215 145 306 151 360 87 492 43 671 77 731 153 809 191 891 285 873 386 889 470 813 552 724 587 674 557 618 531 530 539 470 513 374 531 296 523 245 512 193 473 180 397 151 350Z M350 555l27 -19 28 24 -27 19z M421 550l29 -19 32 14 -10 28 -41 7z M469 582l22 -15 21 15 -12 17z', class: 'atlas-land' }));
-    for (const d of SURVEY_LAND) map.append(svgNode('path', { d, class: 'atlas-land' }));
-    for (const d of SURVEY_WATERWAYS) map.append(svgNode('path', { d, class: 'atlas-river' }));
+      homeView = { x, y, width: Math.max(220, Math.max(...xs) - x + 105), height: Math.max(152, Math.max(...ys) - y + 75) };
+    } else homeView = { x: 0, y: 0, width: 1000, height: 650 };
+    if (reset || !view) setView({ ...homeView });
+    map.replaceChildren();
+    drawAtlasArt(map);
     for (const feature of TERRAIN) {
       map.append(svgNode('text', { x: feature.x, y: feature.y, class: 'atlas-terrain ' + feature.type }, feature.name));
     }
@@ -93,7 +162,7 @@ export function setupAtlas({ onPlan, onLocate }) {
     }
     if (!focus) for (const row of REGIONAL_PROFILES) {
       const label = svgNode('text', { x: row.x, y: row.y - 15, class: 'atlas-region-label' }, row.name);
-      label.onclick = () => { region.value = row.id; selected = null; render(); };
+      label.onclick = () => { region.value = row.id; selected = null; render(true); };
       map.append(label);
     }
     const here = atlasLocation(state);
@@ -102,7 +171,8 @@ export function setupAtlas({ onPlan, onLocate }) {
     for (const place of priority) {
       const type = placeCategory(place);
       const wantedLabel = focus && (category.value || mainPlace(place) || place === selected || place === here);
-      const mark = place.kind === '主城' ? svgNode('path', { d: `M${place.x} ${place.y - 6}l6 10h-12z` })
+      const mark = place.kind === '主城' ? svgNode('path', { d: `M${place.x - 7} ${place.y + 4}v-8h3v-4h3v4h3v-4h3v4h3v8z` })
+        : ['城', '镇', '边镇', '村'].includes(place.kind) ? svgNode('path', { d: `M${place.x - 5} ${place.y}l5-5 5 5v5h-10z` })
         : type === 'heritage' ? svgNode('path', { d: `M${place.x} ${place.y - 5}l5 5-5 5-5-5z` })
           : svgNode('circle', { cx: place.x, cy: place.y, r: focus ? 4.3 : 3.5 });
       const group = svgNode('g', { class: 'atlas-mark ' + type + (selected?.id === place.id ? ' selected' : '') });
@@ -210,8 +280,8 @@ export function setupAtlas({ onPlan, onLocate }) {
     }));
     if (!filtered.length) places.append(node('p', terms.length ? '没有找到符合条件的地点。' : '这里暂无这类公开地点。', 'hint'));
   }
-  function render() { drawMap(); drawPlaces(); drawInfo(); }
-  region.onchange = () => { selected = null; search.value = ''; render(); };
+  function render(reset = false) { drawMap(reset); drawPlaces(); drawInfo(); }
+  region.onchange = () => { selected = null; search.value = ''; render(true); };
   category.onchange = () => { if (selected && !matchesCategory(selected)) selected = null; render(); };
   search.oninput = drawPlaces;
   return current => {
@@ -221,7 +291,7 @@ export function setupAtlas({ onPlan, onLocate }) {
     lastFocus = document.activeElement;
     $('current').textContent = state ? `当前位置 · ${state.player.location.siteName}` + (!state.journey && !atlasLocation(state) ? '（未定位到共用地图）' : '') : '大陆总览';
     sheet.classList.remove('hidden');
-    render();
+    render(true);
     close.focus();
     sheet.scrollTop = 0;
   };

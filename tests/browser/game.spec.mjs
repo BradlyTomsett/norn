@@ -51,6 +51,27 @@ test('移动端地图可筛选遗迹、查看支路并跨区搜索地形', async
   await expect(map.locator('#atlas-info')).toContainText('雨影形成的高地沙漠');
 });
 
+test('地图支持缩放、拖动及重置，同时保留地点点击', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: '地图', exact: true }).click();
+  const map = page.locator('#atlas-map');
+  const initial = await map.getAttribute('viewBox');
+  await page.getByRole('button', { name: '放大地图' }).click();
+  const zoomed = await map.getAttribute('viewBox');
+  expect(zoomed).not.toBe(initial);
+  const rect = await map.boundingBox();
+  await page.mouse.move(rect.x + rect.width * .55, rect.y + rect.height * .55);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width * .65, rect.y + rect.height * .6, { steps: 5 });
+  await page.mouse.up();
+  expect(await map.getAttribute('viewBox')).not.toBe(zoomed);
+  await page.getByRole('button', { name: '重置地图视角' }).click();
+  expect(await map.getAttribute('viewBox')).toBe(initial);
+  await page.getByLabel('查看区域').selectOption('shengyan');
+  await map.locator('g.atlas-mark').filter({ has: page.locator('title', { hasText: '东境郡城' }) }).click();
+  await expect(page.getByRole('heading', { name: '东境郡城' })).toBeVisible();
+});
+
 test('输入草稿刷新后恢复，发送后清除；存档显示空间，生成时可看未保存预览', async ({ page }) => {
   await open(page,'preview'); await page.getByRole('button', {name:'隐藏测试工具',exact:true}).click();
   await page.locator('#input').fill('看看周围的情况'); await page.reload();

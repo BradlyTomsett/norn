@@ -27,19 +27,30 @@
 
 <div id="atlas-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="atlas-title">
   <div class="sheet-inner atlas-inner">
-    <div class="atlas-heading"><h1 id="atlas-title">诺恩地图</h1><button id="atlas-close" class="ghost" type="button">关闭</button></div>
-    <p id="atlas-current" class="hint"></p>
-    <div class="atlas-filters">
-      <label>查看区域<select id="atlas-region" class="name-input"></select></label>
-      <label>地点类型<select id="atlas-category" class="name-input"></select></label>
-    </div>
-    <svg id="atlas-map" class="atlas-map" viewBox="0 0 1000 650" aria-hidden="true"></svg>
-    <p class="hint">▲ 主城 · ◆ 遗迹 · ● 其他地点。虚线为水路，点线为步道。方位为示意。</p>
-    <label>查找地点<input id="atlas-search" class="name-input" type="search" placeholder="输入地名、地形或地区" /></label>
-    <p id="atlas-count" class="hint" aria-live="polite"></p>
-    <div class="atlas-columns">
-      <div id="atlas-places" class="atlas-places" aria-label="地点列表"></div>
-      <section id="atlas-info" class="atlas-info" aria-label="地点和路线"></section>
+    <div class="atlas-heading"><div><span class="atlas-eyebrow">THE WORLD OF NORN</span><h1 id="atlas-title">诺恩地图</h1><p id="atlas-current" class="hint"></p></div><button id="atlas-close" class="ghost" type="button">关闭</button></div>
+    <div class="atlas-layout">
+      <div class="atlas-canvas">
+        <div class="atlas-mapframe">
+          <svg id="atlas-map" class="atlas-map" viewBox="0 0 1000 650" aria-label="诺恩世界地图，可缩放和拖动" role="img"></svg>
+          <div class="atlas-controls" aria-label="地图缩放">
+            <button id="atlas-zoom-in" type="button" aria-label="放大地图">＋</button>
+            <button id="atlas-zoom-out" type="button" aria-label="缩小地图">−</button>
+            <button id="atlas-reset" type="button" aria-label="重置地图视角">⌂</button>
+          </div>
+          <span class="atlas-map-hint">拖动地图 · 滚轮或双指缩放</span>
+        </div>
+        <p class="atlas-legend">◆ 遗迹 <i></i> 陆路 <i class="water"></i> 水路 <i class="foot"></i> 步道 <span>方位为示意，路程以道路为准</span></p>
+      </div>
+      <aside class="atlas-sidebar">
+        <div class="atlas-filters">
+          <label>查看区域<select id="atlas-region" class="name-input"></select></label>
+          <label>地点类型<select id="atlas-category" class="name-input"></select></label>
+        </div>
+        <label class="atlas-search-label">查找地点<input id="atlas-search" class="name-input" type="search" placeholder="输入地名、地形或地区" /></label>
+        <section id="atlas-info" class="atlas-info" aria-label="地点和路线"></section>
+        <div class="atlas-list-title"><span>地点名录</span><span id="atlas-count" class="hint" aria-live="polite"></span></div>
+        <div id="atlas-places" class="atlas-places" aria-label="地点列表"></div>
+      </aside>
     </div>
   </div>
 </div>
