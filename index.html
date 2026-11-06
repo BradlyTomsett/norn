@@ -44,7 +44,17 @@
       <aside class="atlas-sidebar">
         <div class="atlas-filters">
           <label>查看区域<select id="atlas-region" class="name-input"></select></label>
-          <label>地点类型<select id="atlas-category" class="name-input"></select></label>
+          <div class="atlas-category-control">
+            <span id="atlas-category-label">地点类型</span>
+            <details id="atlas-category" class="atlas-category">
+              <summary id="atlas-category-summary">全部类型</summary>
+              <div class="atlas-category-menu" role="group" aria-labelledby="atlas-category-label">
+                <p>可多选；不勾选时显示全部。</p>
+                <div id="atlas-category-options"></div>
+                <button id="atlas-category-clear" type="button" class="ghost">清除选择</button>
+              </div>
+            </details>
+          </div>
         </div>
         <label class="atlas-road-toggle"><input id="atlas-roads" type="checkbox" /> 显示全部道路与航线</label>
         <label class="atlas-search-label">查找地点<input id="atlas-search" class="name-input" type="search" placeholder="输入地名、地形或地区" /></label>

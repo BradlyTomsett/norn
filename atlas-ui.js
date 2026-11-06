@@ -48,15 +48,53 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
   const showRoads = $('roads');
   const map = $('map'), places = $('places'), info = $('info');
   let state, selected, mode = 'walk', lastFocus, view = null, homeView = null, drag = null, pinch = null, suppressClick = false, relocating = null;
+  const selectedCategories = new Set();
   const pointers = new Map();
   const fixed = (x, y, className) => svgNode('g', { class: className, 'data-fixed-x': x, 'data-fixed-y': y });
+  const layoutLabels = matrix => {
+    const bounds = map.getBoundingClientRect(), occupied = [];
+    for (const group of map.querySelectorAll('.atlas-mark[data-label]')) {
+      const text = group.querySelector('text'), line = group.querySelector('.atlas-label-leader');
+      if (!text) continue;
+      const px = matrix.a * Number(group.dataset.fixedX) + matrix.e - bounds.left;
+      const py = matrix.d * Number(group.dataset.fixedY) + matrix.f - bounds.top;
+      if (px < 0 || py < 0 || px > bounds.width || py > bounds.height) {
+        text.setAttribute('x', 9); text.setAttribute('y', 4); line?.setAttribute('visibility', 'hidden'); continue;
+      }
+      const width = Math.max(10, text.textContent.length * 10), height = 13;
+      const candidates = [[9, 4], [-width - 9, 4], [9, -10], [9, 18]];
+      for (let radius = 25; radius <= 260; radius += 15) for (let step = 0; step < 12; step++) {
+        const angle = step * Math.PI / 6, dx = Math.cos(angle) * radius, dy = Math.sin(angle) * radius;
+        candidates.push([dx < 0 ? dx - width : dx, dy + 4]);
+      }
+      let best, bestScore = Infinity;
+      for (const [dx, dy] of candidates) {
+        const rect = { x: px + dx, y: py + dy - 11, width, height };
+        const overlap = occupied.reduce((sum, other) => sum + Math.max(0, Math.min(rect.x + rect.width + 2, other.x + other.width + 2) - Math.max(rect.x - 2, other.x - 2))
+          * Math.max(0, Math.min(rect.y + rect.height + 2, other.y + other.height + 2) - Math.max(rect.y - 2, other.y - 2)), 0);
+        const outside = Math.max(0, -rect.x) + Math.max(0, rect.x + width - bounds.width) + Math.max(0, -rect.y) + Math.max(0, rect.y + height - bounds.height);
+        const score = overlap * 100 + outside * 1000 + Math.hypot(dx < 0 ? dx + width : dx, dy - 4);
+        if (score < bestScore) { bestScore = score; best = { dx, dy, rect }; }
+        if (!overlap && !outside) break;
+      }
+      if (!best) continue;
+      occupied.push(best.rect);
+      text.setAttribute('x', best.dx); text.setAttribute('y', best.dy);
+      if (line) {
+        const edge = best.dx < 0 ? best.dx + width : best.dx;
+        line.setAttribute('x2', edge); line.setAttribute('y2', best.dy - 4);
+        line.setAttribute('visibility', Math.hypot(edge, best.dy - 4) > 22 ? 'visible' : 'hidden');
+      }
+    }
+  };
   const syncFixed = () => {
-    const scale = map.getScreenCTM()?.a;
+    const matrix = map.getScreenCTM(), scale = matrix?.a;
     if (!scale || !Number.isFinite(scale)) return;
     for (const element of map.querySelectorAll('[data-fixed-x]')) {
       const x = element.getAttribute('data-fixed-x'), y = element.getAttribute('data-fixed-y');
       element.setAttribute('transform', `translate(${x} ${y}) scale(${1 / scale})`);
     }
+    if (region.value) layoutLabels(matrix);
   };
   const setView = next => {
     view = next;
@@ -127,14 +165,23 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
     if (suppressClick) { event.preventDefault(); event.stopImmediatePropagation(); suppressClick = false; }
   }, true);
   region.replaceChildren(new Option('大陆总览', ''), ...REGIONAL_PROFILES.map(row => new Option(row.name, row.id)));
-  category.replaceChildren(new Option('全部类型', ''), ...Object.entries(PLACE_CATEGORIES).map(([id, name]) => new Option(name, id)));
+  const categorySummary = $('category-summary'), categoryOptions = $('category-options');
+  for (const [id, name] of Object.entries(PLACE_CATEGORIES)) {
+    const label = node('label'), input = document.createElement('input');
+    input.type = 'checkbox'; input.value = id;
+    label.append(input, document.createTextNode(' ' + name)); categoryOptions.append(label);
+  }
+  const syncCategories = () => {
+    for (const input of categoryOptions.querySelectorAll('input')) input.checked = selectedCategories.has(input.value);
+    categorySummary.textContent = selectedCategories.size ? [...selectedCategories].map(id => PLACE_CATEGORIES[id]).join('、') : '全部类型';
+  };
   const visiblePlaces = () => PLACES.filter(place => atlasVisible(place, state));
   const displayPlace = place => {
     const saved = place.approximate && state?.atlasSitePositions?.[place.id];
     return saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
       ? { ...place, x: saved.x, y: saved.y } : projectPlace(place);
   };
-  const matchesCategory = place => !category.value || placeCategory(place) === category.value;
+  const matchesCategory = place => !selectedCategories.size || selectedCategories.has(placeCategory(place));
   const mainPlace = place => ['主城', '城', '边镇', '港口'].includes(place.kind);
   const plannedRoute = () => {
     const here = atlasLocation(state);
@@ -152,7 +199,7 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
     const changedRegion = region.value !== place.region;
     selected = place;
     region.value = place.region;
-    if (!matchesCategory(place)) category.value = '';
+    if (!matchesCategory(place)) { selectedCategories.add(placeCategory(place)); syncCategories(); }
     search.value = '';
     render(changedRegion);
   }
@@ -193,13 +240,13 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
     }
     const ids = new Set(visible.map(place => place.id));
     const active = new Set((state?.journey?.route || plannedRoute())?.legs.map(leg => leg.id));
-    const shown = visible.filter(place => matchesCategory(place) && (focus ? place.region === focus.id : Boolean(category.value) || mainPlace(place)));
+    const shown = visible.filter(place => matchesCategory(place) && (focus ? place.region === focus.id : Boolean(selectedCategories.size) || mainPlace(place)));
     const shownIds = new Set(shown.map(place => place.id));
     for (const route of ROUTES) {
       if (!ids.has(route.a) || !ids.has(route.b) || route.restricted && !state?.atlasPasses?.includes(route.id)) continue;
       if (!showRoads.checked && !active.has(route.id)) continue;
       if (!active.has(route.id) && !shownIds.has(route.a) && !shownIds.has(route.b)) continue;
-      if (!active.has(route.id) && !focus && !category.value && !(route.sea || route.river || shownIds.has(route.a) && shownIds.has(route.b))) continue;
+      if (!active.has(route.id) && !focus && !selectedCategories.size && !(route.sea || route.river || shownIds.has(route.a) && shownIds.has(route.b))) continue;
       const points = routePoints(route).map(point => point.join(',')).join(' ');
       map.append(svgNode('polyline', { points,
         class: ['atlas-link', (route.sea || route.river) && 'sea', route.river && 'river', route.footOnly && 'foot-only', active.has(route.id) && 'active'].filter(Boolean).join(' ') }));
@@ -213,19 +260,20 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
     }
     const here = atlasLocation(state);
     const showHere = !focus || here?.region === focus.id;
-    const priority = [...new Set([selected, showHere && here, ...shown].filter(Boolean))];
+    const priority = [...new Set([selected && shownIds.has(selected.id) && selected, showHere && here && shownIds.has(here.id) && here, ...shown].filter(Boolean))];
     const labels = [];
     for (const place of priority) {
       const point = displayPlace(place);
       const type = placeCategory(place);
       const isHome = place.id === 'linhe-city' && state?.npcs?.some(npc => npc.id === 'npc_father' && /临河城/.test(npc.profession || ''));
-      const wantedLabel = isHome || place.approximate || (focus && (category.value || mainPlace(place) || place === selected || place === here));
+      const wantedLabel = isHome || place.approximate || Boolean(focus);
       const group = fixed(point.x, point.y, 'atlas-mark ' + type + (place.approximate && !state?.atlasSitePositions?.[place.id] ? ' approximate' : '') + (selected?.id === place.id ? ' selected' : ''));
       group.append(svgNode('circle', { r: place === selected ? 4 : 3, class: 'atlas-place-dot' }));
       group.append(svgNode('title', {}, place.name));
       const label = { x: point.x + 11, y: point.y + 4, width: place.name.length * 12 };
-      if (wantedLabel && !labels.some(other => Math.abs(other.y - label.y) < 13
-        && other.x < label.x + label.width && label.x < other.x + other.width)) {
+      if (wantedLabel && (focus || !labels.some(other => Math.abs(other.y - label.y) < 13
+        && other.x < label.x + label.width && label.x < other.x + other.width))) {
+        if (focus) { group.dataset.label = 'true'; group.append(svgNode('line', { x1: 0, y1: 0, x2: 0, y2: 0, class: 'atlas-label-leader', visibility: 'hidden' })); }
         group.append(svgNode('text', { x: 9, y: 4 }, place.name + (isHome ? ' · 家' : '')));
         labels.push(label);
       }
@@ -330,8 +378,8 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
     const terms = search.value.trim().split(/\s+/).filter(Boolean);
     const filtered = visiblePlaces().filter(place => matchesCategory(place) && (terms.length
       ? terms.every(term => [place.name, place.kind, atlasTitle(place), place.description].some(value => value.includes(term)))
-      : region.value ? place.region === region.value : category.value || mainPlace(place)));
-    $('count').textContent = `${filtered.length} 个地点` + (!region.value && !category.value && !terms.length ? ' · 总览列出主要城镇和港口' : '');
+      : region.value ? place.region === region.value : selectedCategories.size || mainPlace(place)));
+    $('count').textContent = `${filtered.length} 个地点` + (!region.value && !selectedCategories.size && !terms.length ? ' · 总览列出主要城镇和港口' : '');
     places.replaceChildren(...filtered.map(place => {
       const button = node('button', place.name, 'ghost');
       button.type = 'button';
@@ -357,13 +405,18 @@ export function setupAtlas({ onPlan, onLocate, onSetPosition }) {
   function render(reset = false) { drawMap(reset); drawPlaces(); drawInfo(); }
   region.onchange = () => { selected = null; search.value = ''; render(true); };
   showRoads.onchange = () => drawMap();
-  category.onchange = () => { if (selected && !matchesCategory(selected)) selected = null; render(); };
+  category.onchange = event => {
+    if (event.target.type !== 'checkbox') return;
+    if (event.target.checked) selectedCategories.add(event.target.value); else selectedCategories.delete(event.target.value);
+    syncCategories(); if (selected && !matchesCategory(selected)) selected = null; render();
+  };
+  $('category-clear').onclick = () => { selectedCategories.clear(); syncCategories(); render(); };
   search.oninput = drawPlaces;
   return current => {
     state = current;
     selected = null;
     relocating = null;
-    region.value = category.value = search.value = '';
+    region.value = search.value = ''; selectedCategories.clear(); syncCategories(); category.open = false;
     lastFocus = document.activeElement;
     $('current').textContent = state ? `当前位置 · ${state.player.location.siteName}` + (!state.journey && !atlasLocation(state) ? '（未定位到共用地图）' : '') : '大陆总览';
     sheet.classList.remove('hidden');

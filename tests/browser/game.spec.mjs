@@ -75,16 +75,50 @@ test('移动端地图可筛选遗迹、查看支路并跨区搜索地形', async
   await page.getByRole('button', { name: '地图', exact: true }).click();
   const map = page.getByRole('dialog', { name: '诺恩地图' });
   await map.getByLabel('查看区域').selectOption('shengyan');
-  await map.getByLabel('地点类型').selectOption('heritage');
+  await map.locator('#atlas-category-summary').click();
+  await map.getByRole('checkbox', { name: '遗迹与废墟' }).check();
+  await map.locator('#atlas-category-summary').click();
   await expect(map.getByRole('button', { name: '钟田村', exact: true })).toHaveCount(0);
   await map.getByRole('button', { name: '灰烬礼拜堂', exact: true }).click();
   await map.getByText('相邻地点与道路', { exact: true }).click();
   await expect(map.getByRole('button', { name: /牧铃岗 · 丘地小路/ })).toBeVisible();
-  await map.getByLabel('地点类型').selectOption('nature');
+  await map.locator('#atlas-category-summary').click();
+  await map.getByRole('checkbox', { name: '遗迹与废墟' }).uncheck();
+  await map.getByRole('checkbox', { name: '自然地形' }).check();
+  await map.locator('#atlas-category-summary').click();
   await map.getByLabel('查找地点').fill('背雨沙海');
   await map.getByRole('button', { name: '背雨沙海', exact: true }).click();
   await expect(map.getByRole('heading', { name: '背雨沙海' })).toBeVisible();
   await expect(map.locator('#atlas-info')).toContainText('雨影形成的高地沙漠');
+});
+
+test('区域地图的多选类型均显示名称，切换区域和缩放后仍保留', async ({ page }) => {
+  await open(page); await page.getByRole('button', { name: '地图', exact: true }).click();
+  const dialog=page.getByRole('dialog',{name:'诺恩地图'}), map=dialog.locator('#atlas-map');
+  await dialog.getByLabel('查看区域').selectOption('shengyan');
+  const marks=map.locator('g.atlas-mark');
+  expect(await marks.count()).toBeGreaterThan(5);
+  expect(await marks.locator('text').count()).toBe(await marks.count());
+  await dialog.locator('#atlas-category-summary').click();
+  await dialog.getByRole('checkbox',{name:'聚落',exact:true}).check();
+  await dialog.getByRole('checkbox',{name:'遗迹与废墟',exact:true}).check();
+  await expect(dialog.locator('#atlas-category-summary')).toContainText('聚落');
+  await expect(dialog.locator('#atlas-category-summary')).toContainText('遗迹与废墟');
+  await expect(map.locator('g.atlas-mark.settlements')).not.toHaveCount(0);
+  await expect(map.locator('g.atlas-mark.heritage')).not.toHaveCount(0);
+  await expect(map.locator('g.atlas-mark.nature')).toHaveCount(0);
+  expect(await marks.locator('text').count()).toBe(await marks.count());
+  await dialog.locator('#atlas-category-summary').click();
+  await dialog.getByRole('button',{name:'放大地图'}).click();
+  expect(await marks.locator('text').count()).toBe(await marks.count());
+  await dialog.getByLabel('查看区域').selectOption('haoming');
+  await expect(dialog.locator('#atlas-category-summary')).toContainText('遗迹与废墟');
+  expect(await marks.locator('text').count()).toBe(await marks.count());
+  await dialog.locator('#atlas-category-summary').click();
+  await dialog.getByRole('button',{name:'清除选择'}).click();
+  await expect(dialog.locator('#atlas-category-summary')).toHaveText('全部类型');
+  await expect(map.locator('g.atlas-mark.nature')).not.toHaveCount(0);
+  expect(await marks.locator('text').count()).toBe(await marks.count());
 });
 
 test('地图支持缩放、拖动及重置，同时保留地点点击', async ({ page }) => {
