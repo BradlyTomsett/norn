@@ -38,6 +38,9 @@ if (scenario === 'clues') {
     { text: '旧车辙已经消失', sourceTurn: 18 }];
   state.worldLog = [{ text: '路上买干粮花了 1 铜。' }, { text: '路上买干粮花了 1 铜。' }];
 }
+if (['random-chain', 'random-conflict'].includes(scenario)) {
+  state.randomEvents = [{ id: 'fixture-bully', type: 'town_bullying', scene: 'town', status: 'pending', missingUpdates: 3, text: '行人被恶霸围住，向你求助', turn: 0 }];
+}
 if (scenario === 'river-repair') {
   state.player.contracts = [{ id: 'bounty_river_haul', label: '河湾水鬼', copper: 30000, status: 'active', tier: 1 }];
   state.player.contract = { ...state.player.contracts[0] };
@@ -114,6 +117,14 @@ if (scenario === 'time-legacy') {
     timeConflict: { clock: saved.clock, engine: 150, story: 330 },
   });
 }
+if (scenario === 'random-conflict') {
+  const saved = store.getSave(state.saveId);
+  if (saved.turn === 0 && !store.getPending(state.saveId)) await store.putPendingAsync(state.saveId, {
+    id: 'turn:old-random', text: '我不介入', input: '我不介入', baseRevision: saved.revision,
+    randomEvent: {type:'animal',scene:'wild',label:'野兽袭击'}, replyComplete:true,
+    raw: '旧草稿出现了无关的野兽。\n```json\n{"eventUpdate":{"status":"pending"}}\n```',
+  });
+}
 if (scenario === 'blocked-review') {
   const saved = store.getSave(state.saveId);
   if (saved.turn === 0 && !store.getPending(state.saveId)) await store.putPendingAsync(state.saveId, {
@@ -131,6 +142,7 @@ const hide = document.createElement('button'); hide.textContent = '隐藏测试�
 const monitor = document.createElement('pre'); monitor.id = 'fixture-monitor'; controls.append(monitor); document.body.append(controls);
 const refresh = () => {
   const active = store.listSaves()[0]; const s = active && store.getSave(active.id); if (!s) return;
+  if (['random-chain', 'random-conflict'].includes(scenario)) controls.dataset.eventStatus = s.randomEvents?.find(e => e.id === 'fixture-bully')?.status || '';
   monitor.textContent = `测试模式：${mode}\n回合：${s.turn}\n随身：${s.player.accounts[0].copper} 铜\n待提交：${store.getPending(s.saveId) ? '有' : '无'}\n地点：${s.player.location.siteName}\n后果：${s.consequences.map(e => e.status).join(',')}`;
 };
 setInterval(refresh, 200); refresh();
@@ -152,6 +164,10 @@ window.fetch = async (url, options = {}) => {
   if (!String(url).startsWith('https://api.deepseek.com')) return original(url, options);
   const request = JSON.parse(options.body), system = request.messages[0].content;
   requests++; controls.dataset.requests = requests;
+  if (['random-chain', 'random-conflict'].includes(scenario)) {
+    controls.dataset.eventContinuing = String(system.includes('承接同一事件') && system.includes('不要另起其他随机遭遇'));
+    controls.dataset.eventLeaving = String(system.includes('玩家已明确选择不介入或中途退出'));
+  }
   if (system.includes('你只分析玩家这一回合的原文')) {
     controls.dataset.intentReviews = String(Number(controls.dataset.intentReviews || 0) + 1);
     const input = request.messages.at(-1).content;

@@ -741,6 +741,10 @@ async function sendTurn(options = {}) {
     const eventFrequency = draft.eventFrequency || localStorage.getItem('norn.eventFrequency') || 'medium';
     plan = prepareTurn(source, draft.text, draft.id, { messages: history, corrections: draft.corrections || (draft.correction ? [draft.correction] : []), rejectedReply: draft.rejectedReply || '', minutesOverride: draft.minutesOverride ?? null, eventFrequency,
       randomEventOverride: Object.hasOwn(draft, 'randomEvent') ? draft.randomEvent : undefined });
+    if (options.retry && plan.eventSelectionChanged) {
+      if (draft.raw) draft.previousEventReply = draft.raw;
+      draft.raw = ''; draft.replyComplete = false; draft.generationTruncated = false; delete draft.timeConflict;
+    }
     draft = { ...draft, input: draft.input || plan.input, text: plan.text, eventFrequency, randomEvent: plan.randomEvent };
   } catch (error) { addMessage('error', '这次行动还没有开始：' + error.message); return; }
   const ambiguous = ambiguousPeople(source, plan.text);

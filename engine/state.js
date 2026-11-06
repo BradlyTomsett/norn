@@ -933,7 +933,7 @@ export function uiState(state) {
     taskNotes: state.knowledge.filter(k => !contradictedByCorrection(state, k) && k.taskIds?.length),
     journal: [...state.knowledge.filter(k => !contradictedByCorrection(state, k) && ['agreement','party','relationship','decision'].includes(k.kind)).map(k => ({ text: k.text, turn: k.sourceTurn, kind: '约定与决定' })),
       ...uniqueImportant(state.storyLog.filter(e => knownStory(state, e))).map(e => ({ text: e.text, turn: e.sourceTurn, kind: '重要事件' })),
-      ...(state.randomEvents || []).filter(e => e.text).map(e => ({ text: `${e.text}（${({ pending:'等待处理',introduced:'尚待处理',resolved:'已解决',left:'已离开' })[e.status] || '已记录'}）`, turn:e.turn, kind:'遭遇进展' })),
+      ...(state.randomEvents || []).filter(e => e.text).map(e => ({ text: `${e.text}（${({ pending:'等待处理',introduced:'尚待处理',resolved:'已解决',left:'已退出',superseded:'旧事件已收起' })[e.status] || '已记录'}）`, turn:e.turn, kind:'遭遇进展' })),
       ...uniqueImportant(state.chronicle).map(e => ({ text: typeof e === 'string' ? e : e.text, turn: e.sourceTurn, kind: '编年' }))],
     prices: state.prices || {},
     rates: state.rates || {},

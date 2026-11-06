@@ -11,7 +11,7 @@ import { entityRefs } from './entities.js';
 import { absoluteDay } from './schema.js';
 import { rememberCorrections } from './continuity.js';
 import { narrativeTime } from './time.js';
-import { selectRandomEvent, recordRandomEvent, leaveRandomEvent } from './random-events.js';
+import { selectRandomEvent, recordRandomEvent, leaveRandomEvent, declinesRandomEvent } from './random-events.js';
 import { AtlasNarrativeError, checkTravelNarrative, mapSettlement, travelLocation } from './atlas.js';
 
 export function prepareTurn(source, input, id, { messages = [], corrections = [], rejectedReply = '', minutesOverride = null, eventFrequency = 'medium', randomEventOverride = undefined } = {}) {
@@ -30,14 +30,23 @@ export function prepareTurn(source, input, id, { messages = [], corrections = []
     });
     judged.minutes = minutesOverride;
   }
-  const randomEvent = randomEventOverride === undefined ? selectRandomEvent(base, judged, text, eventFrequency) : randomEventOverride;
+  let randomEvent = randomEventOverride === undefined ? selectRandomEvent(base, judged, text, eventFrequency) : randomEventOverride;
+  const pendingEvent = base.randomEvents?.findLast(e => ['pending', 'introduced'].includes(e.status));
+  let eventSelectionChanged = false;
+  if (pendingEvent && judged.kind !== 'meta') {
+    if (!randomEvent || randomEvent.id !== pendingEvent.id) {
+      eventSelectionChanged = randomEventOverride !== undefined;
+      randomEvent = selectRandomEvent(base, judged, text, eventFrequency);
+    }
+    else randomEvent = { ...randomEvent, continuing: true, leaveRequested: declinesRandomEvent(text) };
+  }
   if (judged.trip && randomEvent && !randomEvent.continuing && judged.minutes > 1) {
     judged.minutes = Math.min(240, Math.floor(judged.minutes / 2));
     judged.segments[0].minutes = judged.minutes;
   }
   const events = advanceWorld(state, judged.minutes, rng, judged);
   advanceTasks(state);
-  const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, randomEvent, eventFrequency, rng, history: messages, corrections, rejectedReply };
+  const plan = { id, text, input: action.input, selected: action.selected, base, state, judged, events, randomEvent, eventFrequency, eventSelectionChanged, rng, history: messages, corrections, rejectedReply };
   plan.finance = financeTerms(plan);
   return plan;
 }
@@ -63,7 +72,7 @@ export function finishTurn(plan, delta, { enforceTerms = true } = {}) {
   const state = structuredClone(plan.state);
   const model = structuredClone(delta);
   let eventUpdate = model.eventUpdate; delete model.eventUpdate;
-  if (plan.judged.trip && plan.randomEvent?.continuing && eventUpdate?.status !== 'resolved') {
+  if (plan.randomEvent?.continuing && declinesRandomEvent(plan.text)) {
     eventUpdate = { status: 'left', text: plan.randomEvent.summary || plan.randomEvent.label };
   }
   mapSettlement(state, model, plan.judged.trip, plan.judged.minutes, plan.text);

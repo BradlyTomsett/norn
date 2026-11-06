@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateWorld } from '../engine/worldgen.js';
 import { upgradeState } from '../engine/schema.js';
-import { EVENT_TYPES, eventScene, selectRandomEvent, recordRandomEvent, leaveRandomEvent, inferEventEnd } from '../engine/random-events.js';
-import { prepareTurn, followNarrativeTime } from '../engine/turn.js';
+import { EVENT_TYPES, eventScene, selectRandomEvent, recordRandomEvent, leaveRandomEvent, inferEventEnd, declinesRandomEvent } from '../engine/random-events.js';
+import { prepareTurn, followNarrativeTime, finishTurn } from '../engine/turn.js';
 import { settleGeneratedReply } from '../engine/reply.js';
 import { buildTurnRequest } from '../engine/context.js';
 import * as store from '../store.js';
@@ -38,7 +38,30 @@ test('地点取自实际位置，提到远方地点不改变场景，长途行�
   assert.equal(eventScene(state, {travelScope:'journey'}, '从森林返回城镇'), 'road');
 });
 
-test('事件漏报状态保留进展，连续漏报不再阻塞新事件，相关行动仍可继续', () => {
+test('街头欺凌与求助可在城镇发生，室内和野外不触发，后续可继续处理', () => {
+  const judged={kind:'rest',minutes:2880}; let selected=null, state;
+  for(let seed=1;seed<=1000;seed++) {
+    const s=fresh(seed); s.player.location={siteId:'town',siteName:'灰水镇广场'};
+    const event=selectRandomEvent(s,judged,'在广场等候','high');
+    if(event?.type==='town_bullying') { selected=event; state=s; break; }
+  }
+  assert.ok(selected, '城镇事件池可以选到街头欺凌');
+  assert.match(selected.prompt,/恶霸.*欺负/); assert.match(selected.prompt,/求助/); assert.match(selected.prompt,/玩家决定/);
+  const square=structuredClone(state); square.player.location={siteId:'guild-square',siteName:'公会广场'};
+  assert.equal(selectRandomEvent(square,judged,'在广场等候','high')?.type,'town_bullying');
+  const house=structuredClone(state); house.player.location={siteId:'inn',siteName:'灰水镇旅店客房'};
+  assert.notEqual(selectRandomEvent(house,judged,'睡觉','high')?.type,'town_bullying');
+  const forest=structuredClone(state); forest.player.location={siteId:'forest',siteName:'森林'};
+  assert.notEqual(selectRandomEvent(forest,judged,'在森林休息','high')?.type,'town_bullying');
+  assert.notEqual(selectRandomEvent(state,judged,'在酒馆休息','high')?.type,'town_bullying');
+  recordRandomEvent(state,selected,'bully:1',{status:'pending',text:'行人被恶霸围住，向你求助'});
+  const next=selectRandomEvent(state,{kind:'social',minutes:5},'制止恶霸');
+  assert.equal(next?.id,'bully:1'); assert.equal(next?.continuing,true);
+  recordRandomEvent(state,next,'next',{status:'resolved',text:'恶霸被制止'});
+  assert.equal(state.randomEvents[0].status,'resolved');
+});
+
+test('事件未结束时持续承接，即使漏报多次也不会启动另一个事件', () => {
   const state = fresh(), judged = {kind:'rest',minutes:480}; state.turn = 5;
   recordRandomEvent(state, {type:'road_robbery',scene:'road',label:'劫匪'}, 'e1', {status:'pending',text:'劫匪等候答复'});
   let event = selectRandomEvent(state, judged, '交出钱'); assert.equal(event.id, 'e1');
@@ -47,11 +70,42 @@ test('事件漏报状态保留进展，连续漏报不再阻塞新事件，相�
   event = selectRandomEvent(state, judged, '继续行动'); assert.equal(event.id, 'e1');
   state.turn++; recordRandomEvent(state, event, 'next');
   state.turn += 3;
-  assert.notEqual(selectRandomEvent(state, judged, '在旅店睡觉', 'high')?.id, 'e1');
+  assert.equal(selectRandomEvent(state, judged, '在旅店睡觉', 'high')?.id, 'e1');
   assert.equal(selectRandomEvent(state, {kind:'social',minutes:5}, '回答劫匪')?.id, 'e1');
   event = selectRandomEvent(state, judged, '回答劫匪');
   recordRandomEvent(state, event, 'next', {status:'resolved',text:'劫匪离开'});
   assert.equal(state.randomEvents[0].status, 'resolved');
+});
+
+test('不介入和中途退出会结束当前事件，不误判询问、未来计划或决定留下', () => {
+  for (const input of ['我不介入', '我不管了', '我不打算插手', '不愿意帮助他', '我转身离开现场', '我们半道退出', '中途退出这场纠纷', '我不再参与', '选择袖手旁观']) {
+    assert.equal(declinesRandomEvent(input), true, input);
+    const state=fresh(); state.turn=10;
+    recordRandomEvent(state,{type:'town_bullying',scene:'town',label:'街头欺凌与求助'},'bully:1',{status:'pending',text:'行人向你求助'});
+    const plan=prepareTurn(state,input,'turn:leave');
+    assert.equal(plan.randomEvent?.id,'bully:1',input); assert.equal(plan.randomEvent?.leaveRequested,true,input);
+    assert.match(buildTurnRequest(plan).system,/玩家已明确选择不介入或中途退出/);
+    const result=finishTurn(plan,{eventUpdate:{status:'pending',text:'求助还在继续'}},{enforceTerms:false}).state;
+    assert.equal(result.randomEvents.length,1,input); assert.equal(result.randomEvents[0].status,'left',input);
+    assert.equal(state.randomEvents[0].status,'pending', '未提交前不改变原存档');
+  }
+  for (const input of ['如果不介入会怎样？', '要不要离开？', '我不离开', '我不想退出', '我打算明天退出', '他离开现场', '让老杜不参与', '我让老杜退出', '先询问对方情况']) {
+    assert.equal(declinesRandomEvent(input), false, input);
+  }
+});
+
+test('旧版残留的并行事件只承接最近一件，保存并回档时不会触发第二件', () => {
+  const state=fresh(); state.turn=10;
+  state.randomEvents=[{id:'old',type:'animal',scene:'wild',status:'pending',text:'野兽靠近',turn:4},
+    {id:'recent',type:'town_bullying',scene:'town',status:'pending',text:'行人求助',turn:9}];
+  const plan=prepareTurn(state,'问问发生什么','turn:continue',{randomEventOverride:{type:'magic',scene:'town',label:'魔法'}});
+  assert.equal(plan.randomEvent.id,'recent'); assert.equal(plan.eventSelectionChanged,true);
+  const result=finishTurn(plan,{eventUpdate:{status:'pending',text:'行人仍在求助'}},{enforceTerms:false}).state;
+  assert.equal(result.randomEvents.filter(e=>['pending','introduced'].includes(e.status)).length,1);
+  assert.equal(result.randomEvents.find(e=>e.id==='old').status,'superseded');
+  assert.equal(selectRandomEvent(result,{kind:'rest',minutes:2880},'再等一天','high')?.id,'recent');
+  const saved=store.decodeSave(store.savePackage(result,[])).state;
+  assert.equal(selectRandomEvent(saved,{kind:'rest',minutes:2880},'再等一天','high')?.id,'recent');
 });
 
 test('明确结束或成功离开现场才收起相应事件，其他事件与未知结果保留', () => {
@@ -61,7 +115,7 @@ test('明确结束或成功离开现场才收起相应事件，其他事件与�
   const base = fresh(); base.turn=10; base.player.location={siteId:'road',siteName:'道路'};
   recordRandomEvent(base,event,'e1',{status:'pending',text:'劫匪挡路'});
   const state=structuredClone(base); state.player.location={siteId:'town',siteName:'城镇'};
-  recordRandomEvent(state,{type:'town',scene:'town',label:'市集'},'new',{status:'pending',text:'市集开张'});
+  state.randomEvents.push({id:'new',type:'town',scene:'town',status:'pending',text:'市集开张'}); // Legacy saves could contain overlapping events.
   leaveRandomEvent(state,base,{travelScope:'route'},'逃回城镇',{type:'town'}, {status:'pending'});
   assert.equal(state.randomEvents.find(e=>e.id==='e1').status,'left');
   assert.equal(state.randomEvents.find(e=>e.id==='new').status,'pending');

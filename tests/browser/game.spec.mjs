@@ -228,6 +228,28 @@ test('随机事件频率可在设置中选择并在刷新后保留', async ({ pa
   await expect(page.locator('#set-events .selected')).toHaveText('多');
 });
 
+test('随机事件未结束时持续承接，玩家不介入后结束并在刷新后保留', async ({ page }) => {
+  await open(page, 'random-chain');
+  await act(page, '问问发生了什么'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-status', 'pending');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-continuing', 'true');
+  await act(page, '我不介入，转身离开现场'); await expect(page.locator('#fixture-monitor')).toContainText('回合：2');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-status', 'left');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-leaving', 'true');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '2');
+  await page.reload(); await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-status', 'left');
+});
+
+test('旧版待续回复若混入另一个随机事件，重试只处理未结束的事件', async ({ page }) => {
+  await open(page, 'random-conflict');
+  await page.getByRole('button', { name: '继续本回合', exact: true }).click();
+  await expect(page.locator('#turn-status')).toContainText('已在本机保存');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-status', 'left');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-event-leaving', 'true');
+  await expect(page.locator('#fixture-controls')).toHaveAttribute('data-requests', '1');
+  await expect(page.locator('#log')).not.toContainText('旧草稿出现了无关的野兽');
+});
+
 test('普通回合、状态修改和刷新只存本机，主动云备份才上传', async ({ page }) => {
   await open(page, 'cloud-policy'); await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
   await act(page, '看看周围'); await expect(page.locator('#turn-status')).toContainText('已在本机保存');
