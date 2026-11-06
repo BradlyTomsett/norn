@@ -78,7 +78,6 @@ export function applyStoryDelta(state, delta, rejected, eventId) {
       place.regionTitle ||= name;
       state.locations[siteId] = place;
       state.world = { ...place, priceIndex: place.priceIndex || state.world.priceIndex || 1 };
-      state.storyLog.push({ id: `${eventId}:move`, day: absoluteDay(state.clock), text: siteId.startsWith('atlas-road:') ? `在${name}停留` : `抵达${name}` });
     }
   }
   for (const row of list(delta.npcs)) {

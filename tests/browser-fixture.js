@@ -38,6 +38,13 @@ if (scenario === 'clues') {
     { text: '旧车辙已经消失', sourceTurn: 18 }];
   state.worldLog = [{ text: '路上买干粮花了 1 铜。' }, { text: '路上买干粮花了 1 铜。' }];
 }
+if (scenario === 'river-repair') {
+  state.player.contracts = [{ id: 'bounty_river_haul', label: '河湾水鬼', copper: 30000, status: 'active', tier: 1 }];
+  state.player.contract = { ...state.player.contracts[0] };
+  state.knowledge = [{ text: '公会的河湾水鬼（300金，二十天）', source: '公会管事' }];
+  state.processedEvents = { bad: { fingerprint: JSON.stringify({ bounty: { id: 'bounty_river_haul', copper: 30000 } }) } };
+  state.ledgerLog = [{ text: '接了活：河湾水鬼，酬劳 3 金——做完拿全款' }];
+}
 if (scenario === 'unmapped-home') {
   state.player.location = { siteId: 'jialong_guild_hall', siteName: '加隆城冒险者公会大厅' };
   state.npcs[0].id = 'npc_father';

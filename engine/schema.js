@@ -53,6 +53,18 @@ export function upgradeState(state) {
   if (p.contract && !p.contracts.some(c => c.id === p.contract.id || c.label === p.contract.label)) {
     p.contracts.push({ ...p.contract, id: p.contract.id || 'legacy-contract', status: 'active' });
   }
+  // Repair the identified old model output once, only with both the matching saved delta and the original quote.
+  state.flags ||= {};
+  const river = p.contracts.find(c => c.id === 'bounty_river_haul' && c.label === '河湾水鬼' && c.status === 'active' && c.copper === 30000);
+  const quote = river && !state.flags.riverBountyFix && (state.knowledge || []).some(k => /河湾水鬼[（(]\s*(?:300|三百)金/.test(k.text || ''));
+  const badDelta = quote && Object.values(state.processedEvents || {}).some(row => {
+    if (!row.fingerprint?.includes('bounty_river_haul')) return false;
+    try { const b = JSON.parse(row.fingerprint).bounty; return b?.id === 'bounty_river_haul' && b?.copper === 30000; } catch { return false; }
+  });
+  if (river && quote && badDelta) {
+    river.copper = 3000000; state.flags.riverBountyFix = 'pending';
+    for (const row of state.ledgerLog || []) if (row.text?.includes('接了活：河湾水鬼，酬劳 3 金')) row.text = row.text.replace('接了活：河湾水鬼，酬劳 3 金', '接了活：河湾水鬼，酬劳 300 金');
+  }
   const active = p.contracts.find(c => c.status === 'active');
   p.contract = active ? { ...active } : null;
   for (const key of ['npcs', 'knowledge', 'history', 'signals', 'worldLog', 'chronicle', 'consequences', 'storyLog']) {

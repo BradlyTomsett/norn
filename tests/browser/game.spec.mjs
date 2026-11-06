@@ -17,6 +17,28 @@ test('线索页打开旧存档时自动合并重复项，并移除过期线索�
   await expect(clues).not.toContainText(/旧车辙|干粮/);
 });
 
+test('河湾水鬼旧存档修复到300金并保存在本机，之后允许手动改价', async ({ page }) => {
+  await open(page, 'river-repair');
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '事项', exact: true }).click();
+  const row=page.locator('[data-contract-id="bounty_river_haul"]');
+  await expect(row).toContainText('300 金');
+  await page.reload(); await expect(page.locator('#input')).toBeVisible();
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '事项', exact: true }).click();
+  await expect(row).toContainText('300 金');
+  await row.locator('summary').click(); await row.locator('[data-contract-pay]').fill('30000');
+  await row.getByRole('button', { name: '保存酬劳' }).click();
+  await expect(page.locator('#task-maintenance-status')).toContainText('已保存');
+  await page.reload(); await expect(page.locator('#input')).toBeVisible();
+  await page.getByRole('button', { name: '隐藏测试工具', exact: true }).click();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('button', { name: '事项', exact: true }).click();
+  await expect(row).toContainText('3 金'); await expect(row).not.toContainText('300 金');
+});
+
 test('地图可在移动端查看地区，并把固定路线填入行动草稿', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: '地图', exact: true }).click();
@@ -33,6 +55,19 @@ test('地图可在移动端查看地区，并把固定路线填入行动草稿',
   await expect(page.locator('#input')).toHaveValue('步行前往东境郡城');
   await expect(page.locator('#action-preview')).toContainText('7小时45分钟');
   await expect(page.locator('#preview-time-edit')).toBeHidden();
+});
+
+test('六国新增城镇和村落可在手机地图按区域查看并规划', async ({ page }) => {
+  await open(page); await page.getByRole('button', { name: '地图', exact: true }).click();
+  const map=page.getByRole('dialog', { name: '诺恩地图' });
+  for (const [region, city, village] of [['shengyan','日辉城','北钟村'],['haoming','骏旗城','燕麦洼'],['weituo','黑脊城','石围村'],['gewen','贝市城','盐草村'],['selens','药冠城','琥珀田'],['andreia','铜轮城','亚麻岭']]) {
+    await map.getByLabel('查看区域').selectOption(region);
+    await expect(map.getByRole('button',{name:city,exact:true})).toBeVisible();
+    await expect(map.getByRole('button',{name:village,exact:true})).toBeVisible();
+  }
+  await map.getByLabel('查看区域').selectOption('shengyan');
+  await map.getByRole('button',{name:'日辉城',exact:true}).click();
+  await expect(map.getByRole('button',{name:'规划前往'})).toBeEnabled();
 });
 
 test('移动端地图可筛选遗迹、查看支路并跨区搜索地形', async ({ page }) => {

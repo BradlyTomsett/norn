@@ -10,9 +10,20 @@ import { buildTurnRequest } from '../engine/context.js';
 import { absoluteMinute } from '../engine/schema.js';
 import { projectPoint } from '../atlas-projection.js';
 import { REGION_IMAGES } from '../atlas-regions.js';
+import { SURVEY_PLACES } from '../engine/atlas-expansion.js';
 
 const start = (regionId = 'greywater', seed = 82) => generateWorld({ regionId, seed }).state;
 const prepare = (state, input, extra = {}) => prepareTurn(state, input, `atlas:${state.turn + 1}`, { randomEventOverride: null, ...extra });
+
+test('六个人类国家各新增两座城市和五处村落，均可通过地图道路抵达', () => {
+  const ids={shengyan:['sunspire-city','wheatford-city','north-bell','stonebrook','barley-end','lamb-meadow','willow-mill'],haoming:['horse-banner-city','river-gold-city','oat-hollow','red-mane','river-reed','horseshoe','birch-field'],weituo:['black-ridge-city','stonebell-city','grey-slope','south-quarry','old-oak-hill','stonefold','east-hearth'],gewen:['shell-market-city','sailhaven-city','saltgrass','shell-beach','east-sail','water-cress','coral-bend'],selens:['herb-crown-city','mistwater-city','fern-brook','amber-field','mist-reed','green-vat','south-elm'],andreia:['bronze-wheel-city','west-bay-city','flax-ridge','west-bay-fish','wheel-creek','reed-flats','cliff-field']};
+  for (const [region, names] of Object.entries(ids)) {
+    const places=names.map(id=>SURVEY_PLACES.find(p=>p.id===id));
+    assert.equal(places.filter(p=>p?.region===region&&p.kind==='城').length,2);
+    assert.equal(places.filter(p=>p?.region===region&&p.kind==='村').length,5);
+    for(const place of places) assert.ok(findRoute('greywater',place.id,start()),place.name);
+  }
+});
 
 test('每个已有区域都有独立的地图图像', () => {
   for (const region of REGIONAL_PROFILES) {

@@ -15,8 +15,8 @@ const sample = `【本次行动】
 你进了铁匠铺。
 
 【编年 · 截至 复兴历 224 年秋】
-· 224 年春，你 18 岁，进了郡城的铁匠铺当学徒，师傅姓霍尔。
-· 224 年夏，母亲病了一场，花了 2 银，欠了药铺的钱。
+· 224 年春，你正式晋升B级冒险者。
+· 224 年夏，你收集了几把匕首。
 
 【你现在可以做什么】
 ① 干活`;
@@ -24,7 +24,7 @@ const sample = `【本次行动】
 const parsed = parseChronicle(sample);
 eq('解析出 2 条编年', parsed.length, 2);
 ok('去掉了圆点', !parsed[0].startsWith('·'), parsed[0]);
-ok('第一条内容完整', parsed[0].includes('铁匠铺'), parsed[0]);
+ok('第一条内容完整', parsed[0].includes('B级'), parsed[0]);
 
 const noSection = parseChronicle('【本次行动】\n只是普通叙事。');
 eq('没有编年段就返回空', noSection.length, 0);
@@ -32,18 +32,19 @@ eq('没有编年段就返回空', noSection.length, 0);
 const { state } = generateWorld({ regionId: 'greywater', seed: 42 });
 ensureAccounts(state);
 const added = mergeChronicle(state, parsed);
-eq('新增 2 条', added, 2);
+eq('只新增重大事件', added, 1);
 eq('再合并同一批不重复', mergeChronicle(state, parsed), 0);
-eq('状态里存住了', state.chronicle.length, 2);
+eq('状态里存住重大事件', state.chronicle.length, 1);
 
 const block = stateBlock(state);
 ok('状态块带编年段', block.includes('【编年】'));
-ok('状态块里有具体条目', block.includes('铁匠铺'));
+ok('状态块里有晋升记录', block.includes('晋升B级'));
 
-// 封顶
+// Existing records stay available in storage; routine new details do not enter the chronicle.
+state.chronicle.unshift('旧日去过铁匠铺');
 for (let i = 0; i < 80; i++) mergeChronicle(state, [`第 ${i} 条占位事件`]);
-ok('完整保留编年而不删除旧事', state.chronicle.length === 82, String(state.chronicle.length));
-ok('新旧事件均保留', state.chronicle[0].includes('铁匠铺') && state.chronicle.at(-1).includes('79'));
+ok('旧记录仍保存在存档', state.chronicle[0].includes('铁匠铺'));
+ok('日常事件不新增', state.chronicle.length === 2, String(state.chronicle.length));
 
 // 触发
 ok('第 12 回合要整理', chronicleDue({ turn: 11 }, '随便走走') === true);

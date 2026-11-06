@@ -332,7 +332,7 @@ function viewPeople(u) {
         (r.loadout?.length ? `<div class="ob">惯用：${esc(r.loadout.join('、'))}</div>` : '') +
         relationValue(r.closeness) +
         ((r.goals || []).some(g => g.status === 'active' && !g.routine) ? `<div class="ob npc-goal">在忙：${esc(r.goals.filter(g => g.status === 'active' && !g.routine).map(g => `${g.text}${g.blockedOn ? `（等待：${g.blockedOn}）` : ''}`).join('；'))}</div>` : '') +
-        `<div class="ob">${esc(r.observable || '')}</div><details><summary>人物回顾</summary><p>最后记录位置：${esc(r.location || '未记录')}${r.following ? ' · 同行' : ''}</p>${(r.memories || []).map(m => `<p>${esc(m.text)}</p>`).join('')}${(r.agreements || []).map(k => `<p>${esc(k.text)}${Number.isInteger(k.sourceTurn) ? ` <button class="chip" data-history-turn="${k.sourceTurn}">查看原文</button>` : ''}</p>`).join('')}<button class="ghost" data-relation-hide="${esc(r.npcId)}">从关系列表移除</button></details></div>`,
+        `<div class="ob">${esc(r.observable || '')}</div><details><summary>人物回顾</summary>${r.relationshipSummary ? `<p>${esc(r.relationshipSummary)}</p>` : ''}${r.following ? '<p>当前与你同行。</p>' : ''}${(r.relationshipNotes || []).map(k => `<p>${esc(k.text)}${Number.isInteger(k.sourceTurn) ? ` <button class="chip" data-history-turn="${k.sourceTurn}">查看原文</button>` : ''}</p>`).join('')}${!r.following && !r.relationshipSummary && !(r.relationshipNotes || []).length ? '<p>暂无简要关系记录。</p>' : ''}<button class="ghost" data-relation-hide="${esc(r.npcId)}">从关系列表移除</button></details></div>`,
     );
   }
   out.push('</div>');

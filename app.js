@@ -276,7 +276,8 @@ async function loadGame(id, { allowDuringTurn = false, focusIndex = null } = {})
   const messages = store.getMessages(id);
   const memoryBefore = JSON.stringify([state.continuity, state.knowledge, state.player.unfinished, state.player.taskHistory]);
   rememberCorrections(state, messages);
-  if (!store.getPending(id) && memoryBefore !== JSON.stringify([state.continuity, state.knowledge, state.player.unfinished, state.player.taskHistory])) {
+  if (!store.getPending(id) && (state.flags?.riverBountyFix === 'pending' || memoryBefore !== JSON.stringify([state.continuity, state.knowledge, state.player.unfinished, state.player.taskHistory]))) {
+    if (state.flags?.riverBountyFix === 'pending') state.flags.riverBountyFix = 'done';
     await store.putSaveAsync(state, undefined, { expectedRevision: state.revision });
   }
   app.saveId = id; app.loadedRevision = state.revision;

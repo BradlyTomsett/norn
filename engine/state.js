@@ -17,6 +17,7 @@ import { ensureAssets, assetsText } from './assets.js';
 import { repText } from './reputation.js';
 import { addItem, effectOf, isContainer, normalizeItems, parseContainer, parseItemEntry, removeItem } from './items.js';
 import { chronicleText } from './chronicle.js';
+import { uniqueImportant } from './important.js';
 import { assignState, upgradeState, absoluteDay, closenessOf } from './schema.js';
 import { clueRows, currentPromptFact, mergeRepeatedKnowledge } from './clues.js';
 import { applyTasks } from './tasks.js';
@@ -758,7 +759,7 @@ export function stateBlock(state, query = '', { guards = [], locationUncertain =
     lines.push('【最近账目】（引擎结算，叙事以这些为准，不要改数）');
     for (const l of state.ledgerLog.slice(-6)) lines.push(`  · ${l.text}`);
   }
-  const chronRows = state.chronicle.map(row => linkKnowledge(state, row)).filter(row => !contradictedByCorrection(state, row) && !correctionContaminates(row, guards));
+  const chronRows = uniqueImportant(state.chronicle).map(row => linkKnowledge(state, row)).filter(row => !contradictedByCorrection(state, row) && !correctionContaminates(row, guards));
   const chron = selectRelevant(chronRows, query, chronRows.reduce((sum, row) => sum + row.text.length, 0) <= 8000 ? chronRows.length : 24, row => row.text, context).map(row => row.text).join('\n');
   if (chron) {
     lines.push('【编年】（更早发生的事，回忆优先按这个来）');
@@ -921,7 +922,8 @@ export function uiState(state) {
           memories: (npc?.memories || []).filter(m => m.visible !== false).slice(-3),
           location: npc?.location?.siteName || '未记录',
           following: npc?.following === true,
-          agreements: state.knowledge.filter(k => !contradictedByCorrection(state, k) && ['agreement','relationship','party','decision'].includes(k.kind) && k.npcIds?.includes(r.npcId)),
+          relationshipSummary: String(npc?.attitude || '').slice(0, 60),
+          relationshipNotes: state.knowledge.filter(k => !contradictedByCorrection(state, k) && ['relationship','party'].includes(k.kind) && k.npcIds?.includes(r.npcId) && /你|玩家|我|搭档|伙伴|同伴/.test(k.text)).slice(-2).map(k => ({ ...k, text: k.text.slice(0, 60) })),
         };
       }),
     },
@@ -930,9 +932,9 @@ export function uiState(state) {
     worldLog: (state.worldLog || []).slice(-8),
     taskNotes: state.knowledge.filter(k => !contradictedByCorrection(state, k) && k.taskIds?.length),
     journal: [...state.knowledge.filter(k => !contradictedByCorrection(state, k) && ['agreement','party','relationship','decision'].includes(k.kind)).map(k => ({ text: k.text, turn: k.sourceTurn, kind: '约定与决定' })),
-      ...state.storyLog.filter(e => knownStory(state, e)).map(e => ({ text: e.text, turn: e.sourceTurn, kind: '重要事件' })),
+      ...uniqueImportant(state.storyLog.filter(e => knownStory(state, e))).map(e => ({ text: e.text, turn: e.sourceTurn, kind: '重要事件' })),
       ...(state.randomEvents || []).filter(e => e.text).map(e => ({ text: `${e.text}（${({ pending:'等待处理',introduced:'尚待处理',resolved:'已解决',left:'已离开' })[e.status] || '已记录'}）`, turn:e.turn, kind:'遭遇进展' })),
-      ...state.chronicle.map(e => ({ text: typeof e === 'string' ? e : e.text, turn: e.sourceTurn, kind: '编年' }))],
+      ...uniqueImportant(state.chronicle).map(e => ({ text: typeof e === 'string' ? e : e.text, turn: e.sourceTurn, kind: '编年' }))],
     prices: state.prices || {},
     rates: state.rates || {},
     priceIndex: state.world.priceIndex || 1,

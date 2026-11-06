@@ -2,6 +2,7 @@
 // 模型按规则每 12 回合输出一次【编年】，这里把它截下来存进状态，
 // 否则它只是聊天里的一条消息，几回合后就被挤出上下文窗口。
 
+import { importantEvent, uniqueImportant } from './important.js';
 const BULLET = /^[·•\-*—]\s*/;
 
 export function parseChronicle(text) {
@@ -34,8 +35,8 @@ export function mergeChronicle(state, entries) {
   let added = 0;
   for (const raw of entries || []) {
     const text = String(raw || '').trim();
-    if (!text) continue;
-    if (list.includes(text)) continue;
+    if (!importantEvent(text)) continue;
+    if (uniqueImportant([...list, text]).length === uniqueImportant(list).length) continue;
     list.push(text);
     added += 1;
   }
@@ -45,7 +46,7 @@ export function mergeChronicle(state, entries) {
 export function chronicleText(state, n = 6) {
   const list = ensureChronicle(state);
   if (!list.length) return '';
-  return list.slice(-n).join('\n');
+  return uniqueImportant(list).slice(-n).map(row => typeof row === 'string' ? row : row.text).join('\n');
 }
 
 /** 该不该这回合要求模型整理编年。 */

@@ -143,6 +143,64 @@ const survey = [
   ]],
 ];
 
+// Additional settled places in the six human kingdoms; each has a fixed local connection.
+survey.push(
+  ['shengyan', [
+    ['sunspire-city','日辉城','城',238,306,'白塔北方的教区城市，石匠与蜡烛商沿大街开店。','candlewick',24,'王道'],
+    ['wheatford-city','麦渡城','城',337,331,'河谷粮路上的城镇，磨坊与谷仓围着渡道。','eastern-seat',28,'王道'],
+    ['north-bell','北钟村','村',210,339,'教区北侧的麦田村，村民共用一口古井。','candlewick',12,'村道'],
+    ['stonebrook','石溪村','村',249,325,'浅溪旁的小村，以石料和羊毛换取粮食。','sunspire-city',13,'村道'],
+    ['barley-end','大麦庄','村',318,326,'河谷边的农庄，春季常雇人清理沟渠。','wheatford-city',12,'村道'],
+    ['lamb-meadow','羊铃村','村',285,373,'低丘下的牧村，羊群在石墙间放养。','limestone',11,'丘地小路'],
+    ['willow-mill','柳磨村','村',347,339,'靠水轮磨坊生活的小村。','wheatford-city',15,'河谷道'],
+  ]],
+  ['haoming', [
+    ['horse-banner-city','骏旗城','城',449,375,'草原西缘的贸易城，马贩和鞍匠在城门附近聚集。','spur-field',21,'牧道'],
+    ['river-gold-city','金河城','城',396,385,'王都西侧河路上的城市，码头收运粮食和工具。','oakrest',22,'王道'],
+    ['oat-hollow','燕麦洼','村',398,420,'田渠交错的村庄，村民种燕麦并饲养役马。','meadbrook',14,'村道'],
+    ['red-mane','赤鬃村','村',454,429,'马场附近的小村，家家修理挽具。','riding-yard',12,'牧道'],
+    ['river-reed','河苇村','村',388,401,'临河村落，村民以渔获和苇席换粮。','river-gold-city',15,'河谷道'],
+    ['horseshoe','铁蹄庄','村',462,393,'供商旅换马的小村，路边有共用马厩。','horse-banner-city',13,'牧道'],
+    ['birch-field','桦田村','村',437,329,'白桦渡北方的耕作村，浅沟将田地分成小块。','birch-ford',16,'村道'],
+  ]],
+  ['weituo', [
+    ['black-ridge-city','黑脊城','城',574,360,'丘陵旧军道上的城市，城中匠人修缮守军器具。','grey-fort',24,'山道'],
+    ['stonebell-city','石钟城','城',550,422,'南部丘地的城镇，石料与羊毛由此运向要塞。','quiet-bell',20,'丘地小路'],
+    ['grey-slope','灰坡村','村',594,358,'灰堡镇附近的山坡村，放牧人与石匠共居。','grey-fort',12,'丘地小路'],
+    ['south-quarry','南采村','村',568,406,'采石场南侧的工人村。','marrow-quarry',10,'村道'],
+    ['old-oak-hill','老橡岗','村',542,407,'修院附近的村庄，沿坡种植耐寒谷物。','quiet-bell',13,'丘地小路'],
+    ['stonefold','石围村','村',565,430,'石钟城外的牧村，以石墙围护牲口。','stonebell-city',11,'村道'],
+    ['east-hearth','东炉村','村',590,370,'黑脊城外的炭工村，向城中工坊供应燃料。','black-ridge-city',14,'山道'],
+  ]],
+  ['gewen', [
+    ['shell-market-city','贝市城','城',383,563,'潮汐港内湾的商城，船材和鱼获在此交易。','tideport',14,'海岸道'],
+    ['sailhaven-city','帆湾城','城',455,560,'临水城邦所在岛上的城市，船匠在避风湾修船。','waterside',15,'海岸道'],
+    ['saltgrass','盐草村','村',363,571,'盐田边的村庄，居民修筑浅沟引入海水。','tideport',12,'海岸道'],
+    ['shell-beach','贝滩村','村',389,575,'内湾渔村，退潮时收集贝类。','shell-market-city',10,'海岸道'],
+    ['east-sail','东帆村','村',468,566,'帆湾东侧的村庄，以缝帆和补网为生。','sailhaven-city',12,'海岸道'],
+    ['water-cress','水芹村','村',449,535,'靠近淡水井的岛上农村，给城邦供应蔬菜。','silt-docks',11,'村道'],
+    ['coral-bend','珊瑚湾村','村',495,570,'盐湾附近的小渔村，停靠浅底渔船。','salt-bay',13,'海岸道'],
+  ]],
+  ['selens', [
+    ['herb-crown-city','药冠城','城',511,456,'林缘的药材城市，炼金工坊和晒草架相邻。','hidden-forest',20,'林道'],
+    ['mistwater-city','雾水城','城',536,515,'湿地水路旁的城市，药商借木栈道运货。','fen-wick',19,'沼泽栈道'],
+    ['fern-brook','蕨溪村','村',500,474,'林间溪边的采药村，住户轮流维护木桥。','amber-bark',11,'林道'],
+    ['amber-field','琥珀田','村',479,492,'树脂产区边上的农耕村。','amber-bark',10,'村道'],
+    ['mist-reed','雾苇村','村',527,525,'雾水城附近的湿地村，住屋建在高地。','mistwater-city',12,'沼泽栈道'],
+    ['green-vat','青釜村','村',518,466,'药冠城外的作坊村，以陶罐晾晒草药。','herb-crown-city',13,'林道'],
+    ['south-elm','南榆村','村',459,498,'垂榆村南侧的聚落，以粮食换取药草。','elm-side',15,'村道'],
+  ]],
+  ['andreia', [
+    ['bronze-wheel-city','铜轮城','城',284,503,'海岸工坊发展出的城市，机械匠制作绞盘和滑轮。','bronze-yard',17,'王道'],
+    ['west-bay-city','西湾城','城',235,480,'西部海湾的城市，船舶在此装载粮食和铁件。','wind-cape',19,'海岸道'],
+    ['flax-ridge','亚麻岭','村',301,508,'靠近绳索作坊的村庄，农户种麻晒纤维。','ropewalk',10,'村道'],
+    ['west-bay-fish','西湾渔村','村',227,491,'西湾城外的渔村，清晨把渔获送往市场。','west-bay-city',9,'海岸道'],
+    ['wheel-creek','轮溪村','村',296,478,'铜轮城附近的溪谷村，以水轮带动小磨坊。','bronze-wheel-city',16,'河谷道'],
+    ['reed-flats','苇原村','村',336,470,'堤岸后的低地村，村民编席并修补沟渠。','reedbank',13,'村道'],
+    ['cliff-field','崖田村','村',211,454,'海崖内侧的小村，石墙保护耕地免受海风。','white-cliffs',14,'海岸道'],
+  ]],
+);
+
 const placeFrom = (region, [id, name, kind, x, y, description, , , , extra]) => ({
   id, name, region, kind, x, y, description,
   ...(extra?.district ? { district: extra.district } : {}),
